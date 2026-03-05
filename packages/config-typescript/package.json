@@ -5,7 +5,10 @@
   "type": "module",
   "exports": {
     "./base": "./base.json",
+    "./base.json": "./base.json",
     "./node-service": "./node-service.json",
-    "./library": "./library.json"
+    "./node-service.json": "./node-service.json",
+    "./library": "./library.json",
+    "./library.json": "./library.json"
   }
 }
