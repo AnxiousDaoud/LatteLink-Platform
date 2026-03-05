@@ -121,7 +121,7 @@ jobs:
             echo "value=" >> "$GITHUB_OUTPUT"
           fi
       - run: pnpm turbo run build ${{ steps.turbo.outputs.value }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
           path: |
