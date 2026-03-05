@@ -1,0 +1,22 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/design-tokens" },
+    { "path": "./packages/sdk-mobile" },
+    { "path": "./packages/contracts/core" },
+    { "path": "./packages/contracts/auth" },
+    { "path": "./packages/contracts/catalog" },
+    { "path": "./packages/contracts/orders" },
+    { "path": "./packages/contracts/loyalty" },
+    { "path": "./packages/contracts/notifications" },
+    { "path": "./services/gateway" },
+    { "path": "./services/identity" },
+    { "path": "./services/catalog" },
+    { "path": "./services/orders" },
+    { "path": "./services/payments" },
+    { "path": "./services/loyalty" },
+    { "path": "./services/notifications" },
+    { "path": "./services/workers/menu-sync" },
+    { "path": "./apps/mobile" }
+  ]
+}

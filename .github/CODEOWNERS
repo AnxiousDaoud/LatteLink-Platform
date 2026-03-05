@@ -1,0 +1,8 @@
+# Layer-based ownership
+/apps/mobile/ @GazelleDev/mobile
+/services/ @GazelleDev/platform
+/packages/contracts/ @GazelleDev/platform @GazelleDev/mobile
+/packages/design-tokens/ @GazelleDev/mobile
+/infra/ @GazelleDev/infra @GazelleDev/security
+/.github/ @GazelleDev/platform @GazelleDev/security
+/docs/ @GazelleDev/platform

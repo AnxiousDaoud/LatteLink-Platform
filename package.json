@@ -1,0 +1,34 @@
+{
+  "name": "gazelle-mobile-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gazelle mobile ordering platform monorepo",
+  "license": "MIT",
+  "packageManager": "pnpm@10.5.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "dev": "turbo run dev --parallel",
+    "contracts:openapi": "turbo run openapi --filter=@gazelle/gateway --filter=@gazelle/contracts-*",
+    "sdk:generate": "pnpm --filter @gazelle/sdk-mobile generate",
+    "terraform:fmt": "terraform -chdir=infra/terraform/envs/dev fmt -recursive -check",
+    "terraform:validate": "pnpm -r --filter ./infra/terraform/envs/* run validate"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.5",
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.8",
+    "eslint": "^9.21.0",
+    "eslint-config-prettier": "^10.1.1",
+    "prettier": "^3.5.3",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

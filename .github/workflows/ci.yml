@@ -1,0 +1,146 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - id: turbo
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "value=--filter=...[${{ github.event.pull_request.base.sha }}]" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm turbo run lint ${{ steps.turbo.outputs.value }}
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - id: turbo
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "value=--filter=...[${{ github.event.pull_request.base.sha }}]" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm turbo run typecheck ${{ steps.turbo.outputs.value }}
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - id: turbo
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "value=--filter=...[${{ github.event.pull_request.base.sha }}]" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm turbo run test ${{ steps.turbo.outputs.value }}
+
+  contract-tests:
+    name: contract-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @gazelle/contracts-* test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile
+      - id: turbo
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "value=--filter=...[${{ github.event.pull_request.base.sha }}]" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=" >> "$GITHUB_OUTPUT"
+          fi
+      - run: pnpm turbo run build ${{ steps.turbo.outputs.value }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            apps/mobile/build
+            services/*/dist
+          if-no-files-found: ignore
+
+  terraform-validate:
+    name: terraform-validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform -chdir=infra/terraform fmt -recursive -check
+      - run: terraform -chdir=infra/terraform/envs/dev init -backend=false
+      - run: terraform -chdir=infra/terraform/envs/dev validate
+      - run: terraform -chdir=infra/terraform/envs/staging init -backend=false
+      - run: terraform -chdir=infra/terraform/envs/staging validate
+      - run: terraform -chdir=infra/terraform/envs/prod init -backend=false
+      - run: terraform -chdir=infra/terraform/envs/prod validate

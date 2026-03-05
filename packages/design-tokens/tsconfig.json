@@ -1,0 +1,6 @@
+{
+  "extends": "@gazelle/config-typescript/library",
+  "compilerOptions": {
+    "baseUrl": "."
+  }
+}

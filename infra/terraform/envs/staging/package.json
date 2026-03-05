@@ -1,0 +1,10 @@
+{
+  "name": "@gazelle/terraform-staging",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "validate": "terraform init -backend=false && terraform validate",
+    "plan": "terraform plan",
+    "apply": "terraform apply -auto-approve"
+  }
+}

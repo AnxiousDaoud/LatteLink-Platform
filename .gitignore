@@ -1,0 +1,38 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+dist
+build
+coverage
+.expo
+.expo-shared
+.next
+
+# logs
+*.log
+
+# env and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# os/editor
+.DS_Store
+.vscode
+.idea
+
+# terraform
+*.tfstate
+*.tfstate.backup
+.terraform
+.terraform.lock.hcl
+crash.log
+
+# misc
+openapi/*.json
+pnpm-lock.yaml

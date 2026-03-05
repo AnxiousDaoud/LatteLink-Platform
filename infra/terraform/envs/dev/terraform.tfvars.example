@@ -1,0 +1,8 @@
+aws_region              = "us-east-1"
+db_password             = "replace-me"
+task_execution_role_arn = "arn:aws:iam::123456789012:role/gazelle-task-execution"
+task_role_arn           = "arn:aws:iam::123456789012:role/gazelle-task"
+create_dns_record       = false
+zone_id                 = ""
+alb_dns_name            = ""
+alb_zone_id             = ""

@@ -1,0 +1,46 @@
+# GazelleMobilePlatform
+
+Public monorepo for Gazelle's mobile ordering platform.
+
+## Scope
+
+- Expo iOS app (`apps/mobile`)
+- API gateway and microservices (`services/*`)
+- Shared contracts, design tokens, SDKs (`packages/*`)
+- AWS Terraform (`infra/terraform`)
+- Delivery/governance docs (`docs/*`)
+
+## Architecture
+
+See [architecture-overview.md](docs/architecture/architecture-overview.md).
+
+## Quickstart
+
+```bash
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+## Workspace Scripts
+
+- `pnpm dev`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- `pnpm verify`
+- `pnpm contracts:openapi`
+- `pnpm sdk:generate`
+
+## Governance and GitHub Setup
+
+Manual GitHub UI tasks are documented in [github-setup-checklist.md](docs/github/github-setup-checklist.md).
+
+## Security
+
+- No secrets in repository history.
+- Runtime secrets in GitHub Environments + AWS Secrets Manager.
+- See [SECURITY.md](SECURITY.md).

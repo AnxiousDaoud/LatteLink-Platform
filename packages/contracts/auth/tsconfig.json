@@ -1,0 +1,3 @@
+{
+  "extends": "@gazelle/config-typescript/library"
+}
