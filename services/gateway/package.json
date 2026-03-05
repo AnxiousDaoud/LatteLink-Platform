@@ -14,7 +14,7 @@
     "openapi": "tsx src/openapi.ts"
   },
   "dependencies": {
-    "@fastify/cors": "^8.5.0",
+    "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^3.1.0",
     "@gazelle/contracts-auth": "workspace:*",
