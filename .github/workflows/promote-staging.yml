@@ -20,7 +20,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
       - run: terraform -chdir=infra/terraform/envs/staging init
       - run: terraform -chdir=infra/terraform/envs/staging apply -auto-approve
       - run: ./infra/terraform/scripts/smoke-check.sh staging
