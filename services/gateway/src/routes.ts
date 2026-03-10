@@ -23,7 +23,11 @@ import {
   quoteRequestSchema
 } from "@gazelle/contracts-orders";
 import { loyaltyBalanceSchema, loyaltyContract, loyaltyLedgerEntrySchema } from "@gazelle/contracts-loyalty";
-import { notificationsContract, pushTokenUpsertSchema } from "@gazelle/contracts-notifications";
+import {
+  notificationsContract,
+  pushTokenUpsertResponseSchema,
+  pushTokenUpsertSchema
+} from "@gazelle/contracts-notifications";
 
 const authHeaderSchema = z.object({
   authorization: z.string().startsWith("Bearer ").optional()
@@ -69,7 +73,7 @@ async function proxyUpstream<TResponse>(params: {
   reply: FastifyReply;
   baseUrl: string;
   serviceLabel: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   path: string;
   body?: unknown;
   responseSchema: z.ZodType<TResponse>;
@@ -80,9 +84,13 @@ async function proxyUpstream<TResponse>(params: {
     "x-request-id": request.id
   };
   const authorization = request.headers.authorization;
+  const userIdHeader = request.headers["x-user-id"];
 
   if (typeof authorization === "string") {
     headers.authorization = authorization;
+  }
+  if (typeof userIdHeader === "string") {
+    headers["x-user-id"] = userIdHeader;
   }
 
   if (body !== undefined) {
@@ -147,6 +155,7 @@ export async function registerRoutes(app: FastifyInstance) {
   const identityBaseUrl = process.env.IDENTITY_SERVICE_BASE_URL ?? "http://127.0.0.1:3000";
   const ordersBaseUrl = process.env.ORDERS_SERVICE_BASE_URL ?? "http://127.0.0.1:3001";
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
+  const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
 
   app.get("/health", async () => ({ status: "ok", service: "gateway" }));
   app.get("/ready", async () => ({ status: "ready", service: "gateway" }));
@@ -457,8 +466,18 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.put("/v1/devices/push-token", async (request) => {
-    pushTokenUpsertSchema.parse(request.body);
-    return { success: true };
+  app.put("/v1/devices/push-token", async (request, reply) => {
+    const input = pushTokenUpsertSchema.parse(request.body);
+
+    return proxyUpstream({
+      request,
+      reply,
+      baseUrl: notificationsBaseUrl,
+      serviceLabel: "Notifications",
+      method: "PUT",
+      path: "/v1/devices/push-token",
+      body: input,
+      responseSchema: pushTokenUpsertResponseSchema
+    });
   });
 }

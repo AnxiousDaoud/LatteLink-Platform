@@ -6,15 +6,18 @@ describe("gateway", () => {
   let previousIdentityBaseUrl: string | undefined;
   let previousOrdersBaseUrl: string | undefined;
   let previousLoyaltyBaseUrl: string | undefined;
+  let previousNotificationsBaseUrl: string | undefined;
 
   beforeEach(() => {
     fetchMock.mockReset();
     previousIdentityBaseUrl = process.env.IDENTITY_SERVICE_BASE_URL;
     previousOrdersBaseUrl = process.env.ORDERS_SERVICE_BASE_URL;
     previousLoyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL;
+    previousNotificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL;
     process.env.IDENTITY_SERVICE_BASE_URL = "http://identity.internal";
     process.env.ORDERS_SERVICE_BASE_URL = "http://orders.internal";
     process.env.LOYALTY_SERVICE_BASE_URL = "http://loyalty.internal";
+    process.env.NOTIFICATIONS_SERVICE_BASE_URL = "http://notifications.internal";
     vi.stubGlobal("fetch", fetchMock);
 
     fetchMock.mockImplementation(async (input, init) => {
@@ -243,6 +246,13 @@ describe("gateway", () => {
         );
       }
 
+      if (url.endsWith("/v1/devices/push-token") && method === "PUT") {
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
       return new Response(JSON.stringify({ code: "NOT_IMPLEMENTED" }), { status: 500 });
     });
   });
@@ -265,6 +275,12 @@ describe("gateway", () => {
       delete process.env.LOYALTY_SERVICE_BASE_URL;
     } else {
       process.env.LOYALTY_SERVICE_BASE_URL = previousLoyaltyBaseUrl;
+    }
+
+    if (previousNotificationsBaseUrl === undefined) {
+      delete process.env.NOTIFICATIONS_SERVICE_BASE_URL;
+    } else {
+      process.env.NOTIFICATIONS_SERVICE_BASE_URL = previousNotificationsBaseUrl;
     }
   });
 
@@ -420,6 +436,37 @@ describe("gateway", () => {
     const requestedUrls = fetchMock.mock.calls.map(([input]) => (typeof input === "string" ? input : input.url));
     expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/balance");
     expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/ledger");
+
+    await app.close();
+  });
+
+  it("forwards push-token upsert to notifications service", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "PUT",
+      url: "/v1/devices/push-token",
+      headers: {
+        "x-user-id": "123e4567-e89b-12d3-a456-426614174000"
+      },
+      payload: {
+        deviceId: "ios-device-1",
+        platform: "ios",
+        expoPushToken: "ExponentPushToken[abc123]"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ success: true });
+
+    const upsertCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).endsWith("/v1/devices/push-token")
+    );
+    expect(upsertCall).toBeDefined();
+    if (upsertCall) {
+      expect(typeof upsertCall[0] === "string" ? upsertCall[0] : upsertCall[0].url).toBe(
+        "http://notifications.internal/v1/devices/push-token"
+      );
+    }
 
     await app.close();
   });

@@ -30,6 +30,12 @@ type LoyaltyLedgerEntry = {
   createdAt: string;
 };
 
+type NotificationDispatchEvent = {
+  userId: string;
+  orderId: string;
+  status: string;
+};
+
 function buildLoyaltyHarnessApp() {
   const app = Fastify();
   const defaultUserId = "123e4567-e89b-12d3-a456-426614174000";
@@ -172,12 +178,45 @@ function buildLoyaltyHarnessApp() {
   return app;
 }
 
+function buildNotificationsHarnessApp() {
+  const app = Fastify();
+  const events: NotificationDispatchEvent[] = [];
+  const dispatchedKeys = new Set<string>();
+
+  app.post("/v1/notifications/internal/order-state", async (request) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const event: NotificationDispatchEvent = {
+      userId: String(body.userId ?? ""),
+      orderId: String(body.orderId ?? ""),
+      status: String(body.status ?? "")
+    };
+    const dispatchKey = `${event.userId}:${event.orderId}:${event.status}`;
+    const deduplicated = dispatchedKeys.has(dispatchKey);
+    if (!deduplicated) {
+      dispatchedKeys.add(dispatchKey);
+      events.push(event);
+    }
+
+    return {
+      accepted: true,
+      enqueued: 1,
+      deduplicated
+    };
+  });
+
+  app.get("/v1/notifications/internal/events", async () => ({ events }));
+
+  return app;
+}
+
 describe.sequential("orders + payments e2e", () => {
   let ordersApp: FastifyInstance | undefined;
   let paymentsApp: FastifyInstance | undefined;
   let loyaltyApp: FastifyInstance | undefined;
+  let notificationsApp: FastifyInstance | undefined;
   let previousPaymentsBaseUrl: string | undefined;
   let previousLoyaltyBaseUrl: string | undefined;
+  let previousNotificationsBaseUrl: string | undefined;
 
   async function createOrder(input?: { pointsToRedeem?: number; userId?: string }) {
     if (!ordersApp) {
@@ -213,6 +252,7 @@ describe.sequential("orders + payments e2e", () => {
   beforeEach(async () => {
     previousPaymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL;
     previousLoyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL;
+    previousNotificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL;
 
     paymentsApp = await buildPaymentsApp();
     await paymentsApp.listen({ host: "127.0.0.1", port: 0 });
@@ -228,8 +268,16 @@ describe.sequential("orders + payments e2e", () => {
       throw new Error("Failed to resolve loyalty test port");
     }
 
+    notificationsApp = buildNotificationsHarnessApp();
+    await notificationsApp.listen({ host: "127.0.0.1", port: 0 });
+    const notificationsAddress = notificationsApp.server.address() as AddressInfo | null;
+    if (!notificationsAddress || typeof notificationsAddress.port !== "number") {
+      throw new Error("Failed to resolve notifications test port");
+    }
+
     process.env.PAYMENTS_SERVICE_BASE_URL = `http://127.0.0.1:${paymentsAddress.port}`;
     process.env.LOYALTY_SERVICE_BASE_URL = `http://127.0.0.1:${loyaltyAddress.port}`;
+    process.env.NOTIFICATIONS_SERVICE_BASE_URL = `http://127.0.0.1:${notificationsAddress.port}`;
     ordersApp = await buildOrdersApp();
   });
 
@@ -249,6 +297,11 @@ describe.sequential("orders + payments e2e", () => {
       loyaltyApp = undefined;
     }
 
+    if (notificationsApp) {
+      await notificationsApp.close();
+      notificationsApp = undefined;
+    }
+
     if (previousPaymentsBaseUrl === undefined) {
       delete process.env.PAYMENTS_SERVICE_BASE_URL;
     } else {
@@ -259,6 +312,12 @@ describe.sequential("orders + payments e2e", () => {
       delete process.env.LOYALTY_SERVICE_BASE_URL;
     } else {
       process.env.LOYALTY_SERVICE_BASE_URL = previousLoyaltyBaseUrl;
+    }
+
+    if (previousNotificationsBaseUrl === undefined) {
+      delete process.env.NOTIFICATIONS_SERVICE_BASE_URL;
+    } else {
+      process.env.NOTIFICATIONS_SERVICE_BASE_URL = previousNotificationsBaseUrl;
     }
   });
 
@@ -489,6 +548,83 @@ describe.sequential("orders + payments e2e", () => {
         expect.objectContaining({ type: "EARN", points: paidOrder.total.amountCents }),
         expect.objectContaining({ type: "ADJUSTMENT", points: -paidOrder.total.amountCents }),
         expect.objectContaining({ type: "REFUND", points: 125 })
+      ])
+    );
+  });
+
+  it("dispatches order-state notifications on create, pay, and cancel transitions", async () => {
+    if (!notificationsApp) {
+      throw new Error("Notifications app not initialized");
+    }
+
+    const userId = "123e4567-e89b-12d3-a456-426614174990";
+    const order = await createOrder({ pointsToRedeem: 0, userId });
+
+    const payResponse = await ordersApp.inject({
+      method: "POST",
+      url: `/v1/orders/${order.id}/pay`,
+      headers: {
+        "x-user-id": userId
+      },
+      payload: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "notify-e2e-pay-1"
+      }
+    });
+    expect(payResponse.statusCode).toBe(200);
+
+    const repeatedPay = await ordersApp.inject({
+      method: "POST",
+      url: `/v1/orders/${order.id}/pay`,
+      headers: {
+        "x-user-id": userId
+      },
+      payload: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "notify-e2e-pay-1"
+      }
+    });
+    expect(repeatedPay.statusCode).toBe(200);
+
+    const cancelResponse = await ordersApp.inject({
+      method: "POST",
+      url: `/v1/orders/${order.id}/cancel`,
+      headers: {
+        "x-user-id": userId
+      },
+      payload: {
+        reason: "customer changed mind"
+      }
+    });
+    expect(cancelResponse.statusCode).toBe(200);
+
+    const repeatedCancel = await ordersApp.inject({
+      method: "POST",
+      url: `/v1/orders/${order.id}/cancel`,
+      headers: {
+        "x-user-id": userId
+      },
+      payload: {
+        reason: "customer changed mind"
+      }
+    });
+    expect(repeatedCancel.statusCode).toBe(200);
+
+    const eventsResponse = await notificationsApp.inject({
+      method: "GET",
+      url: "/v1/notifications/internal/events"
+    });
+    expect(eventsResponse.statusCode).toBe(200);
+
+    const events = (eventsResponse.json() as { events: NotificationDispatchEvent[] }).events.filter(
+      (event) => event.orderId === order.id
+    );
+    expect(events).toHaveLength(3);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId, status: "PENDING_PAYMENT" }),
+        expect.objectContaining({ userId, status: "PAID" }),
+        expect.objectContaining({ userId, status: "CANCELED" })
       ])
     );
   });

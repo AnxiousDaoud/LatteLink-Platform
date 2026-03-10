@@ -41,6 +41,7 @@ Gateway upstream config is set in-process:
 - `IDENTITY_SERVICE_BASE_URL=http://127.0.0.1:3000`
 - `ORDERS_SERVICE_BASE_URL=http://127.0.0.1:3001`
 - `LOYALTY_SERVICE_BASE_URL=http://127.0.0.1:3004`
+- `NOTIFICATIONS_SERVICE_BASE_URL=http://127.0.0.1:3005`
 
 Optional worker:
 
@@ -139,10 +140,12 @@ If unreachable:
   - `GET /v1/loyalty/balance`
   - `GET /v1/loyalty/ledger`
   - `POST /v1/loyalty/internal/ledger/apply` (service-level internal endpoint for local testing)
+- Notifications:
+  - `PUT /v1/devices/push-token` through gateway (proxied to notifications service)
+  - Orders emits internal order-state notifications on `PENDING_PAYMENT`, `PAID`, and `CANCELED` transitions
 
 ## Current Limits (Expected)
 
 - Gateway menu route currently returns an empty category payload, so the app may use fallback catalog UI.
-- Notifications service remains scaffold-level endpoints.
 - Payments currently uses simulated Clover outcomes (not a live Clover merchant integration).
 - Apple Pay token collection in mobile is currently dev-mode input (not native Apple Pay sheet yet).

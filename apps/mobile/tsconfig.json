@@ -1,15 +1,24 @@
 {
-  "extends": "expo/tsconfig.base",
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    "allowJs": true,
+    "esModuleInterop": true,
     "strict": true,
-    "types": [
-      "nativewind/types"
-    ]
+    "jsx": "react-native",
+    "lib": [
+      "DOM",
+      "ESNext"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "ESNext"
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "expo-env.d.ts",
     "nativewind-env.d.ts",
     ".expo/types/**/*.ts"
   ]

@@ -41,6 +41,23 @@ Loyalty mutation idempotency keys are deterministic per order:
 - `order:{orderId}:loyalty:reverse-earn`
 - `order:{orderId}:loyalty:refund-redeem`
 
+## Notifications Integration (M5.3)
+
+`services/orders` now emits best-effort internal notification events to:
+- `POST /v1/notifications/internal/order-state`
+
+Events are emitted when status transitions are newly applied:
+- `PENDING_PAYMENT` (order create)
+- `PAID` (successful payment)
+- `CANCELED` (successful cancel)
+
+Notification emission is non-blocking for order APIs:
+- notification failures are logged with request context
+- order lifecycle responses still succeed when notifications are unavailable
+
+Default notifications upstream:
+- `NOTIFICATIONS_SERVICE_BASE_URL=http://127.0.0.1:3005`
+
 ## Idempotency Controls
 
 - Create idempotency key:

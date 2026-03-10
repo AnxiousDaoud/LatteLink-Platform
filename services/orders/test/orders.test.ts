@@ -41,6 +41,7 @@ describe("orders service", () => {
         lifetimeEarned: number;
       }
     >();
+    const dispatchedOrderStateKeys = new Set<string>();
     fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input.toString();
       const method = init?.method ?? "GET";
@@ -194,6 +195,23 @@ describe("orders service", () => {
           response
         });
         return paymentsResponse(response);
+      }
+
+      if (url.endsWith("/v1/notifications/internal/order-state") && method === "POST") {
+        const userId = String(body.userId ?? defaultUserId);
+        const orderId = String(body.orderId ?? "");
+        const status = String(body.status ?? "");
+        const dispatchKey = `${userId}:${orderId}:${status}`;
+        const deduplicated = dispatchedOrderStateKeys.has(dispatchKey);
+        if (!deduplicated) {
+          dispatchedOrderStateKeys.add(dispatchKey);
+        }
+
+        return paymentsResponse({
+          accepted: true,
+          enqueued: 1,
+          deduplicated
+        });
       }
 
       throw new Error(`Unhandled payments request in test: ${method} ${url}`);
@@ -531,6 +549,80 @@ describe("orders service", () => {
     });
     expect(rejectedCancel.statusCode).toBe(409);
     expect(rejectedCancel.json()).toMatchObject({ code: "REFUND_REJECTED" });
+
+    await app.close();
+  });
+
+  it("emits order-state notifications on create, pay, and cancel without duplicates", async () => {
+    const app = await buildApp();
+    const quoteResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders/quote",
+      payload: sampleQuotePayload
+    });
+    const quote = orderQuoteSchema.parse(quoteResponse.json());
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders",
+      payload: {
+        quoteId: quote.quoteId,
+        quoteHash: quote.quoteHash
+      }
+    });
+    const createdOrder = orderSchema.parse(createResponse.json());
+
+    const firstPay = await app.inject({
+      method: "POST",
+      url: `/v1/orders/${createdOrder.id}/pay`,
+      payload: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "notify-pay-1"
+      }
+    });
+    expect(firstPay.statusCode).toBe(200);
+
+    const repeatedPay = await app.inject({
+      method: "POST",
+      url: `/v1/orders/${createdOrder.id}/pay`,
+      payload: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "notify-pay-1"
+      }
+    });
+    expect(repeatedPay.statusCode).toBe(200);
+
+    const firstCancel = await app.inject({
+      method: "POST",
+      url: `/v1/orders/${createdOrder.id}/cancel`,
+      payload: { reason: "changed mind" }
+    });
+    expect(firstCancel.statusCode).toBe(200);
+
+    const repeatedCancel = await app.inject({
+      method: "POST",
+      url: `/v1/orders/${createdOrder.id}/cancel`,
+      payload: { reason: "still changed mind" }
+    });
+    expect(repeatedCancel.statusCode).toBe(200);
+
+    const notificationPayloads = fetchMock.mock.calls
+      .filter(
+        ([input, init]) =>
+          (typeof input === "string" ? input : input.toString()).endsWith("/v1/notifications/internal/order-state") &&
+          (init?.method ?? "GET") === "POST"
+      )
+      .map(([, init]) => JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>)
+      .filter((payload) => payload.orderId === createdOrder.id);
+
+    expect(notificationPayloads).toHaveLength(3);
+    expect(notificationPayloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "PENDING_PAYMENT" }),
+        expect.objectContaining({ status: "PAID" }),
+        expect.objectContaining({ status: "CANCELED" })
+      ])
+    );
 
     await app.close();
   });
