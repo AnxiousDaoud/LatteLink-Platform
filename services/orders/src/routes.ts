@@ -7,6 +7,10 @@ import {
   payOrderRequestSchema,
   quoteRequestSchema
 } from "@gazelle/contracts-orders";
+import {
+  orderStateDispatchResponseSchema,
+  orderStateNotificationSchema
+} from "@gazelle/contracts-notifications";
 import { z } from "zod";
 
 const payloadSchema = z.object({
@@ -266,6 +270,73 @@ async function applyLoyaltyMutation(params: {
   return parsedLoyaltyMutation.data;
 }
 
+async function sendOrderStateNotification(params: {
+  request: FastifyRequest;
+  notificationsBaseUrl: string;
+  userId: string;
+  order: Order;
+}) {
+  const { request, notificationsBaseUrl, userId, order } = params;
+  const latestTimelineEntry = order.timeline[order.timeline.length - 1];
+  const payload = orderStateNotificationSchema.parse({
+    userId,
+    orderId: order.id,
+    status: order.status,
+    pickupCode: order.pickupCode,
+    locationId: order.locationId,
+    occurredAt: latestTimelineEntry?.occurredAt ?? new Date().toISOString(),
+    note: latestTimelineEntry?.note
+  });
+
+  let response: Response;
+  try {
+    response = await fetch(`${notificationsBaseUrl}/v1/notifications/internal/order-state`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": request.id
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch {
+    request.log.warn(
+      { orderId: order.id, status: order.status, userId },
+      "notifications service unavailable while dispatching order-state event"
+    );
+    return;
+  }
+
+  const parsedBody = parseJsonSafely(await response.text());
+  if (!response.ok) {
+    request.log.warn(
+      {
+        orderId: order.id,
+        status: order.status,
+        userId,
+        upstreamStatus: response.status,
+        upstreamBody: parsedBody
+      },
+      "notifications service rejected order-state event"
+    );
+    return;
+  }
+
+  const parsedDispatch = orderStateDispatchResponseSchema.safeParse(parsedBody);
+  if (!parsedDispatch.success) {
+    request.log.warn(
+      {
+        orderId: order.id,
+        status: order.status,
+        userId,
+        upstreamBody: parsedBody,
+        details: parsedDispatch.error.flatten()
+      },
+      "notifications service returned invalid order-state response"
+    );
+    return;
+  }
+}
+
 function buildQuoteHash(input: {
   locationId: string;
   items: Array<{ itemId: string; quantity: number; unitPriceCents: number }>;
@@ -380,6 +451,7 @@ function getOrderList() {
 export async function registerRoutes(app: FastifyInstance) {
   const paymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL ?? "http://127.0.0.1:3003";
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
+  const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
 
   app.get("/health", async () => ({ status: "ok", service: "orders" }));
   app.get("/ready", async () => ({ status: "ready", service: "orders" }));
@@ -442,6 +514,12 @@ export async function registerRoutes(app: FastifyInstance) {
     orderQuoteByOrderId.set(order.id, quote);
     orderUserIdByOrderId.set(order.id, requestUserId);
     createOrderIdempotencyMap.set(createOrderKey, order.id);
+    await sendOrderStateNotification({
+      request,
+      notificationsBaseUrl,
+      userId: requestUserId,
+      order
+    });
 
     return order;
   });
@@ -635,6 +713,12 @@ export async function registerRoutes(app: FastifyInstance) {
     ordersById.set(orderId, paidOrder);
     paymentIdByOrderId.set(orderId, successfulCharge.paymentId);
     paymentIdempotencyMap.set(idempotencyKey, paidOrder);
+    await sendOrderStateNotification({
+      request,
+      notificationsBaseUrl,
+      userId: orderUserId,
+      order: paidOrder
+    });
 
     return paidOrder;
   });
@@ -845,6 +929,21 @@ export async function registerRoutes(app: FastifyInstance) {
       `Canceled by customer: ${input.reason}.${refundNote}`
     );
     ordersById.set(orderId, canceledOrder);
+    let notificationUserId = orderUserIdByOrderId.get(orderId);
+    if (!notificationUserId) {
+      const fallbackUserId = resolveRequestUserId(request, reply);
+      if (!fallbackUserId) {
+        return;
+      }
+      notificationUserId = fallbackUserId;
+      orderUserIdByOrderId.set(orderId, fallbackUserId);
+    }
+    await sendOrderStateNotification({
+      request,
+      notificationsBaseUrl,
+      userId: notificationUserId,
+      order: canceledOrder
+    });
 
     return canceledOrder;
   });

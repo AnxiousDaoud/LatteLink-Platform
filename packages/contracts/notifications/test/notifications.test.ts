@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pushTokenUpsertSchema } from "../src";
+import { orderStateNotificationSchema, pushTokenUpsertSchema } from "../src";
 
 describe("contracts-notifications", () => {
   it("validates expo token envelope", () => {
@@ -10,5 +10,18 @@ describe("contracts-notifications", () => {
     });
 
     expect(parsed.platform).toBe("ios");
+  });
+
+  it("validates internal order-state notification payload", () => {
+    const parsed = orderStateNotificationSchema.parse({
+      userId: "123e4567-e89b-12d3-a456-426614174000",
+      orderId: "123e4567-e89b-12d3-a456-426614174001",
+      status: "PAID",
+      pickupCode: "ABC123",
+      locationId: "flagship-01",
+      occurredAt: "2026-03-10T17:30:00.000Z"
+    });
+
+    expect(parsed.status).toBe("PAID");
   });
 });
