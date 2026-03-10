@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const menuItemSchema = z.object({
-  id: z.string(),
-  name: z.string(),
+  id: z.string().min(1),
+  name: z.string().min(1),
   description: z.string(),
   priceCents: z.number().int().nonnegative(),
   badgeCodes: z.array(z.string()),
@@ -10,21 +10,21 @@ export const menuItemSchema = z.object({
 });
 
 export const menuCategorySchema = z.object({
-  id: z.string(),
-  title: z.string(),
+  id: z.string().min(1),
+  title: z.string().min(1),
   items: z.array(menuItemSchema)
 });
 
 export const menuResponseSchema = z.object({
-  locationId: z.string(),
+  locationId: z.string().min(1),
   currency: z.literal("USD"),
   categories: z.array(menuCategorySchema)
 });
 
 export const storeConfigResponseSchema = z.object({
-  locationId: z.string(),
+  locationId: z.string().min(1),
   prepEtaMinutes: z.number().int().positive(),
-  taxRateBasisPoints: z.number().int().nonnegative(),
+  taxRateBasisPoints: z.number().int().min(0).max(10000),
   pickupInstructions: z.string()
 });
 
