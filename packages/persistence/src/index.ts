@@ -4,6 +4,7 @@ import { Pool } from "pg";
 
 export interface PaymentsChargeTable {
   payment_id: string;
+  provider_payment_id: string | null;
   order_id: string;
   idempotency_key: string;
   provider: "CLOVER";
@@ -194,6 +195,7 @@ export async function ensurePersistenceTables(db: PersistenceDb) {
   await sql`
     CREATE TABLE IF NOT EXISTS payments_charges (
       payment_id UUID PRIMARY KEY,
+      provider_payment_id TEXT,
       order_id UUID NOT NULL,
       idempotency_key TEXT NOT NULL,
       provider TEXT NOT NULL,
@@ -207,6 +209,11 @@ export async function ensurePersistenceTables(db: PersistenceDb) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (order_id, idempotency_key)
     )
+  `.execute(db);
+
+  await sql`
+    ALTER TABLE payments_charges
+    ADD COLUMN IF NOT EXISTS provider_payment_id TEXT
   `.execute(db);
 
   await sql`

@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 
 describe("payments service", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   it("responds on /health and /ready", async () => {
     const app = await buildApp();
     const response = await app.inject({ method: "GET", url: "/health" });
@@ -9,7 +14,12 @@ describe("payments service", () => {
 
     expect(response.statusCode).toBe(200);
     expect(ready.statusCode).toBe(200);
-    expect(ready.json()).toMatchObject({ service: "payments", persistence: expect.any(String) });
+    expect(ready.json()).toMatchObject({
+      service: "payments",
+      persistence: expect.any(String),
+      providerMode: expect.any(String),
+      providerConfigured: expect.any(Boolean)
+    });
     await app.close();
   });
 
@@ -239,6 +249,116 @@ describe("payments service", () => {
     expect(metricsResponse.json().requests.total).toBeGreaterThanOrEqual(1);
     expect(metricsResponse.json().requests.status4xx).toBeGreaterThanOrEqual(1);
 
+    await app.close();
+  });
+
+  it("returns misconfiguration errors when live Clover mode is enabled without required env", async () => {
+    vi.stubEnv("CLOVER_PROVIDER_MODE", "live");
+    vi.stubEnv("CLOVER_API_KEY", "");
+    vi.stubEnv("CLOVER_MERCHANT_ID", "");
+    vi.stubEnv("CLOVER_CHARGE_ENDPOINT", "");
+    vi.stubEnv("CLOVER_REFUND_ENDPOINT", "");
+
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/payments/charges",
+      payload: {
+        orderId: "123e4567-e89b-12d3-a456-426614174030",
+        amountCents: 650,
+        currency: "USD",
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "live-misconfigured"
+      }
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: "PROVIDER_MISCONFIGURED" });
+    await app.close();
+  });
+
+  it("supports live Clover charge + refund via configured endpoints", async () => {
+    vi.stubEnv("CLOVER_PROVIDER_MODE", "live");
+    vi.stubEnv("CLOVER_API_KEY", "test-key");
+    vi.stubEnv("CLOVER_MERCHANT_ID", "merchant-sbx");
+    vi.stubEnv("CLOVER_CHARGE_ENDPOINT", "https://sandbox.clover.test/v1/merchants/{merchantId}/charges");
+    vi.stubEnv(
+      "CLOVER_REFUND_ENDPOINT",
+      "https://sandbox.clover.test/v1/merchants/{merchantId}/payments/{paymentId}/refunds"
+    );
+
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "https://sandbox.clover.test/v1/merchants/merchant-sbx/charges") {
+        return new Response(
+          JSON.stringify({
+            id: "clv-charge-1",
+            status: "APPROVED",
+            approved: true,
+            message: "Charge accepted"
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url === "https://sandbox.clover.test/v1/merchants/merchant-sbx/payments/clv-charge-1/refunds") {
+        return new Response(
+          JSON.stringify({
+            id: "clv-refund-1",
+            status: "REFUNDED",
+            message: "Refund accepted"
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      throw new Error(`unexpected live Clover URL: ${url}`);
+    });
+
+    const app = await buildApp();
+
+    const chargeResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/charges",
+      payload: {
+        orderId: "123e4567-e89b-12d3-a456-426614174031",
+        amountCents: 1200,
+        currency: "USD",
+        applePayToken: "apple-pay-source-token",
+        idempotencyKey: "live-charge-1"
+      }
+    });
+    expect(chargeResponse.statusCode).toBe(200);
+    expect(chargeResponse.json()).toMatchObject({
+      provider: "CLOVER",
+      status: "SUCCEEDED",
+      approved: true
+    });
+
+    const internalPaymentId = chargeResponse.json().paymentId as string;
+    expect(typeof internalPaymentId).toBe("string");
+
+    const refundResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/refunds",
+      payload: {
+        orderId: "123e4567-e89b-12d3-a456-426614174031",
+        paymentId: internalPaymentId,
+        amountCents: 1200,
+        currency: "USD",
+        reason: "customer requested cancellation",
+        idempotencyKey: "live-refund-1"
+      }
+    });
+    expect(refundResponse.statusCode).toBe(200);
+    expect(refundResponse.json()).toMatchObject({
+      provider: "CLOVER",
+      status: "REFUNDED"
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     await app.close();
   });
 });

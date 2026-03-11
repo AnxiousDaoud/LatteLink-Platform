@@ -13,6 +13,22 @@ M4.3 introduces Clover charge and refund paths across `orders` and `payments`:
   - `POST /v1/orders/:orderId/pay` now calls payments charge endpoint
   - `POST /v1/orders/:orderId/cancel` triggers refund for paid orders
 
+## Provider Modes
+
+`payments` supports two Clover provider modes:
+
+- `simulated` (default): deterministic local outcomes for development/testing
+- `live`: real upstream Clover HTTP calls using configured endpoints and credentials
+
+Live mode env:
+
+- `CLOVER_PROVIDER_MODE=live`
+- `CLOVER_API_KEY`
+- `CLOVER_MERCHANT_ID`
+- `CLOVER_CHARGE_ENDPOINT` (supports `{merchantId}` template)
+- `CLOVER_REFUND_ENDPOINT` (supports `{merchantId}` and `{paymentId}` templates)
+- `CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT` (required when charging with `applePayWallet`)
+
 ## Charge Outcomes
 
 `payments` simulates Clover outcomes based on payment payload content:
