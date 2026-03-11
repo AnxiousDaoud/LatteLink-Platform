@@ -361,4 +361,161 @@ describe("payments service", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     await app.close();
   });
+
+  it("reconciles charge webhooks and dispatches order updates", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "http://127.0.0.1:3001/v1/orders/internal/payments/reconcile") {
+        return new Response(
+          JSON.stringify({
+            accepted: true,
+            applied: true,
+            orderStatus: "PAID"
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      throw new Error(`unexpected webhook dispatch URL: ${url}`);
+    });
+
+    const app = await buildApp();
+    const orderId = "123e4567-e89b-12d3-a456-426614174032";
+    const chargeResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/charges",
+      payload: {
+        orderId,
+        amountCents: 975,
+        currency: "USD",
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "webhook-charge-source"
+      }
+    });
+    expect(chargeResponse.statusCode).toBe(200);
+
+    const webhookResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhooks/clover",
+      payload: {
+        eventId: "evt_charge_1",
+        type: "payment.updated",
+        paymentId: chargeResponse.json().paymentId,
+        orderId,
+        status: "APPROVED",
+        message: "Settled asynchronously",
+        occurredAt: "2026-03-11T00:00:00.000Z"
+      }
+    });
+
+    expect(webhookResponse.statusCode).toBe(200);
+    expect(webhookResponse.json()).toMatchObject({
+      accepted: true,
+      kind: "CHARGE",
+      orderId,
+      status: "SUCCEEDED",
+      orderApplied: true
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("reconciles refund webhooks and dispatches order updates", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "http://127.0.0.1:3001/v1/orders/internal/payments/reconcile") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        expect(body.kind).toBe("REFUND");
+        expect(body.status).toBe("REFUNDED");
+        return new Response(
+          JSON.stringify({
+            accepted: true,
+            applied: true,
+            orderStatus: "CANCELED"
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      throw new Error(`unexpected webhook dispatch URL: ${url}`);
+    });
+
+    const app = await buildApp();
+    const orderId = "123e4567-e89b-12d3-a456-426614174033";
+    const chargeResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/charges",
+      payload: {
+        orderId,
+        amountCents: 1025,
+        currency: "USD",
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "webhook-refund-charge"
+      }
+    });
+    expect(chargeResponse.statusCode).toBe(200);
+
+    const refundResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/refunds",
+      payload: {
+        orderId,
+        paymentId: chargeResponse.json().paymentId,
+        amountCents: 1025,
+        currency: "USD",
+        reason: "reject this refund",
+        idempotencyKey: "webhook-refund-source"
+      }
+    });
+    expect(refundResponse.statusCode).toBe(200);
+    expect(refundResponse.json()).toMatchObject({ status: "REJECTED" });
+
+    const webhookResponse = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhooks/clover",
+      payload: {
+        eventId: "evt_refund_1",
+        type: "refund.updated",
+        paymentId: chargeResponse.json().paymentId,
+        orderId,
+        status: "REFUNDED",
+        message: "Refund finalized",
+        occurredAt: "2026-03-11T01:00:00.000Z"
+      }
+    });
+
+    expect(webhookResponse.statusCode).toBe(200);
+    expect(webhookResponse.json()).toMatchObject({
+      accepted: true,
+      kind: "REFUND",
+      orderId,
+      status: "REFUNDED",
+      orderApplied: true
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("rejects webhook requests when shared secret is configured and missing", async () => {
+    vi.stubEnv("CLOVER_WEBHOOK_SHARED_SECRET", "secret-1");
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhooks/clover",
+      payload: {
+        type: "payment.updated",
+        paymentId: "clv-charge-unknown",
+        orderId: "123e4567-e89b-12d3-a456-426614174034",
+        status: "APPROVED"
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: "UNAUTHORIZED_WEBHOOK" });
+    await app.close();
+  });
 });

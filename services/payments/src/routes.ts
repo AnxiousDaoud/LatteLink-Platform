@@ -2,7 +2,11 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { createPostgresDb, ensurePersistenceTables, getDatabaseUrl } from "@gazelle/persistence";
-import { applePayWalletSchema } from "@gazelle/contracts-orders";
+import {
+  applePayWalletSchema,
+  ordersPaymentReconciliationResultSchema,
+  ordersPaymentReconciliationSchema
+} from "@gazelle/contracts-orders";
 
 const payloadSchema = z.object({
   id: z.string().uuid().optional()
@@ -85,6 +89,7 @@ type ChargeResponse = z.output<typeof chargeResponseSchema>;
 type RefundResponse = z.output<typeof refundResponseSchema>;
 type ChargeRequest = z.output<typeof chargeRequestSchema>;
 type RefundRequest = z.output<typeof refundRequestSchema>;
+type OrderPaymentReconciliation = z.output<typeof ordersPaymentReconciliationSchema>;
 
 type PersistedChargeRow = {
   payment_id: string;
@@ -125,8 +130,26 @@ type PaymentsRepository = {
   findLatestChargeForOrder(
     orderId: string
   ): Promise<{ charge: ChargeResponse; providerPaymentId?: string } | undefined>;
+  findChargeByPaymentId(paymentId: string): Promise<{ charge: ChargeResponse; providerPaymentId?: string } | undefined>;
+  findChargeByProviderPaymentId(
+    providerPaymentId: string
+  ): Promise<{ charge: ChargeResponse; providerPaymentId?: string } | undefined>;
+  updateChargeStatus(input: {
+    paymentId: string;
+    status: z.output<typeof chargeStatusSchema>;
+    message?: string;
+    declineCode?: string;
+    occurredAt: string;
+  }): Promise<ChargeResponse | undefined>;
   findRefundByIdempotency(orderId: string, idempotencyKey: string): Promise<RefundResponse | undefined>;
   saveRefund(input: { request: RefundRequest; response: RefundResponse }): Promise<RefundResponse>;
+  findLatestRefundForOrderAndPayment(orderId: string, paymentId: string): Promise<RefundResponse | undefined>;
+  updateRefundStatus(input: {
+    refundId: string;
+    status: z.output<typeof refundStatusSchema>;
+    message?: string;
+    occurredAt: string;
+  }): Promise<RefundResponse | undefined>;
   close(): Promise<void>;
 };
 
@@ -169,8 +192,12 @@ function toRefundResponse(row: PersistedRefundRow): RefundResponse {
 function createInMemoryRepository(): PaymentsRepository {
   const chargeResultsByIdempotency = new Map<string, ChargeResponse>();
   const chargeResultByOrderId = new Map<string, ChargeResponse>();
+  const chargeResultByPaymentId = new Map<string, ChargeResponse>();
   const providerPaymentIdByPaymentId = new Map<string, string>();
+  const internalPaymentIdByProviderPaymentId = new Map<string, string>();
   const refundResultsByIdempotency = new Map<string, RefundResponse>();
+  const refundResultByRefundId = new Map<string, RefundResponse>();
+  const latestRefundIdByOrderPayment = new Map<string, string>();
 
   return {
     backend: "memory",
@@ -181,9 +208,11 @@ function createInMemoryRepository(): PaymentsRepository {
       const key = `${request.orderId}:${request.idempotencyKey}`;
       chargeResultsByIdempotency.set(key, response);
       chargeResultByOrderId.set(request.orderId, response);
-      if (providerPaymentId) {
-        providerPaymentIdByPaymentId.set(response.paymentId, providerPaymentId);
-      }
+      chargeResultByPaymentId.set(response.paymentId, response);
+      const resolvedProviderPaymentId = providerPaymentId ?? response.paymentId;
+      providerPaymentIdByPaymentId.set(response.paymentId, resolvedProviderPaymentId);
+      internalPaymentIdByProviderPaymentId.set(resolvedProviderPaymentId, response.paymentId);
+      internalPaymentIdByProviderPaymentId.set(response.paymentId, response.paymentId);
       return response;
     },
     async findLatestChargeForOrder(orderId) {
@@ -197,13 +226,83 @@ function createInMemoryRepository(): PaymentsRepository {
         providerPaymentId: providerPaymentIdByPaymentId.get(charge.paymentId)
       };
     },
+    async findChargeByPaymentId(paymentId) {
+      const charge = chargeResultByPaymentId.get(paymentId);
+      if (!charge) {
+        return undefined;
+      }
+      return {
+        charge,
+        providerPaymentId: providerPaymentIdByPaymentId.get(paymentId)
+      };
+    },
+    async findChargeByProviderPaymentId(providerPaymentId) {
+      const resolvedPaymentId =
+        internalPaymentIdByProviderPaymentId.get(providerPaymentId) ?? providerPaymentId;
+      const charge = chargeResultByPaymentId.get(resolvedPaymentId);
+      if (!charge) {
+        return undefined;
+      }
+      return {
+        charge,
+        providerPaymentId: providerPaymentIdByPaymentId.get(resolvedPaymentId)
+      };
+    },
+    async updateChargeStatus({ paymentId, status, message, declineCode, occurredAt }) {
+      const record = chargeResultByPaymentId.get(paymentId);
+      if (!record) {
+        return undefined;
+      }
+
+      const next = chargeResponseSchema.parse({
+        ...record,
+        status,
+        approved: status === "SUCCEEDED",
+        message: message ?? record.message,
+        declineCode: status === "DECLINED" ? declineCode ?? record.declineCode : undefined,
+        occurredAt
+      });
+      chargeResultByPaymentId.set(paymentId, next);
+      chargeResultByOrderId.set(next.orderId, next);
+      return next;
+    },
     async findRefundByIdempotency(orderId, idempotencyKey) {
       return refundResultsByIdempotency.get(`${orderId}:${idempotencyKey}`);
     },
     async saveRefund({ request, response }) {
       const key = `${request.orderId}:${request.idempotencyKey}`;
       refundResultsByIdempotency.set(key, response);
+      refundResultByRefundId.set(response.refundId, response);
+      latestRefundIdByOrderPayment.set(`${response.orderId}:${response.paymentId}`, response.refundId);
       return response;
+    },
+    async findLatestRefundForOrderAndPayment(orderId, paymentId) {
+      const refundId = latestRefundIdByOrderPayment.get(`${orderId}:${paymentId}`);
+      if (!refundId) {
+        return undefined;
+      }
+      return refundResultByRefundId.get(refundId);
+    },
+    async updateRefundStatus({ refundId, status, message, occurredAt }) {
+      const current = refundResultByRefundId.get(refundId);
+      if (!current) {
+        return undefined;
+      }
+
+      const next = refundResponseSchema.parse({
+        ...current,
+        status,
+        message: message ?? current.message,
+        occurredAt
+      });
+      refundResultByRefundId.set(refundId, next);
+      refundResultsByIdempotency.forEach((value, key) => {
+        if (value.refundId === refundId) {
+          refundResultsByIdempotency.set(key, next);
+        }
+      });
+      latestRefundIdByOrderPayment.set(`${next.orderId}:${next.paymentId}`, next.refundId);
+      return next;
     },
     async close() {
       // no-op
@@ -266,6 +365,67 @@ async function createPostgresRepository(connectionString: string): Promise<Payme
 
       return row ? toChargeLookup(row as PersistedChargeRow) : undefined;
     },
+    async findChargeByPaymentId(paymentId) {
+      const row = await db
+        .selectFrom("payments_charges")
+        .selectAll()
+        .where("payment_id", "=", paymentId)
+        .executeTakeFirst();
+
+      return row ? toChargeLookup(row as PersistedChargeRow) : undefined;
+    },
+    async findChargeByProviderPaymentId(providerPaymentId) {
+      const providerIdAsUuid = z.string().uuid().safeParse(providerPaymentId);
+      const row = providerIdAsUuid.success
+        ? await db
+            .selectFrom("payments_charges")
+            .selectAll()
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder("provider_payment_id", "=", providerPaymentId),
+                expressionBuilder("payment_id", "=", providerPaymentId)
+              ])
+            )
+            .orderBy("created_at", "desc")
+            .executeTakeFirst()
+        : await db
+            .selectFrom("payments_charges")
+            .selectAll()
+            .where("provider_payment_id", "=", providerPaymentId)
+            .orderBy("created_at", "desc")
+            .executeTakeFirst();
+
+      return row ? toChargeLookup(row as PersistedChargeRow) : undefined;
+    },
+    async updateChargeStatus({ paymentId, status, message, declineCode, occurredAt }) {
+      const existing = await db
+        .selectFrom("payments_charges")
+        .selectAll()
+        .where("payment_id", "=", paymentId)
+        .executeTakeFirst();
+      if (!existing) {
+        return undefined;
+      }
+
+      await db
+        .updateTable("payments_charges")
+        .set({
+          status,
+          approved: status === "SUCCEEDED",
+          message: message ?? existing.message,
+          decline_code: status === "DECLINED" ? declineCode ?? existing.decline_code : null,
+          occurred_at: occurredAt
+        })
+        .where("payment_id", "=", paymentId)
+        .execute();
+
+      const updated = await db
+        .selectFrom("payments_charges")
+        .selectAll()
+        .where("payment_id", "=", paymentId)
+        .executeTakeFirstOrThrow();
+      return toChargeResponse(updated as PersistedChargeRow);
+    },
     async findRefundByIdempotency(orderId, idempotencyKey) {
       const row = await db
         .selectFrom("payments_refunds")
@@ -302,6 +462,44 @@ async function createPostgresRepository(connectionString: string): Promise<Payme
         .executeTakeFirstOrThrow();
 
       return toRefundResponse(persisted as PersistedRefundRow);
+    },
+    async findLatestRefundForOrderAndPayment(orderId, paymentId) {
+      const row = await db
+        .selectFrom("payments_refunds")
+        .selectAll()
+        .where("order_id", "=", orderId)
+        .where("payment_id", "=", paymentId)
+        .orderBy("created_at", "desc")
+        .executeTakeFirst();
+
+      return row ? toRefundResponse(row as PersistedRefundRow) : undefined;
+    },
+    async updateRefundStatus({ refundId, status, message, occurredAt }) {
+      const existing = await db
+        .selectFrom("payments_refunds")
+        .selectAll()
+        .where("refund_id", "=", refundId)
+        .executeTakeFirst();
+      if (!existing) {
+        return undefined;
+      }
+
+      await db
+        .updateTable("payments_refunds")
+        .set({
+          status,
+          message: message ?? existing.message,
+          occurred_at: occurredAt
+        })
+        .where("refund_id", "=", refundId)
+        .execute();
+
+      const updated = await db
+        .selectFrom("payments_refunds")
+        .selectAll()
+        .where("refund_id", "=", refundId)
+        .executeTakeFirstOrThrow();
+      return toRefundResponse(updated as PersistedRefundRow);
     },
     async close() {
       await db.destroy();
@@ -461,6 +659,48 @@ function firstBooleanAtPaths(value: unknown, paths: string[][]): boolean | undef
   return undefined;
 }
 
+function firstNumberAtPaths(value: unknown, paths: string[][]): number | undefined {
+  for (const path of paths) {
+    const candidate = readPath(value, path);
+    if (typeof candidate === "number" && Number.isFinite(candidate)) {
+      return candidate;
+    }
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      const parsed = Number(candidate);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function toIsoDate(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed.toISOString();
+}
+
+function firstIsoDateAtPaths(value: unknown, paths: string[][]): string | undefined {
+  for (const path of paths) {
+    const candidate = readPath(value, path);
+    const parsed = toIsoDate(candidate);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return undefined;
+}
+
 function toTemplatedUrl(template: string, variables: Record<string, string>) {
   let resolved = template;
   for (const [key, value] of Object.entries(variables)) {
@@ -547,6 +787,228 @@ function resolveRefundStatus(params: { providerStatus?: string; httpStatus: numb
   return "REFUNDED" as const;
 }
 
+type CloverWebhookResolution = {
+  eventId?: string;
+  kind: "CHARGE" | "REFUND";
+  statusHint?: string;
+  approved?: boolean;
+  message?: string;
+  declineCode?: string;
+  occurredAt: string;
+  orderId?: string;
+  paymentReference?: string;
+  amountCents?: number;
+  currency?: "USD";
+};
+
+function normalizeWebhookKind(rawKind: string | undefined) {
+  if (!rawKind) {
+    return "CHARGE" as const;
+  }
+  const normalized = rawKind.toLowerCase();
+  if (normalized.includes("refund")) {
+    return "REFUND" as const;
+  }
+  return "CHARGE" as const;
+}
+
+function normalizeCurrency(rawCurrency: string | undefined): "USD" | undefined {
+  if (!rawCurrency) {
+    return undefined;
+  }
+  return rawCurrency.toUpperCase() === "USD" ? "USD" : undefined;
+}
+
+function resolveCloverWebhookPayload(payload: unknown): CloverWebhookResolution {
+  const eventType = firstStringAtPaths(payload, [
+    ["type"],
+    ["eventType"],
+    ["event_type"],
+    ["topic"],
+    ["name"],
+    ["event", "type"]
+  ]);
+  const statusHint = firstStringAtPaths(payload, [
+    ["status"],
+    ["payment", "status"],
+    ["charge", "status"],
+    ["refund", "status"],
+    ["result", "status"],
+    ["data", "status"],
+    ["event", "status"]
+  ]);
+  const kind = normalizeWebhookKind(eventType ?? statusHint);
+  const eventId = firstStringAtPaths(payload, [
+    ["eventId"],
+    ["event_id"],
+    ["id"],
+    ["event", "id"],
+    ["data", "eventId"]
+  ]);
+  const occurredAt =
+    firstIsoDateAtPaths(payload, [
+      ["occurredAt"],
+      ["occurred_at"],
+      ["timestamp"],
+      ["event", "occurredAt"],
+      ["event", "timestamp"],
+      ["createdAt"],
+      ["created_at"]
+    ]) ?? new Date().toISOString();
+  const message = firstStringAtPaths(payload, [
+    ["message"],
+    ["description"],
+    ["reason"],
+    ["error"],
+    ["result", "message"],
+    ["data", "message"]
+  ]);
+  const declineCode = firstStringAtPaths(payload, [
+    ["declineCode"],
+    ["decline_code"],
+    ["reasonCode"],
+    ["errorCode"],
+    ["code"]
+  ]);
+  const paymentReference = firstStringAtPaths(payload, [
+    ["providerPaymentId"],
+    ["provider_payment_id"],
+    ["paymentId"],
+    ["payment_id"],
+    ["chargeId"],
+    ["charge_id"],
+    ["payment", "id"],
+    ["charge", "id"],
+    ["data", "paymentId"],
+    ["data", "id"],
+    ["resource", "id"],
+    ["object", "id"]
+  ]);
+  const orderId = firstStringAtPaths(payload, [
+    ["orderId"],
+    ["order_id"],
+    ["metadata", "orderId"],
+    ["metadata", "order_id"],
+    ["payment", "metadata", "orderId"],
+    ["charge", "metadata", "orderId"],
+    ["data", "metadata", "orderId"],
+    ["externalReference"],
+    ["external_reference"]
+  ]);
+  const approved = firstBooleanAtPaths(payload, [
+    ["approved"],
+    ["payment", "approved"],
+    ["charge", "approved"],
+    ["result", "approved"],
+    ["data", "approved"]
+  ]);
+  const amountRaw = firstNumberAtPaths(payload, [
+    ["amountCents"],
+    ["amount_cents"],
+    ["amount"],
+    ["payment", "amount"],
+    ["refund", "amount"],
+    ["data", "amount"]
+  ]);
+  const amountCents =
+    amountRaw === undefined
+      ? undefined
+      : Number.isInteger(amountRaw)
+        ? amountRaw
+        : Math.round(amountRaw);
+  const currency = normalizeCurrency(
+    firstStringAtPaths(payload, [
+      ["currency"],
+      ["currencyCode"],
+      ["currency_code"],
+      ["payment", "currency"],
+      ["refund", "currency"],
+      ["data", "currency"]
+    ])
+  );
+
+  return {
+    eventId,
+    kind,
+    statusHint,
+    approved,
+    message,
+    declineCode,
+    occurredAt,
+    orderId,
+    paymentReference,
+    amountCents: amountCents && amountCents > 0 ? amountCents : undefined,
+    currency
+  };
+}
+
+function getHeaderValue(headers: Record<string, unknown>, key: string): string | undefined {
+  const value = headers[key];
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const first = value.find((entry) => typeof entry === "string" && entry.trim().length > 0);
+    if (typeof first === "string") {
+      return first.trim();
+    }
+  }
+  return undefined;
+}
+
+async function dispatchOrderReconciliation(params: {
+  ordersBaseUrl: string;
+  internalToken?: string;
+  requestId: string;
+  payload: OrderPaymentReconciliation;
+}): Promise<{ ok: true; response: z.output<typeof ordersPaymentReconciliationResultSchema> } | {
+  ok: false;
+  status?: number;
+  body?: unknown;
+}> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-request-id": params.requestId
+  };
+  if (params.internalToken) {
+    headers["x-internal-token"] = params.internalToken;
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${params.ordersBaseUrl}/v1/orders/internal/payments/reconcile`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(params.payload)
+    });
+  } catch {
+    return { ok: false };
+  }
+
+  const body = parseJsonSafely(await upstream.text());
+  if (!upstream.ok) {
+    return {
+      ok: false,
+      status: upstream.status,
+      body
+    };
+  }
+
+  const parsed = ordersPaymentReconciliationResultSchema.safeParse(body);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      status: upstream.status,
+      body
+    };
+  }
+
+  return {
+    ok: true,
+    response: parsed.data
+  };
+}
+
 function createSimulatedChargeResponse(input: ChargeRequest): ChargeResponse {
   const simulationSignal = (input.applePayToken ?? input.applePayWallet?.data ?? "").toLowerCase();
 
@@ -617,6 +1079,7 @@ async function executeLiveCharge(params: {
     throw new Error(config.misconfigurationReason ?? "Clover provider is not configured");
   }
 
+  const internalPaymentId = randomUUID();
   let sourceToken = request.applePayToken;
   if (!sourceToken && request.applePayWallet) {
     if (!config.applePayTokenizeEndpoint) {
@@ -689,6 +1152,7 @@ async function executeLiveCharge(params: {
         externalReference: request.orderId,
         metadata: {
           orderId: request.orderId,
+          internalPaymentId,
           idempotencyKey: request.idempotencyKey,
           origin: "gazelle-payments-service"
         }
@@ -750,7 +1214,6 @@ async function executeLiveCharge(params: {
     ["payment", "id"],
     ["charge", "id"]
   ]);
-  const internalPaymentId = randomUUID();
 
   return {
     response: chargeResponseSchema.parse({
@@ -855,6 +1318,9 @@ async function executeLiveRefund(params: {
 export async function registerRoutes(app: FastifyInstance) {
   const repository = await createPaymentsRepository(app.log);
   const cloverProvider = resolveCloverProviderConfig(app.log);
+  const ordersBaseUrl = process.env.ORDERS_SERVICE_BASE_URL ?? "http://127.0.0.1:3001";
+  const ordersInternalToken = trimToUndefined(process.env.ORDERS_INTERNAL_API_TOKEN);
+  const cloverWebhookSharedSecret = trimToUndefined(process.env.CLOVER_WEBHOOK_SHARED_SECRET);
 
   app.addHook("onClose", async () => {
     await repository.close();
@@ -985,6 +1451,187 @@ export async function registerRoutes(app: FastifyInstance) {
         })
       );
     }
+  });
+
+  app.post("/v1/payments/webhooks/clover", async (request, reply) => {
+    if (cloverWebhookSharedSecret) {
+      const requestHeaders = request.headers as Record<string, unknown>;
+      const providedSecret =
+        getHeaderValue(requestHeaders, "x-clover-webhook-secret") ??
+        getHeaderValue(requestHeaders, "x-webhook-secret") ??
+        getHeaderValue(requestHeaders, "x-clover-signature");
+      if (!providedSecret || providedSecret !== cloverWebhookSharedSecret) {
+        return reply.status(401).send(
+          serviceErrorSchema.parse({
+            code: "UNAUTHORIZED_WEBHOOK",
+            message: "Webhook secret validation failed",
+            requestId: request.id
+          })
+        );
+      }
+    }
+
+    const resolved = resolveCloverWebhookPayload(request.body);
+    if (!resolved.paymentReference && !resolved.orderId) {
+      return reply.status(400).send(
+        serviceErrorSchema.parse({
+          code: "INVALID_WEBHOOK_PAYLOAD",
+          message: "Webhook payload must include payment or order reference",
+          requestId: request.id
+        })
+      );
+    }
+
+    const chargeLookupFromPayment = resolved.paymentReference
+      ? await repository.findChargeByProviderPaymentId(resolved.paymentReference)
+      : undefined;
+    const chargeLookupFromOrder =
+      !chargeLookupFromPayment && resolved.orderId
+        ? await repository.findLatestChargeForOrder(resolved.orderId)
+        : undefined;
+    const chargeLookup = chargeLookupFromPayment ?? chargeLookupFromOrder;
+
+    if (!chargeLookup) {
+      return reply.status(404).send(
+        serviceErrorSchema.parse({
+          code: "PAYMENT_NOT_FOUND",
+          message: "Unable to resolve payment from Clover webhook payload",
+          requestId: request.id,
+          details: {
+            paymentReference: resolved.paymentReference,
+            orderId: resolved.orderId
+          }
+        })
+      );
+    }
+
+    const orderId = resolved.orderId ?? chargeLookup.charge.orderId;
+    const paymentId = chargeLookup.charge.paymentId;
+
+    if (resolved.kind === "CHARGE") {
+      const status = resolveChargeStatus({
+        providerStatus: resolved.statusHint,
+        approved: resolved.approved,
+        httpStatus: 200
+      });
+      const reconciledCharge =
+        (await repository.updateChargeStatus({
+          paymentId,
+          status,
+          message: resolved.message,
+          declineCode: resolved.declineCode,
+          occurredAt: resolved.occurredAt
+        })) ?? chargeLookup.charge;
+
+      const payload = ordersPaymentReconciliationSchema.parse({
+        eventId: resolved.eventId,
+        provider: "CLOVER",
+        kind: "CHARGE",
+        orderId,
+        paymentId,
+        status: reconciledCharge.status,
+        occurredAt: reconciledCharge.occurredAt,
+        message: reconciledCharge.message,
+        declineCode: reconciledCharge.declineCode,
+        amountCents: resolved.amountCents ?? reconciledCharge.amountCents,
+        currency: resolved.currency ?? reconciledCharge.currency
+      });
+      const dispatchResult = await dispatchOrderReconciliation({
+        ordersBaseUrl,
+        internalToken: ordersInternalToken,
+        requestId: request.id,
+        payload
+      });
+
+      if (!dispatchResult.ok) {
+        request.log.error(
+          { orderId, paymentId, webhookEventId: resolved.eventId, dispatchResult },
+          "failed to dispatch charge reconciliation to orders service"
+        );
+        return reply.status(502).send(
+          serviceErrorSchema.parse({
+            code: "ORDERS_RECONCILIATION_FAILED",
+            message: "Orders reconciliation call failed",
+            requestId: request.id,
+            details: {
+              upstreamStatus: dispatchResult.status,
+              upstreamBody: dispatchResult.body
+            }
+          })
+        );
+      }
+
+      return {
+        accepted: true,
+        kind: "CHARGE",
+        orderId,
+        paymentId,
+        status: reconciledCharge.status,
+        orderApplied: dispatchResult.response.applied
+      };
+    }
+
+    const refundStatus = resolveRefundStatus({
+      providerStatus: resolved.statusHint,
+      httpStatus: 200
+    });
+    const latestRefund = await repository.findLatestRefundForOrderAndPayment(orderId, paymentId);
+    const reconciledRefund =
+      latestRefund && refundStatus
+        ? await repository.updateRefundStatus({
+            refundId: latestRefund.refundId,
+            status: refundStatus,
+            message: resolved.message,
+            occurredAt: resolved.occurredAt
+          })
+        : undefined;
+
+    const payload = ordersPaymentReconciliationSchema.parse({
+      eventId: resolved.eventId,
+      provider: "CLOVER",
+      kind: "REFUND",
+      orderId,
+      paymentId,
+      refundId: reconciledRefund?.refundId ?? latestRefund?.refundId,
+      status: refundStatus,
+      occurredAt: resolved.occurredAt,
+      message: resolved.message ?? reconciledRefund?.message ?? latestRefund?.message,
+      amountCents:
+        resolved.amountCents ?? reconciledRefund?.amountCents ?? latestRefund?.amountCents ?? chargeLookup.charge.amountCents,
+      currency: resolved.currency ?? reconciledRefund?.currency ?? latestRefund?.currency ?? chargeLookup.charge.currency
+    });
+    const dispatchResult = await dispatchOrderReconciliation({
+      ordersBaseUrl,
+      internalToken: ordersInternalToken,
+      requestId: request.id,
+      payload
+    });
+    if (!dispatchResult.ok) {
+      request.log.error(
+        { orderId, paymentId, webhookEventId: resolved.eventId, dispatchResult },
+        "failed to dispatch refund reconciliation to orders service"
+      );
+      return reply.status(502).send(
+        serviceErrorSchema.parse({
+          code: "ORDERS_RECONCILIATION_FAILED",
+          message: "Orders reconciliation call failed",
+          requestId: request.id,
+          details: {
+            upstreamStatus: dispatchResult.status,
+            upstreamBody: dispatchResult.body
+          }
+        })
+      );
+    }
+
+    return {
+      accepted: true,
+      kind: "REFUND",
+      orderId,
+      paymentId,
+      status: refundStatus,
+      orderApplied: dispatchResult.response.applied
+    };
   });
 
   app.post("/v1/payments/internal/ping", async (request) => {
