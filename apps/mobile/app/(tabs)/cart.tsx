@@ -6,6 +6,11 @@ import { useAuthSession } from "../../src/auth/session";
 import { buildPricingSummary, describeCustomization } from "../../src/cart/model";
 import { useCart } from "../../src/cart/store";
 import { formatUsd, resolveStoreConfigData, useStoreConfigQuery } from "../../src/menu/catalog";
+import {
+  canAttemptNativeApplePay,
+  requestNativeApplePayWallet,
+  type ApplePayWalletPayload
+} from "../../src/orders/applePay";
 import { createDemoApplePayToken, useApplePayCheckoutMutation } from "../../src/orders/checkout";
 
 function SummaryRow({ label, value, emphasized = false }: { label: string; value: string; emphasized?: boolean }) {
@@ -25,36 +30,68 @@ export default function CartScreen() {
   const storeConfig = resolveStoreConfigData(storeConfigQuery.data);
   const pricingSummary = buildPricingSummary(subtotalCents, storeConfig.taxRateBasisPoints);
   const checkoutMutation = useApplePayCheckoutMutation();
+  const nativeApplePayAvailable = canAttemptNativeApplePay();
   const [applePayToken, setApplePayToken] = useState("demo-apple-pay-token");
+  const [nativeApplePayPending, setNativeApplePayPending] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState("");
 
-  function handleApplePayCheckout() {
+  function submitCheckout(paymentInput: { applePayToken: string } | { applePayWallet: ApplePayWalletPayload }) {
+    setCheckoutStatus("Submitting Apple Pay payment...");
+
+    checkoutMutation.mutate(
+      {
+        locationId: storeConfig.locationId,
+        items,
+        ...paymentInput
+      },
+      {
+        onSuccess: (paidOrder) => {
+          setNativeApplePayPending(false);
+          clear();
+          setCheckoutStatus(`Payment accepted. Pickup code ${paidOrder.pickupCode}.`);
+        },
+        onError: (error) => {
+          setNativeApplePayPending(false);
+          const message = error instanceof Error ? error.message : "Checkout failed.";
+          setCheckoutStatus(message);
+        }
+      }
+    );
+  }
+
+  function handleApplePayTokenCheckout() {
     const token = applePayToken.trim();
     if (!token) {
       setCheckoutStatus("Enter an Apple Pay token before checkout.");
       return;
     }
 
-    setCheckoutStatus("Submitting Apple Pay payment...");
     setApplePayToken("");
+    submitCheckout({ applePayToken: token });
+  }
 
-    checkoutMutation.mutate(
-      {
-        locationId: storeConfig.locationId,
-        items,
-        applePayToken: token
-      },
-      {
-        onSuccess: (paidOrder) => {
-          clear();
-          setCheckoutStatus(`Payment accepted. Pickup code ${paidOrder.pickupCode}.`);
-        },
-        onError: (error) => {
-          const message = error instanceof Error ? error.message : "Checkout failed.";
-          setCheckoutStatus(message);
-        }
-      }
-    );
+  async function handleNativeApplePayCheckout() {
+    if (!nativeApplePayAvailable) {
+      setCheckoutStatus("Native Apple Pay is unavailable in this build. Use fallback token mode.");
+      return;
+    }
+
+    setNativeApplePayPending(true);
+    setCheckoutStatus("Opening Apple Pay sheet...");
+
+    try {
+      const walletPayload = await requestNativeApplePayWallet({
+        amountCents: pricingSummary.totalCents,
+        currencyCode: "USD",
+        countryCode: "US",
+        label: "Gazelle Coffee"
+      });
+      submitCheckout({ applePayWallet: walletPayload });
+    } catch (error) {
+      setNativeApplePayPending(false);
+      const message = error instanceof Error ? error.message : "Apple Pay sheet failed.";
+      setCheckoutStatus(message);
+    }
   }
 
   return (
@@ -140,7 +177,35 @@ export default function CartScreen() {
 
             {isAuthenticated ? (
               <View className="rounded-2xl border border-foreground/15 bg-white px-4 py-4">
-                <Text className="text-xs uppercase tracking-[1.5px] text-foreground/60">Apple Pay token</Text>
+                <Text className="text-xs uppercase tracking-[1.5px] text-foreground/60">Apple Pay</Text>
+
+                <Pressable
+                  className={`mt-2 rounded-full px-5 py-4 ${
+                    nativeApplePayPending || checkoutMutation.isPending
+                      ? "bg-foreground/50"
+                      : nativeApplePayAvailable
+                        ? "bg-foreground"
+                        : "bg-foreground/30"
+                  }`}
+                  disabled={nativeApplePayPending || checkoutMutation.isPending || !nativeApplePayAvailable}
+                  onPress={handleNativeApplePayCheckout}
+                >
+                  <Text className="text-center text-xs font-semibold uppercase tracking-[2px] text-background">
+                    {nativeApplePayPending
+                      ? "Opening Apple Pay..."
+                      : checkoutMutation.isPending
+                        ? "Processing..."
+                        : "Pay with Apple Pay"}
+                  </Text>
+                </Pressable>
+
+                <Text className="mt-2 text-xs text-foreground/60">
+                  Native Apple Pay requires iOS device support and a build with Apple Pay entitlements.
+                </Text>
+
+                <Text className="mt-4 text-xs uppercase tracking-[1.5px] text-foreground/60">
+                  Fallback token mode (dev)
+                </Text>
                 <TextInput
                   value={applePayToken}
                   onChangeText={setApplePayToken}
@@ -155,21 +220,25 @@ export default function CartScreen() {
                   className="mt-3 self-start rounded-full border border-foreground px-4 py-2"
                   onPress={() => setApplePayToken(createDemoApplePayToken())}
                 >
-                  <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-foreground">Use Demo Token</Text>
+                  <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-foreground">
+                    Use Demo Token
+                  </Text>
                 </Pressable>
 
                 <Pressable
-                  className={`mt-3 rounded-full px-5 py-4 ${checkoutMutation.isPending ? "bg-foreground/50" : "bg-foreground"}`}
-                  disabled={checkoutMutation.isPending}
-                  onPress={handleApplePayCheckout}
+                  className={`mt-3 rounded-full px-5 py-4 ${
+                    checkoutMutation.isPending || nativeApplePayPending ? "bg-foreground/50" : "bg-foreground"
+                  }`}
+                  disabled={checkoutMutation.isPending || nativeApplePayPending}
+                  onPress={handleApplePayTokenCheckout}
                 >
                   <Text className="text-center text-xs font-semibold uppercase tracking-[2px] text-background">
-                    {checkoutMutation.isPending ? "Processing..." : "Pay and Place Order"}
+                    {checkoutMutation.isPending ? "Processing..." : "Pay with Token Fallback"}
                   </Text>
                 </Pressable>
 
                 <Text className="mt-2 text-xs text-foreground/60">
-                  Tokens are used for this request and cleared from the form.
+                  Token fallback is for local simulation and manual testing only.
                 </Text>
               </View>
             ) : (
