@@ -13,12 +13,12 @@ The flow is available for signed-in users from the cart screen.
 
 ## Current Token Collection Mode
 
-- Apple Pay token is entered in the cart checkout form (`secureTextEntry`).
+- Cart now attempts a native Apple Pay sheet on iOS when `PaymentRequest` Apple Pay support is available.
 - A `Use Demo Token` shortcut generates a local testing token.
-- Token value is trimmed and cleared from UI state when checkout is submitted.
+- Fallback token mode remains in cart for local simulation and manual testing.
 - Orders and payments APIs now also accept a structured `applePayWallet` payload for native-sheet integration work.
 
-This is a development integration path and does not yet invoke a native Apple Pay sheet.
+Native Apple Pay still depends on entitlements/certificates and does not fully replace manual fallback mode in local development.
 
 ## Local Verification
 
@@ -44,8 +44,8 @@ pnpm dev:mobile:lan
 - Sign in from `Auth` screen.
 - Add items in `Menu`.
 - Open `Cart`.
-- Use `Use Demo Token` or enter a token manually.
-- Tap `Pay and Place Order`.
+- If available, tap `Pay with Apple Pay`.
+- If unavailable, use `Use Demo Token` or enter a token manually and tap `Pay with Token Fallback`.
 
 Expected result:
 - Checkout status shows payment accepted with a pickup code.
