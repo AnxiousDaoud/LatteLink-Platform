@@ -178,6 +178,7 @@ export async function registerRoutes(app: FastifyInstance) {
     return challenge;
   });
 
+  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.post(
     "/v1/auth/passkey/register/verify",
     {
@@ -263,6 +264,7 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.post(
     "/v1/auth/passkey/auth/challenge",
     {
@@ -301,6 +303,7 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.post(
     "/v1/auth/passkey/auth/verify",
     {
