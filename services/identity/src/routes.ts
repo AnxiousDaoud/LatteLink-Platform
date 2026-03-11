@@ -178,13 +178,10 @@ export async function registerRoutes(app: FastifyInstance) {
     return challenge;
   });
 
-  // lgtm[js/missing-rate-limiting] -- rate limiting is enforced via @fastify/rate-limit route config below.
   app.post(
     "/v1/auth/passkey/register/verify",
     {
-      config: {
-        rateLimit: passkeyVerifyRateLimit
-      }
+      preHandler: app.rateLimit(passkeyVerifyRateLimit)
     },
     async (request, reply) => {
       const input = passkeyVerifyRequestSchema.parse(request.body);
@@ -266,13 +263,10 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  // lgtm[js/missing-rate-limiting] -- rate limiting is enforced via @fastify/rate-limit route config below.
   app.post(
     "/v1/auth/passkey/auth/challenge",
     {
-      config: {
-        rateLimit: passkeyChallengeRateLimit
-      }
+      preHandler: app.rateLimit(passkeyChallengeRateLimit)
     },
     async (request) => {
       const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
@@ -307,13 +301,10 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  // lgtm[js/missing-rate-limiting] -- rate limiting is enforced via @fastify/rate-limit route config below.
   app.post(
     "/v1/auth/passkey/auth/verify",
     {
-      config: {
-        rateLimit: passkeyVerifyRateLimit
-      }
+      preHandler: app.rateLimit(passkeyVerifyRateLimit)
     },
     async (request, reply) => {
       const input = passkeyVerifyRequestSchema.parse(request.body);
