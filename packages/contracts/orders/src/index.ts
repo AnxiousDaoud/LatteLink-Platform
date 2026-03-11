@@ -94,6 +94,48 @@ export const payOrderRequestSchema = z.object({
   }
 });
 
+export const paymentReconciliationProviderSchema = z.literal("CLOVER");
+
+export const paymentChargeReconciliationSchema = z.object({
+  eventId: z.string().min(1).optional(),
+  provider: paymentReconciliationProviderSchema,
+  kind: z.literal("CHARGE"),
+  orderId: z.string().uuid(),
+  paymentId: z.string().uuid(),
+  status: z.enum(["SUCCEEDED", "DECLINED", "TIMEOUT"]),
+  occurredAt: z.string().datetime(),
+  message: z.string().optional(),
+  declineCode: z.string().optional(),
+  amountCents: z.number().int().positive().optional(),
+  currency: z.literal("USD").optional()
+});
+
+export const paymentRefundReconciliationSchema = z.object({
+  eventId: z.string().min(1).optional(),
+  provider: paymentReconciliationProviderSchema,
+  kind: z.literal("REFUND"),
+  orderId: z.string().uuid(),
+  paymentId: z.string().uuid(),
+  refundId: z.string().uuid().optional(),
+  status: z.enum(["REFUNDED", "REJECTED"]),
+  occurredAt: z.string().datetime(),
+  message: z.string().optional(),
+  amountCents: z.number().int().positive().optional(),
+  currency: z.literal("USD").optional()
+});
+
+export const ordersPaymentReconciliationSchema = z.union([
+  paymentChargeReconciliationSchema,
+  paymentRefundReconciliationSchema
+]);
+
+export const ordersPaymentReconciliationResultSchema = z.object({
+  accepted: z.literal(true),
+  applied: z.boolean(),
+  orderStatus: orderStatusSchema.optional(),
+  note: z.string().optional()
+});
+
 export const ordersContract = {
   basePath: "/orders",
   routes: {

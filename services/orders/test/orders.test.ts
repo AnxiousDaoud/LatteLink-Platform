@@ -224,6 +224,7 @@ describe("orders service", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("responds on /health and /ready", async () => {
@@ -691,6 +692,148 @@ describe("orders service", () => {
       ])
     );
 
+    await app.close();
+  });
+
+  it("applies internal payment and refund reconciliation webhooks idempotently", async () => {
+    const app = await buildApp();
+    const quoteResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders/quote",
+      payload: sampleQuotePayload
+    });
+    const quote = orderQuoteSchema.parse(quoteResponse.json());
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders",
+      payload: {
+        quoteId: quote.quoteId,
+        quoteHash: quote.quoteHash
+      }
+    });
+    const order = orderSchema.parse(createResponse.json());
+    const paymentId = "123e4567-e89b-12d3-a456-426614174310";
+
+    const chargeReconcile = await app.inject({
+      method: "POST",
+      url: "/v1/orders/internal/payments/reconcile",
+      payload: {
+        eventId: "evt_charge_internal_1",
+        provider: "CLOVER",
+        kind: "CHARGE",
+        orderId: order.id,
+        paymentId,
+        status: "SUCCEEDED",
+        occurredAt: "2026-03-11T00:00:00.000Z",
+        message: "Charge settled"
+      }
+    });
+    expect(chargeReconcile.statusCode).toBe(200);
+    expect(chargeReconcile.json()).toMatchObject({
+      accepted: true,
+      applied: true,
+      orderStatus: "PAID"
+    });
+
+    const repeatedChargeReconcile = await app.inject({
+      method: "POST",
+      url: "/v1/orders/internal/payments/reconcile",
+      payload: {
+        eventId: "evt_charge_internal_1",
+        provider: "CLOVER",
+        kind: "CHARGE",
+        orderId: order.id,
+        paymentId,
+        status: "SUCCEEDED",
+        occurredAt: "2026-03-11T00:00:00.000Z",
+        message: "Charge settled"
+      }
+    });
+    expect(repeatedChargeReconcile.statusCode).toBe(200);
+    expect(repeatedChargeReconcile.json()).toMatchObject({
+      accepted: true,
+      applied: false,
+      orderStatus: "PAID"
+    });
+
+    const refundReconcile = await app.inject({
+      method: "POST",
+      url: "/v1/orders/internal/payments/reconcile",
+      payload: {
+        eventId: "evt_refund_internal_1",
+        provider: "CLOVER",
+        kind: "REFUND",
+        orderId: order.id,
+        paymentId,
+        status: "REFUNDED",
+        occurredAt: "2026-03-11T00:01:00.000Z",
+        message: "Refund settled"
+      }
+    });
+    expect(refundReconcile.statusCode).toBe(200);
+    expect(refundReconcile.json()).toMatchObject({
+      accepted: true,
+      applied: true,
+      orderStatus: "CANCELED"
+    });
+
+    const finalOrder = await app.inject({
+      method: "GET",
+      url: `/v1/orders/${order.id}`
+    });
+    expect(finalOrder.statusCode).toBe(200);
+    expect(orderSchema.parse(finalOrder.json()).status).toBe("CANCELED");
+
+    const loyaltyMutations = fetchMock.mock.calls
+      .filter(
+        ([input, init]) =>
+          (typeof input === "string" ? input : input.toString()).endsWith("/v1/loyalty/internal/ledger/apply") &&
+          (init?.method ?? "GET") === "POST"
+      )
+      .map(([, init]) => JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+    expect(loyaltyMutations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "REDEEM",
+          idempotencyKey: `order:${order.id}:loyalty:redeem`
+        }),
+        expect.objectContaining({
+          type: "EARN",
+          idempotencyKey: `order:${order.id}:loyalty:earn`
+        }),
+        expect.objectContaining({
+          type: "ADJUSTMENT",
+          idempotencyKey: `order:${order.id}:loyalty:reverse-earn`
+        }),
+        expect.objectContaining({
+          type: "REFUND",
+          idempotencyKey: `order:${order.id}:loyalty:refund-redeem`
+        })
+      ])
+    );
+
+    await app.close();
+  });
+
+  it("rejects internal reconciliation when token is configured and missing", async () => {
+    vi.stubEnv("ORDERS_INTERNAL_API_TOKEN", "token-1");
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/orders/internal/payments/reconcile",
+      payload: {
+        provider: "CLOVER",
+        kind: "CHARGE",
+        orderId: "123e4567-e89b-12d3-a456-426614174311",
+        paymentId: "123e4567-e89b-12d3-a456-426614174312",
+        status: "SUCCEEDED",
+        occurredAt: "2026-03-11T00:00:00.000Z"
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: "UNAUTHORIZED_INTERNAL_REQUEST" });
     await app.close();
   });
 

@@ -3,13 +3,15 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   applePayWalletSchema,
   createOrderRequestSchema,
+  ordersPaymentReconciliationResultSchema,
+  ordersPaymentReconciliationSchema,
   orderQuoteSchema,
   orderSchema,
   payOrderRequestSchema,
   quoteRequestSchema
 } from "@gazelle/contracts-orders";
 import { z } from "zod";
-import { createOrdersRepository } from "./repository.js";
+import { createOrdersRepository, type OrdersRepository } from "./repository.js";
 
 const payloadSchema = z.object({
   id: z.string().uuid().optional()
@@ -57,6 +59,10 @@ const serviceErrorSchema = z.object({
 
 const userHeadersSchema = z.object({
   "x-user-id": z.string().uuid().optional()
+});
+
+const internalHeadersSchema = z.object({
+  "x-internal-token": z.string().optional()
 });
 
 const paymentsChargeRequestSchema = z.object({
@@ -185,6 +191,11 @@ type Order = z.output<typeof orderSchema>;
 
 const defaultLoyaltyUserId = "123e4567-e89b-12d3-a456-426614174000";
 
+function trimToUndefined(value: string | undefined) {
+  const next = value?.trim();
+  return next && next.length > 0 ? next : undefined;
+}
+
 function toRefundIdempotencyKey(orderId: string, reason: string) {
   const normalizedReason = reason.trim().toLowerCase();
   const reasonFingerprint = createHash("sha256").update(normalizedReason).digest("hex").slice(0, 16);
@@ -248,6 +259,30 @@ function resolveRequestUserId(request: FastifyRequest, reply: FastifyReply) {
   }
 
   return parsedHeaders.data["x-user-id"] ?? defaultLoyaltyUserId;
+}
+
+function authorizeInternalRequest(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  internalToken: string | undefined
+) {
+  if (!internalToken) {
+    return true;
+  }
+
+  const parsedHeaders = internalHeadersSchema.safeParse(request.headers);
+  const providedToken = parsedHeaders.success ? parsedHeaders.data["x-internal-token"] : undefined;
+  if (providedToken === internalToken) {
+    return true;
+  }
+
+  sendError(reply, {
+    statusCode: 401,
+    code: "UNAUTHORIZED_INTERNAL_REQUEST",
+    message: "Internal reconciliation token is invalid",
+    requestId: request.id
+  });
+  return false;
 }
 
 async function applyLoyaltyMutation(params: {
@@ -377,6 +412,20 @@ async function sendOrderStateNotification(params: {
   }
 }
 
+async function resolveStoredOrderUserId(params: {
+  orderId: string;
+  repository: OrdersRepository;
+}) {
+  const { orderId, repository } = params;
+  const existingUserId = await repository.getOrderUserId(orderId);
+  if (existingUserId) {
+    return existingUserId;
+  }
+
+  await repository.setOrderUserId(orderId, defaultLoyaltyUserId);
+  return defaultLoyaltyUserId;
+}
+
 function buildQuoteHash(input: {
   locationId: string;
   items: Array<{ itemId: string; quantity: number; unitPriceCents: number }>;
@@ -480,6 +529,7 @@ export async function registerRoutes(app: FastifyInstance) {
   const paymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL ?? "http://127.0.0.1:3003";
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
   const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
+  const internalApiToken = trimToUndefined(process.env.ORDERS_INTERNAL_API_TOKEN);
   const repository = await createOrdersRepository(app.log);
 
   app.addHook("onClose", async () => {
@@ -488,6 +538,247 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get("/health", async () => ({ status: "ok", service: "orders" }));
   app.get("/ready", async () => ({ status: "ready", service: "orders", persistence: repository.backend }));
+
+  app.post("/v1/orders/internal/payments/reconcile", async (request, reply) => {
+    if (!authorizeInternalRequest(request, reply, internalApiToken)) {
+      return;
+    }
+
+    const input = ordersPaymentReconciliationSchema.parse(request.body);
+    const existingOrder = await repository.getOrder(input.orderId);
+    if (!existingOrder) {
+      return sendError(reply, {
+        statusCode: 404,
+        code: "ORDER_NOT_FOUND",
+        message: "Order not found",
+        requestId: request.id,
+        details: { orderId: input.orderId }
+      });
+    }
+
+    await repository.setPaymentId(input.orderId, input.paymentId);
+
+    if (input.kind === "CHARGE") {
+      const chargeSnapshot = paymentsChargeResponseSchema.parse({
+        paymentId: input.paymentId,
+        provider: "CLOVER",
+        orderId: input.orderId,
+        status: input.status,
+        approved: input.status === "SUCCEEDED",
+        amountCents: input.amountCents ?? existingOrder.total.amountCents,
+        currency: input.currency ?? existingOrder.total.currency,
+        occurredAt: input.occurredAt,
+        declineCode: input.declineCode,
+        message: input.message
+      });
+      await repository.setSuccessfulCharge(input.orderId, chargeSnapshot);
+
+      if (input.status !== "SUCCEEDED") {
+        return ordersPaymentReconciliationResultSchema.parse({
+          accepted: true,
+          applied: false,
+          orderStatus: existingOrder.status,
+          note: `Charge status ${input.status} does not transition order state`
+        });
+      }
+
+      if (existingOrder.status !== "PENDING_PAYMENT") {
+        return ordersPaymentReconciliationResultSchema.parse({
+          accepted: true,
+          applied: false,
+          orderStatus: existingOrder.status,
+          note: "Order is already settled for payment reconciliation"
+        });
+      }
+
+      const orderQuote = await repository.getOrderQuote(input.orderId);
+      if (!orderQuote) {
+        return sendError(reply, {
+          statusCode: 409,
+          code: "ORDER_CONTEXT_MISSING",
+          message: "Order quote context is missing",
+          requestId: request.id,
+          details: { orderId: input.orderId }
+        });
+      }
+
+      const orderUserId = await resolveStoredOrderUserId({ orderId: input.orderId, repository });
+      if (orderQuote.pointsToRedeem > 0) {
+        const redeemMutation = loyaltyMutationRequestSchema.parse({
+          type: "REDEEM",
+          userId: orderUserId,
+          orderId: input.orderId,
+          amountCents: orderQuote.pointsToRedeem,
+          idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "redeem")
+        });
+        const redeemResult = await applyLoyaltyMutation({
+          request,
+          reply,
+          loyaltyBaseUrl,
+          mutation: redeemMutation,
+          failureCode: "LOYALTY_REDEEM_FAILED",
+          failureMessage: "Loyalty redeem mutation failed"
+        });
+        if (!redeemResult) {
+          return;
+        }
+      }
+
+      const earnMutation = loyaltyMutationRequestSchema.parse({
+        type: "EARN",
+        userId: orderUserId,
+        orderId: input.orderId,
+        amountCents: existingOrder.total.amountCents,
+        idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "earn")
+      });
+      const earnResult = await applyLoyaltyMutation({
+        request,
+        reply,
+        loyaltyBaseUrl,
+        mutation: earnMutation,
+        failureCode: "LOYALTY_EARN_FAILED",
+        failureMessage: "Loyalty earn mutation failed"
+      });
+      if (!earnResult) {
+        return;
+      }
+
+      const loyaltyParts = [
+        orderQuote.pointsToRedeem > 0 ? `redeemed ${orderQuote.pointsToRedeem} loyalty points` : undefined,
+        `earned ${existingOrder.total.amountCents} loyalty points`
+      ].filter((value): value is string => Boolean(value));
+      const eventNote = input.eventId ? `event ${input.eventId}` : "webhook event";
+      const paidOrder = appendOrderStatus(
+        existingOrder,
+        "PAID",
+        `Payment reconciled from Clover ${eventNote}; ${loyaltyParts.join("; ")}.`
+      );
+      await repository.updateOrder(input.orderId, paidOrder);
+      await sendOrderStateNotification({
+        request,
+        notificationsBaseUrl,
+        userId: orderUserId,
+        order: paidOrder
+      });
+
+      return ordersPaymentReconciliationResultSchema.parse({
+        accepted: true,
+        applied: true,
+        orderStatus: paidOrder.status
+      });
+    }
+
+    const existingPersistedRefund = await repository.getSuccessfulRefund(input.orderId);
+    const parsedPersistedRefund =
+      existingPersistedRefund === undefined ? undefined : paymentsRefundResponseSchema.safeParse(existingPersistedRefund);
+    const refundIdFromStore = parsedPersistedRefund?.success ? parsedPersistedRefund.data.refundId : undefined;
+    const refundSnapshot = paymentsRefundResponseSchema.parse({
+      refundId: input.refundId ?? refundIdFromStore ?? randomUUID(),
+      provider: "CLOVER",
+      orderId: input.orderId,
+      paymentId: input.paymentId,
+      status: input.status,
+      amountCents: input.amountCents ?? existingOrder.total.amountCents,
+      currency: input.currency ?? existingOrder.total.currency,
+      occurredAt: input.occurredAt,
+      message: input.message
+    });
+    await repository.setSuccessfulRefund(input.orderId, refundSnapshot);
+
+    if (input.status !== "REFUNDED") {
+      return ordersPaymentReconciliationResultSchema.parse({
+        accepted: true,
+        applied: false,
+        orderStatus: existingOrder.status,
+        note: `Refund status ${input.status} does not transition order state`
+      });
+    }
+
+    if (existingOrder.status !== "PAID") {
+      return ordersPaymentReconciliationResultSchema.parse({
+        accepted: true,
+        applied: false,
+        orderStatus: existingOrder.status,
+        note: "Order is not in PAID state for refund reconciliation"
+      });
+    }
+
+    const orderQuote = await repository.getOrderQuote(input.orderId);
+    if (!orderQuote) {
+      return sendError(reply, {
+        statusCode: 409,
+        code: "ORDER_CONTEXT_MISSING",
+        message: "Order quote context is missing",
+        requestId: request.id,
+        details: { orderId: input.orderId }
+      });
+    }
+
+    const orderUserId = await resolveStoredOrderUserId({ orderId: input.orderId, repository });
+    const reverseEarnMutation = loyaltyMutationRequestSchema.parse({
+      type: "ADJUSTMENT",
+      userId: orderUserId,
+      orderId: input.orderId,
+      points: -existingOrder.total.amountCents,
+      idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "reverse-earn")
+    });
+    const reverseEarnResult = await applyLoyaltyMutation({
+      request,
+      reply,
+      loyaltyBaseUrl,
+      mutation: reverseEarnMutation,
+      failureCode: "LOYALTY_REVERSAL_FAILED",
+      failureMessage: "Loyalty earn reversal failed"
+    });
+    if (!reverseEarnResult) {
+      return;
+    }
+
+    if (orderQuote.pointsToRedeem > 0) {
+      const refundRedeemMutation = loyaltyMutationRequestSchema.parse({
+        type: "REFUND",
+        userId: orderUserId,
+        orderId: input.orderId,
+        amountCents: orderQuote.pointsToRedeem,
+        idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "refund-redeem")
+      });
+      const refundRedeemResult = await applyLoyaltyMutation({
+        request,
+        reply,
+        loyaltyBaseUrl,
+        mutation: refundRedeemMutation,
+        failureCode: "LOYALTY_REVERSAL_FAILED",
+        failureMessage: "Loyalty redeem refund failed"
+      });
+      if (!refundRedeemResult) {
+        return;
+      }
+    }
+
+    const reversalParts = [
+      `reversed ${existingOrder.total.amountCents} earned points`,
+      orderQuote.pointsToRedeem > 0 ? `refunded ${orderQuote.pointsToRedeem} redeemed points` : undefined
+    ].filter((value): value is string => Boolean(value));
+    const eventNote = input.eventId ? `event ${input.eventId}` : "webhook event";
+    const canceledOrder = appendOrderStatus(
+      existingOrder,
+      "CANCELED",
+      `Refund reconciled from Clover ${eventNote}; ${reversalParts.join("; ")}.`
+    );
+    await repository.updateOrder(input.orderId, canceledOrder);
+    await sendOrderStateNotification({
+      request,
+      notificationsBaseUrl,
+      userId: orderUserId,
+      order: canceledOrder
+    });
+
+    return ordersPaymentReconciliationResultSchema.parse({
+      accepted: true,
+      applied: true,
+      orderStatus: canceledOrder.status
+    });
+  });
 
   app.post("/v1/orders/quote", async (request) => {
     const input = quoteRequestSchema.parse(request.body);
@@ -608,7 +899,7 @@ export async function registerRoutes(app: FastifyInstance) {
     let successfulCharge: z.output<typeof paymentsChargeResponseSchema> | undefined;
     if (persistedCharge !== undefined) {
       const parsedPersistedCharge = paymentsChargeResponseSchema.safeParse(persistedCharge);
-      if (parsedPersistedCharge.success) {
+      if (parsedPersistedCharge.success && parsedPersistedCharge.data.status === "SUCCEEDED") {
         successfulCharge = parsedPersistedCharge.data;
       }
     }
@@ -843,7 +1134,7 @@ export async function registerRoutes(app: FastifyInstance) {
       let successfulRefund: z.output<typeof paymentsRefundResponseSchema> | undefined;
       if (persistedRefund !== undefined) {
         const parsedPersistedRefund = paymentsRefundResponseSchema.safeParse(persistedRefund);
-        if (parsedPersistedRefund.success) {
+        if (parsedPersistedRefund.success && parsedPersistedRefund.data.status === "REFUNDED") {
           successfulRefund = parsedPersistedRefund.data;
         }
       }

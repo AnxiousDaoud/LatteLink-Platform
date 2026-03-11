@@ -28,6 +28,29 @@ Live mode env:
 - `CLOVER_CHARGE_ENDPOINT` (supports `{merchantId}` template)
 - `CLOVER_REFUND_ENDPOINT` (supports `{merchantId}` and `{paymentId}` templates)
 - `CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT` (required when charging with `applePayWallet`)
+- `CLOVER_WEBHOOK_SHARED_SECRET` (optional but strongly recommended)
+- `ORDERS_SERVICE_BASE_URL` (defaults to `http://127.0.0.1:3001`)
+- `ORDERS_INTERNAL_API_TOKEN` (set in both `payments` and `orders` to secure internal reconciliation calls)
+
+## Webhook Reconciliation
+
+`payments` now accepts provider callbacks at:
+
+- `POST /v1/payments/webhooks/clover`
+
+On each webhook:
+
+1. `payments` resolves the corresponding charge/refund from persisted state
+2. updates persisted payment/refund status with provider outcome
+3. dispatches internal reconciliation to:
+   - `POST /v1/orders/internal/payments/reconcile`
+
+`orders` then applies idempotent order transitions:
+
+- `CHARGE: SUCCEEDED` -> transition `PENDING_PAYMENT` -> `PAID`
+- `REFUND: REFUNDED` -> transition `PAID` -> `CANCELED`
+
+Loyalty side effects are applied using existing idempotency keys, so duplicate webhook deliveries are safe.
 
 ## Charge Outcomes
 
