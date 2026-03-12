@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp } from "../src/app.js";
 
 describe("identity service", () => {
@@ -256,5 +256,35 @@ describe("identity service", () => {
     expect(metricsResponse.json().requests.status4xx).toBeGreaterThanOrEqual(1);
 
     await app.close();
+  });
+
+  it("rate limits auth write endpoints when configured threshold is reached", async () => {
+    vi.stubEnv("IDENTITY_RATE_LIMIT_AUTH_WRITE_MAX", "1");
+    vi.stubEnv("IDENTITY_RATE_LIMIT_WINDOW_MS", "60000");
+
+    const app = await buildApp();
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/auth/magic-link/request",
+        payload: {
+          email: "owner@gazellecoffee.com"
+        }
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/auth/magic-link/request",
+        payload: {
+          email: "owner@gazellecoffee.com"
+        }
+      });
+      expect(secondResponse.statusCode).toBe(429);
+      expect(secondResponse.json()).toMatchObject({ statusCode: 429 });
+    } finally {
+      await app.close();
+      vi.unstubAllEnvs();
+    }
   });
 });
