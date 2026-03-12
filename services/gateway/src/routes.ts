@@ -54,6 +54,14 @@ function ensureBearerAuth(request: FastifyRequest, reply: FastifyReply) {
   return true;
 }
 
+async function requireBearerAuth(request: FastifyRequest, reply: FastifyReply) {
+  if (!ensureBearerAuth(request, reply)) {
+    return reply;
+  }
+
+  return undefined;
+}
+
 function trimToUndefined(value: string | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
@@ -452,13 +460,9 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get(
     "/v1/auth/me",
     {
-      preHandler: app.rateLimit(authReadRateLimit)
+      preHandler: [app.rateLimit(authReadRateLimit), requireBearerAuth]
     },
     async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
-
     return proxyUpstream({
       request,
       reply,
@@ -474,13 +478,9 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get(
     "/v1/me",
     {
-      preHandler: app.rateLimit(authReadRateLimit)
+      preHandler: [app.rateLimit(authReadRateLimit), requireBearerAuth]
     },
     async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
-
     return proxyUpstream({
       request,
       reply,
@@ -517,10 +517,10 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.post("/v1/orders/quote", { preHandler: app.rateLimit(ordersWriteRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
+  app.post(
+    "/v1/orders/quote",
+    { preHandler: [app.rateLimit(ordersWriteRateLimit), requireBearerAuth] },
+    async (request, reply) => {
     const input = quoteRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -536,12 +536,10 @@ export async function registerRoutes(app: FastifyInstance) {
       },
       responseSchema: orderQuoteSchema
     });
-  });
-
-  app.post("/v1/orders", { preHandler: app.rateLimit(ordersWriteRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
     }
+  );
+
+  app.post("/v1/orders", { preHandler: [app.rateLimit(ordersWriteRateLimit), requireBearerAuth] }, async (request, reply) => {
     const input = createOrderRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -559,10 +557,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/orders/:orderId/pay", { preHandler: app.rateLimit(checkoutRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
+  app.post("/v1/orders/:orderId/pay", { preHandler: [app.rateLimit(checkoutRateLimit), requireBearerAuth] }, async (request, reply) => {
     const { orderId } = orderIdParamsSchema.parse(request.params);
     const input = payOrderRequestSchema.parse(request.body);
 
@@ -581,11 +576,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/orders", { preHandler: app.rateLimit(ordersReadRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
-
+  app.get("/v1/orders", { preHandler: [app.rateLimit(ordersReadRateLimit), requireBearerAuth] }, async (request, reply) => {
     return proxyUpstream({
       request,
       reply,
@@ -600,10 +591,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/orders/:orderId", { preHandler: app.rateLimit(ordersReadRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
+  app.get("/v1/orders/:orderId", { preHandler: [app.rateLimit(ordersReadRateLimit), requireBearerAuth] }, async (request, reply) => {
     const { orderId } = orderIdParamsSchema.parse(request.params);
 
     return proxyUpstream({
@@ -620,10 +608,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/orders/:orderId/cancel", { preHandler: app.rateLimit(checkoutRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
+  app.post("/v1/orders/:orderId/cancel", { preHandler: [app.rateLimit(checkoutRateLimit), requireBearerAuth] }, async (request, reply) => {
     const { orderId } = orderIdParamsSchema.parse(request.params);
     const input = cancelOrderRequestSchema.parse(request.body);
 
@@ -642,11 +627,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/loyalty/balance", { preHandler: app.rateLimit(loyaltyReadRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
-
+  app.get("/v1/loyalty/balance", { preHandler: [app.rateLimit(loyaltyReadRateLimit), requireBearerAuth] }, async (request, reply) => {
     return proxyUpstream({
       request,
       reply,
@@ -661,11 +642,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/loyalty/ledger", { preHandler: app.rateLimit(loyaltyReadRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
-
+  app.get("/v1/loyalty/ledger", { preHandler: [app.rateLimit(loyaltyReadRateLimit), requireBearerAuth] }, async (request, reply) => {
     return proxyUpstream({
       request,
       reply,
@@ -680,10 +657,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.put("/v1/devices/push-token", { preHandler: app.rateLimit(pushTokenRateLimit) }, async (request, reply) => {
-    if (!ensureBearerAuth(request, reply)) {
-      return;
-    }
+  app.put("/v1/devices/push-token", { preHandler: [app.rateLimit(pushTokenRateLimit), requireBearerAuth] }, async (request, reply) => {
     const input = pushTokenUpsertSchema.parse(request.body);
 
     return proxyUpstream({
