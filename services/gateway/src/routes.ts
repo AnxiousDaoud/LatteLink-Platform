@@ -209,45 +209,45 @@ export async function registerRoutes(app: FastifyInstance) {
   const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
   const gatewayInternalApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
   const rateLimitWindowMs = toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
-  const authWriteRateLimit = app.rateLimit({
+  const authWriteRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX, 24),
     timeWindow: rateLimitWindowMs
-  });
-  const authReadRateLimit = app.rateLimit({
+  };
+  const authReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_AUTH_READ_MAX, 120),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const catalogReadRateLimit = app.rateLimit({
+  };
+  const catalogReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_CATALOG_READ_MAX, 180),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const ordersReadRateLimit = app.rateLimit({
+  };
+  const ordersReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_ORDERS_READ_MAX, 120),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const ordersWriteRateLimit = app.rateLimit({
+  };
+  const ordersWriteRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_ORDERS_WRITE_MAX, 60),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const checkoutRateLimit = app.rateLimit({
+  };
+  const checkoutRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_CHECKOUT_MAX, 20),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const loyaltyReadRateLimit = app.rateLimit({
+  };
+  const loyaltyReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_LOYALTY_READ_MAX, 120),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
-  const pushTokenRateLimit = app.rateLimit({
+  };
+  const pushTokenRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_PUSH_TOKEN_MAX, 30),
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
-  });
+  };
 
   app.get("/health", async () => ({ status: "ok", service: "gateway" }));
   app.get("/ready", async () => ({ status: "ready", service: "gateway" }));
@@ -263,7 +263,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/apple/exchange",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = appleExchangeRequestSchema.parse(request.body);
@@ -284,7 +284,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/passkey/register/challenge",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
@@ -305,7 +305,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/passkey/register/verify",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = passkeyVerifyRequestSchema.parse(request.body);
@@ -326,7 +326,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/passkey/auth/challenge",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
@@ -347,7 +347,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/passkey/auth/verify",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = passkeyVerifyRequestSchema.parse(request.body);
@@ -368,7 +368,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/magic-link/request",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = magicLinkRequestSchema.parse(request.body);
@@ -389,7 +389,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/magic-link/verify",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = magicLinkVerifySchema.parse(request.body);
@@ -410,7 +410,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/refresh",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = refreshRequestSchema.parse(request.body);
@@ -431,7 +431,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/logout",
     {
-      preHandler: authWriteRateLimit
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
     const input = logoutRequestSchema.parse(request.body);
@@ -449,11 +449,10 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.get(
     "/v1/auth/me",
     {
-      preHandler: authReadRateLimit
+      preHandler: app.rateLimit(authReadRateLimit)
     },
     async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
@@ -472,11 +471,10 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.get(
     "/v1/me",
     {
-      preHandler: authReadRateLimit
+      preHandler: app.rateLimit(authReadRateLimit)
     },
     async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
@@ -495,7 +493,7 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get("/v1/menu", { preHandler: catalogReadRateLimit }, async (request, reply) =>
+  app.get("/v1/menu", { preHandler: app.rateLimit(catalogReadRateLimit) }, async (request, reply) =>
     proxyUpstream({
       request,
       reply,
@@ -507,7 +505,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.get("/v1/store/config", { preHandler: catalogReadRateLimit }, async (request, reply) =>
+  app.get("/v1/store/config", { preHandler: app.rateLimit(catalogReadRateLimit) }, async (request, reply) =>
     proxyUpstream({
       request,
       reply,
@@ -519,8 +517,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.post("/v1/orders/quote", { preHandler: ordersWriteRateLimit }, async (request, reply) => {
+  app.post("/v1/orders/quote", { preHandler: app.rateLimit(ordersWriteRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -541,8 +538,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.post("/v1/orders", { preHandler: ordersWriteRateLimit }, async (request, reply) => {
+  app.post("/v1/orders", { preHandler: app.rateLimit(ordersWriteRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -563,8 +559,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.post("/v1/orders/:orderId/pay", { preHandler: checkoutRateLimit }, async (request, reply) => {
+  app.post("/v1/orders/:orderId/pay", { preHandler: app.rateLimit(checkoutRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -586,8 +581,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.get("/v1/orders", { preHandler: ordersReadRateLimit }, async (request, reply) => {
+  app.get("/v1/orders", { preHandler: app.rateLimit(ordersReadRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -606,8 +600,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.get("/v1/orders/:orderId", { preHandler: ordersReadRateLimit }, async (request, reply) => {
+  app.get("/v1/orders/:orderId", { preHandler: app.rateLimit(ordersReadRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -627,8 +620,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.post("/v1/orders/:orderId/cancel", { preHandler: checkoutRateLimit }, async (request, reply) => {
+  app.post("/v1/orders/:orderId/cancel", { preHandler: app.rateLimit(checkoutRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -650,8 +642,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.get("/v1/loyalty/balance", { preHandler: loyaltyReadRateLimit }, async (request, reply) => {
+  app.get("/v1/loyalty/balance", { preHandler: app.rateLimit(loyaltyReadRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -670,8 +661,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.get("/v1/loyalty/ledger", { preHandler: loyaltyReadRateLimit }, async (request, reply) => {
+  app.get("/v1/loyalty/ledger", { preHandler: app.rateLimit(loyaltyReadRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -690,8 +680,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
-  app.put("/v1/devices/push-token", { preHandler: pushTokenRateLimit }, async (request, reply) => {
+  app.put("/v1/devices/push-token", { preHandler: app.rateLimit(pushTokenRateLimit) }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
