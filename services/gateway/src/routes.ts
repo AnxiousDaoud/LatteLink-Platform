@@ -34,6 +34,7 @@ const authHeaderSchema = z.object({
 });
 const orderIdParamsSchema = z.object({ orderId: z.string().uuid() });
 const cancelOrderRequestSchema = z.object({ reason: z.string().min(1) });
+const defaultRateLimitWindowMs = 60_000;
 
 function unauthorized(requestId: string) {
   return apiErrorSchema.parse({
@@ -56,6 +57,32 @@ function ensureBearerAuth(request: FastifyRequest, reply: FastifyReply) {
 function trimToUndefined(value: string | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
+}
+
+function toPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+}
+
+function toHeaderValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+}
+
+function userScopedRateLimitKey(request: FastifyRequest) {
+  const userId = trimToUndefined(toHeaderValue(request.headers["x-user-id"]));
+  if (userId) {
+    return `user:${userId.toLowerCase()}`;
+  }
+
+  return `ip:${request.ip}`;
 }
 
 const authSuccessSchema = z.object({ success: z.literal(true) });
@@ -181,6 +208,46 @@ export async function registerRoutes(app: FastifyInstance) {
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
   const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
   const gatewayInternalApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
+  const rateLimitWindowMs = toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
+  const authWriteRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX, 24),
+    timeWindow: rateLimitWindowMs
+  });
+  const authReadRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_AUTH_READ_MAX, 120),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const catalogReadRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_CATALOG_READ_MAX, 180),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const ordersReadRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_ORDERS_READ_MAX, 120),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const ordersWriteRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_ORDERS_WRITE_MAX, 60),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const checkoutRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_CHECKOUT_MAX, 20),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const loyaltyReadRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_LOYALTY_READ_MAX, 120),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
+  const pushTokenRateLimit = app.rateLimit({
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_PUSH_TOKEN_MAX, 30),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  });
 
   app.get("/health", async () => ({ status: "ok", service: "gateway" }));
   app.get("/ready", async () => ({ status: "ready", service: "gateway" }));
@@ -193,7 +260,12 @@ export async function registerRoutes(app: FastifyInstance) {
     notifications: notificationsContract.basePath
   }));
 
-  app.post("/v1/auth/apple/exchange", async (request, reply) => {
+  app.post(
+    "/v1/auth/apple/exchange",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = appleExchangeRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -206,9 +278,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSessionSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/passkey/register/challenge", async (request, reply) => {
+  app.post(
+    "/v1/auth/passkey/register/challenge",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
 
     return proxyUpstream({
@@ -221,9 +299,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: passkeyChallengeResponseSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/passkey/register/verify", async (request, reply) => {
+  app.post(
+    "/v1/auth/passkey/register/verify",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = passkeyVerifyRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -236,9 +320,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSessionSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/passkey/auth/challenge", async (request, reply) => {
+  app.post(
+    "/v1/auth/passkey/auth/challenge",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
 
     return proxyUpstream({
@@ -251,9 +341,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: passkeyChallengeResponseSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/passkey/auth/verify", async (request, reply) => {
+  app.post(
+    "/v1/auth/passkey/auth/verify",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = passkeyVerifyRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -266,9 +362,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSessionSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/magic-link/request", async (request, reply) => {
+  app.post(
+    "/v1/auth/magic-link/request",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = magicLinkRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -281,9 +383,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSuccessSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/magic-link/verify", async (request, reply) => {
+  app.post(
+    "/v1/auth/magic-link/verify",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = magicLinkVerifySchema.parse(request.body);
 
     return proxyUpstream({
@@ -296,9 +404,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSessionSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/refresh", async (request, reply) => {
+  app.post(
+    "/v1/auth/refresh",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = refreshRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -311,9 +425,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSessionSchema
     });
-  });
+    }
+  );
 
-  app.post("/v1/auth/logout", async (request, reply) => {
+  app.post(
+    "/v1/auth/logout",
+    {
+      preHandler: authWriteRateLimit
+    },
+    async (request, reply) => {
     const input = logoutRequestSchema.parse(request.body);
 
     return proxyUpstream({
@@ -326,9 +446,15 @@ export async function registerRoutes(app: FastifyInstance) {
       body: input,
       responseSchema: authSuccessSchema
     });
-  });
+    }
+  );
 
-  app.get("/v1/auth/me", async (request, reply) => {
+  app.get(
+    "/v1/auth/me",
+    {
+      preHandler: authReadRateLimit
+    },
+    async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -342,9 +468,15 @@ export async function registerRoutes(app: FastifyInstance) {
       path: "/v1/auth/me",
       responseSchema: meResponseSchema
     });
-  });
+    }
+  );
 
-  app.get("/v1/me", async (request, reply) => {
+  app.get(
+    "/v1/me",
+    {
+      preHandler: authReadRateLimit
+    },
+    async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -358,9 +490,10 @@ export async function registerRoutes(app: FastifyInstance) {
       path: "/v1/auth/me",
       responseSchema: meResponseSchema
     });
-  });
+    }
+  );
 
-  app.get("/v1/menu", async (request, reply) =>
+  app.get("/v1/menu", { preHandler: catalogReadRateLimit }, async (request, reply) =>
     proxyUpstream({
       request,
       reply,
@@ -372,7 +505,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.get("/v1/store/config", async (request, reply) =>
+  app.get("/v1/store/config", { preHandler: catalogReadRateLimit }, async (request, reply) =>
     proxyUpstream({
       request,
       reply,
@@ -384,7 +517,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.post("/v1/orders/quote", async (request, reply) => {
+  app.post("/v1/orders/quote", { preHandler: ordersWriteRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -405,7 +538,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/orders", async (request, reply) => {
+  app.post("/v1/orders", { preHandler: ordersWriteRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -426,7 +559,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/orders/:orderId/pay", async (request, reply) => {
+  app.post("/v1/orders/:orderId/pay", { preHandler: checkoutRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -448,7 +581,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/orders", async (request, reply) => {
+  app.get("/v1/orders", { preHandler: ordersReadRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -467,7 +600,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/orders/:orderId", async (request, reply) => {
+  app.get("/v1/orders/:orderId", { preHandler: ordersReadRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -487,7 +620,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/v1/orders/:orderId/cancel", async (request, reply) => {
+  app.post("/v1/orders/:orderId/cancel", { preHandler: checkoutRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -509,7 +642,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/loyalty/balance", async (request, reply) => {
+  app.get("/v1/loyalty/balance", { preHandler: loyaltyReadRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -528,7 +661,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/v1/loyalty/ledger", async (request, reply) => {
+  app.get("/v1/loyalty/ledger", { preHandler: loyaltyReadRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }
@@ -547,7 +680,7 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
-  app.put("/v1/devices/push-token", async (request, reply) => {
+  app.put("/v1/devices/push-token", { preHandler: pushTokenRateLimit }, async (request, reply) => {
     if (!ensureBearerAuth(request, reply)) {
       return;
     }

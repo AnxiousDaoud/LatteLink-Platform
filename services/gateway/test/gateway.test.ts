@@ -419,6 +419,43 @@ describe("gateway", () => {
     await app.close();
   });
 
+  it("rate limits auth write endpoints when configured threshold is reached", async () => {
+    const previousAuthWriteLimit = process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX;
+    const previousRateLimitWindow = process.env.GATEWAY_RATE_LIMIT_WINDOW_MS;
+    process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX = "1";
+    process.env.GATEWAY_RATE_LIMIT_WINDOW_MS = "60000";
+
+    const app = await buildApp();
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/auth/magic-link/request",
+        payload: { email: "owner@gazellecoffee.com" }
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/auth/magic-link/request",
+        payload: { email: "owner@gazellecoffee.com" }
+      });
+      expect(secondResponse.statusCode).toBe(429);
+      expect(secondResponse.json()).toMatchObject({ statusCode: 429 });
+    } finally {
+      await app.close();
+      if (previousAuthWriteLimit === undefined) {
+        delete process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX;
+      } else {
+        process.env.GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX = previousAuthWriteLimit;
+      }
+      if (previousRateLimitWindow === undefined) {
+        delete process.env.GATEWAY_RATE_LIMIT_WINDOW_MS;
+      } else {
+        process.env.GATEWAY_RATE_LIMIT_WINDOW_MS = previousRateLimitWindow;
+      }
+    }
+  });
+
   it("forwards orders quote to orders service", async () => {
     const app = await buildApp();
     const response = await app.inject({
