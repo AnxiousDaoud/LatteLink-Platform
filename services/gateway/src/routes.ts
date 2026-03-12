@@ -35,6 +35,7 @@ const authHeaderSchema = z.object({
 const orderIdParamsSchema = z.object({ orderId: z.string().uuid() });
 const cancelOrderRequestSchema = z.object({ reason: z.string().min(1) });
 const defaultRateLimitWindowMs = 60_000;
+const defaultUpstreamTimeoutMs = 5_000;
 
 function unauthorized(requestId: string) {
   return apiErrorSchema.parse({
@@ -118,6 +119,19 @@ function toErrorDetails(input: unknown): Record<string, unknown> | undefined {
   return { upstreamBody: input };
 }
 
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { name?: string; code?: string; message?: string };
+  if (candidate.name === "AbortError" || candidate.code === "ABORT_ERR") {
+    return true;
+  }
+
+  return typeof candidate.message === "string" && candidate.message.toLowerCase().includes("aborted");
+}
+
 async function proxyUpstream<TResponse>(params: {
   request: FastifyRequest;
   reply: FastifyReply;
@@ -127,9 +141,21 @@ async function proxyUpstream<TResponse>(params: {
   path: string;
   body?: unknown;
   additionalHeaders?: Record<string, string | undefined>;
+  timeoutMs?: number;
   responseSchema: z.ZodType<TResponse>;
 }) {
-  const { request, reply, baseUrl, serviceLabel, method, path, body, additionalHeaders, responseSchema } = params;
+  const {
+    request,
+    reply,
+    baseUrl,
+    serviceLabel,
+    method,
+    path,
+    body,
+    additionalHeaders,
+    timeoutMs = toPositiveInteger(process.env.GATEWAY_UPSTREAM_TIMEOUT_MS, defaultUpstreamTimeoutMs),
+    responseSchema
+  } = params;
 
   const headers: Record<string, string> = {
     "x-request-id": request.id
@@ -156,14 +182,27 @@ async function proxyUpstream<TResponse>(params: {
   }
 
   let upstreamResponse: Response;
+  const timeoutController = new AbortController();
+  const timeoutHandle = setTimeout(() => timeoutController.abort(), timeoutMs);
 
   try {
     upstreamResponse = await fetch(`${baseUrl}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: timeoutController.signal
     });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) {
+      return reply.status(504).send(
+        apiErrorSchema.parse({
+          code: "UPSTREAM_TIMEOUT",
+          message: `${serviceLabel} service timed out`,
+          requestId: request.id
+        })
+      );
+    }
+
     return reply.status(502).send(
       apiErrorSchema.parse({
         code: "UPSTREAM_UNAVAILABLE",
@@ -171,6 +210,8 @@ async function proxyUpstream<TResponse>(params: {
         requestId: request.id
       })
     );
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 
   const rawBody = await upstreamResponse.text();
