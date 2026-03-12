@@ -653,6 +653,46 @@ describe("gateway", () => {
     await app.close();
   });
 
+  it("returns upstream timeout when catalog response exceeds configured timeout", async () => {
+    vi.stubEnv("GATEWAY_UPSTREAM_TIMEOUT_MS", "10");
+    const app = await buildApp();
+
+    fetchMock.mockImplementationOnce(async (_input, init) => {
+      return await new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+
+        if (!signal) {
+          return;
+        }
+
+        if (signal.aborted) {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          return;
+        }
+
+        signal.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")), {
+          once: true
+        });
+      });
+    });
+
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/v1/menu"
+      });
+
+      expect(response.statusCode).toBe(504);
+      expect(response.json()).toMatchObject({
+        code: "UPSTREAM_TIMEOUT",
+        message: "Catalog service timed out"
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
   it("rate limits auth endpoints when configured threshold is reached", async () => {
     vi.stubEnv("GATEWAY_RATE_LIMIT_AUTH_WRITE_MAX", "1");
     vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
