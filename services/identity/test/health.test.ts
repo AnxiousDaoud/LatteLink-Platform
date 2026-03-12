@@ -258,36 +258,33 @@ describe("identity service", () => {
     await app.close();
   });
 
-  it("rate limits apple exchange when configured threshold is reached", async () => {
-    vi.stubEnv("IDENTITY_RATE_LIMIT_APPLE_EXCHANGE_MAX", "1");
+  it("rate limits auth write endpoints when configured threshold is reached", async () => {
+    vi.stubEnv("IDENTITY_RATE_LIMIT_AUTH_WRITE_MAX", "1");
     vi.stubEnv("IDENTITY_RATE_LIMIT_WINDOW_MS", "60000");
+
     const app = await buildApp();
-
     try {
-      const firstExchange = await app.inject({
+      const firstResponse = await app.inject({
         method: "POST",
-        url: "/v1/auth/apple/exchange",
+        url: "/v1/auth/magic-link/request",
         payload: {
-          identityToken: "identity-token",
-          authorizationCode: "auth-code",
-          nonce: "limit-1"
+          email: "owner@gazellecoffee.com"
         }
       });
-      expect(firstExchange.statusCode).toBe(200);
+      expect(firstResponse.statusCode).toBe(200);
 
-      const secondExchange = await app.inject({
+      const secondResponse = await app.inject({
         method: "POST",
-        url: "/v1/auth/apple/exchange",
+        url: "/v1/auth/magic-link/request",
         payload: {
-          identityToken: "identity-token",
-          authorizationCode: "auth-code",
-          nonce: "limit-2"
+          email: "owner@gazellecoffee.com"
         }
       });
-      expect(secondExchange.statusCode).toBe(429);
+      expect(secondResponse.statusCode).toBe(429);
+      expect(secondResponse.json()).toMatchObject({ statusCode: 429 });
     } finally {
-      vi.unstubAllEnvs();
       await app.close();
+      vi.unstubAllEnvs();
     }
   });
 });

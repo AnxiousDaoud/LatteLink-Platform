@@ -65,6 +65,10 @@ const internalHeadersSchema = z.object({
   "x-internal-token": z.string().optional()
 });
 
+const gatewayHeadersSchema = z.object({
+  "x-gateway-token": z.string().optional()
+});
+
 const paymentsChargeRequestSchema = z.object({
   orderId: z.string().uuid(),
   amountCents: z.number().int().positive(),
@@ -292,6 +296,30 @@ function authorizeInternalRequest(
     statusCode: 401,
     code: "UNAUTHORIZED_INTERNAL_REQUEST",
     message: "Internal reconciliation token is invalid",
+    requestId: request.id
+  });
+  return false;
+}
+
+function authorizeGatewayRequest(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  gatewayToken: string | undefined
+) {
+  if (!gatewayToken) {
+    return true;
+  }
+
+  const parsedHeaders = gatewayHeadersSchema.safeParse(request.headers);
+  const providedToken = parsedHeaders.success ? parsedHeaders.data["x-gateway-token"] : undefined;
+  if (providedToken === gatewayToken) {
+    return true;
+  }
+
+  sendError(reply, {
+    statusCode: 401,
+    code: "UNAUTHORIZED_GATEWAY_REQUEST",
+    message: "Gateway token is invalid",
     requestId: request.id
   });
   return false;
@@ -554,6 +582,7 @@ export async function registerRoutes(app: FastifyInstance) {
     ),
     timeWindow: ordersRateLimitWindowMs
   };
+  const gatewayApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
   const repository = await createOrdersRepository(app.log);
 
   app.addHook("onClose", async () => {
@@ -815,7 +844,11 @@ export async function registerRoutes(app: FastifyInstance) {
     {
       preHandler: app.rateLimit(ordersWriteRateLimit)
     },
-    async (request) => {
+    async (request, reply) => {
+      if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+        return;
+      }
+
       const input = quoteRequestSchema.parse(request.body);
       const quote = createQuote(input);
 
@@ -830,6 +863,10 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: app.rateLimit(ordersWriteRateLimit)
     },
     async (request, reply) => {
+      if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+        return;
+      }
+
       const input = createOrderRequestSchema.parse(request.body);
       const quote = await repository.getQuote(input.quoteId);
 
@@ -887,6 +924,10 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: app.rateLimit(ordersWriteRateLimit)
     },
     async (request, reply) => {
+      if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+        return;
+      }
+
       const { orderId } = orderIdParamsSchema.parse(request.params);
       const input = payOrderRequestSchema.parse(request.body);
       const existingOrder = await repository.getOrder(orderId);
@@ -1093,12 +1134,20 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get("/v1/orders", async () => {
+  app.get("/v1/orders", async (request, reply) => {
+    if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+      return;
+    }
+
     const orders = await repository.listOrders();
     return z.array(orderSchema).parse(orders);
   });
 
   app.get("/v1/orders/:orderId", async (request, reply) => {
+    if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+      return;
+    }
+
     const { orderId } = orderIdParamsSchema.parse(request.params);
     const order = await repository.getOrder(orderId);
 
@@ -1121,6 +1170,10 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: app.rateLimit(ordersWriteRateLimit)
     },
     async (request, reply) => {
+      if (!authorizeGatewayRequest(request, reply, gatewayApiToken)) {
+        return;
+      }
+
       const { orderId } = orderIdParamsSchema.parse(request.params);
       const input = cancelOrderRequestSchema.parse(request.body);
       const existingOrder = await repository.getOrder(orderId);

@@ -39,12 +39,10 @@ const defaultPasskeyRpId = "localhost";
 const defaultPasskeyRpName = "Gazelle";
 const defaultPasskeyTimeoutMs = 60_000;
 const defaultRateLimitWindowMs = 60_000;
-const defaultAppleExchangeRateLimitMax = 60;
-const defaultMagicLinkRequestRateLimitMax = 20;
-const defaultMagicLinkVerifyRateLimitMax = 30;
-const defaultRefreshRateLimitMax = 90;
-const passkeyVerifyRateLimit = { max: 12, timeWindow: 60_000 };
-const passkeyChallengeRateLimit = { max: 24, timeWindow: 60_000 };
+const defaultAuthWriteRateLimitMax = 24;
+const defaultAuthReadRateLimitMax = 120;
+const defaultPasskeyVerifyRateLimitMax = 12;
+const defaultPasskeyChallengeRateLimitMax = 24;
 
 function parseCommaSeparatedEnv(value: string | undefined) {
   return (value ?? "")
@@ -54,12 +52,12 @@ function parseCommaSeparatedEnv(value: string | undefined) {
 }
 
 function toPositiveInteger(value: string | undefined, fallback: number) {
-  const parsed = Number.parseInt(value ?? "", 10);
+  const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
   }
 
-  return parsed;
+  return Math.floor(parsed);
 }
 
 function loadPasskeyConfig() {
@@ -138,25 +136,25 @@ function buildApiError(requestId: string, code: string, message: string) {
 export async function registerRoutes(app: FastifyInstance) {
   const repository = await createIdentityRepository(app.log);
   const passkeyConfig = loadPasskeyConfig();
-  const identityRateLimitWindowMs = toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
-  const appleExchangeRateLimit = {
-    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_APPLE_EXCHANGE_MAX, defaultAppleExchangeRateLimitMax),
-    timeWindow: identityRateLimitWindowMs
+  const rateLimitWindowMs = toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
+  const authWriteRateLimit = {
+    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_AUTH_WRITE_MAX, defaultAuthWriteRateLimitMax),
+    timeWindow: rateLimitWindowMs
   };
-  const magicLinkRequestRateLimit = {
+  const authReadRateLimit = {
+    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_AUTH_READ_MAX, defaultAuthReadRateLimitMax),
+    timeWindow: rateLimitWindowMs
+  };
+  const passkeyChallengeRateLimit = {
     max: toPositiveInteger(
-      process.env.IDENTITY_RATE_LIMIT_MAGIC_LINK_REQUEST_MAX,
-      defaultMagicLinkRequestRateLimitMax
+      process.env.IDENTITY_RATE_LIMIT_PASSKEY_CHALLENGE_MAX,
+      defaultPasskeyChallengeRateLimitMax
     ),
-    timeWindow: identityRateLimitWindowMs
+    timeWindow: rateLimitWindowMs
   };
-  const magicLinkVerifyRateLimit = {
-    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_MAGIC_LINK_VERIFY_MAX, defaultMagicLinkVerifyRateLimitMax),
-    timeWindow: identityRateLimitWindowMs
-  };
-  const refreshRateLimit = {
-    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_REFRESH_MAX, defaultRefreshRateLimitMax),
-    timeWindow: identityRateLimitWindowMs
+  const passkeyVerifyRateLimit = {
+    max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_PASSKEY_VERIFY_MAX, defaultPasskeyVerifyRateLimitMax),
+    timeWindow: rateLimitWindowMs
   };
 
   app.addHook("onClose", async () => {
@@ -169,7 +167,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/apple/exchange",
     {
-      preHandler: app.rateLimit(appleExchangeRateLimit)
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request) => {
       const input = appleExchangeRequestSchema.parse(request.body);
@@ -181,42 +179,48 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.post("/v1/auth/passkey/register/challenge", async (request) => {
-    const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
-    const userId = input.userId ?? defaultUserId;
-    const existingCredentials = await repository.listPasskeyCredentialsForUser(userId);
-    const options = await generateRegistrationOptions({
-      rpID: passkeyConfig.rpId,
-      rpName: passkeyConfig.rpName,
-      userID: Buffer.from(userId, "utf8"),
-      userName: `${userId}@gazelle.local`,
-      timeout: passkeyConfig.timeoutMs,
-      attestationType: "none",
-      authenticatorSelection: {
-        residentKey: "preferred",
-        userVerification: "preferred"
-      },
-      excludeCredentials: existingCredentials.map((credential) => ({
-        id: credential.credentialId,
-        transports: toPasskeyTransports(credential.transports)
-      }))
-    });
-    const challenge = passkeyChallengeResponseSchema.parse({
-      challenge: options.challenge,
-      rpId: passkeyConfig.rpId,
-      timeoutMs: passkeyConfig.timeoutMs
-    });
+  app.post(
+    "/v1/auth/passkey/register/challenge",
+    {
+      preHandler: app.rateLimit(passkeyChallengeRateLimit)
+    },
+    async (request) => {
+      const input = passkeyChallengeRequestSchema.parse(request.body ?? {});
+      const userId = input.userId ?? defaultUserId;
+      const existingCredentials = await repository.listPasskeyCredentialsForUser(userId);
+      const options = await generateRegistrationOptions({
+        rpID: passkeyConfig.rpId,
+        rpName: passkeyConfig.rpName,
+        userID: Buffer.from(userId, "utf8"),
+        userName: `${userId}@gazelle.local`,
+        timeout: passkeyConfig.timeoutMs,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred"
+        },
+        excludeCredentials: existingCredentials.map((credential) => ({
+          id: credential.credentialId,
+          transports: toPasskeyTransports(credential.transports)
+        }))
+      });
+      const challenge = passkeyChallengeResponseSchema.parse({
+        challenge: options.challenge,
+        rpId: passkeyConfig.rpId,
+        timeoutMs: passkeyConfig.timeoutMs
+      });
 
-    await repository.savePasskeyChallenge({
-      challenge: challenge.challenge,
-      flow: "register",
-      userId,
-      rpId: challenge.rpId,
-      timeoutMs: challenge.timeoutMs,
-      expiresAt: new Date(Date.now() + challenge.timeoutMs).toISOString()
-    });
-    return challenge;
-  });
+      await repository.savePasskeyChallenge({
+        challenge: challenge.challenge,
+        flow: "register",
+        userId,
+        rpId: challenge.rpId,
+        timeoutMs: challenge.timeoutMs,
+        expiresAt: new Date(Date.now() + challenge.timeoutMs).toISOString()
+      });
+      return challenge;
+    }
+  );
 
   // lgtm [js/missing-rate-limiting] - Fastify route-level preHandler rate limiting is applied.
   app.post(
@@ -445,7 +449,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/magic-link/request",
     {
-      preHandler: app.rateLimit(magicLinkRequestRateLimit)
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request) => {
       const input = magicLinkRequestSchema.parse(request.body);
@@ -457,7 +461,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/magic-link/verify",
     {
-      preHandler: app.rateLimit(magicLinkVerifyRateLimit)
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request) => {
       const input = magicLinkVerifySchema.parse(request.body);
@@ -472,7 +476,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.post(
     "/v1/auth/refresh",
     {
-      preHandler: app.rateLimit(refreshRateLimit)
+      preHandler: app.rateLimit(authWriteRateLimit)
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
@@ -496,43 +500,55 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
-  app.post("/v1/auth/logout", async (request) => {
-    const input = logoutRequestSchema.parse(request.body);
-    await repository.revokeByRefreshToken(input.refreshToken);
-    return { success: true as const };
-  });
-
-  app.get("/v1/auth/me", async (request, reply) => {
-    const parsed = authHeaderSchema.safeParse(request.headers);
-
-    if (!parsed.success || !parsed.data.authorization) {
-      return reply.status(401).send(
-        apiErrorSchema.parse({
-          code: "UNAUTHORIZED",
-          message: "Missing or invalid auth token",
-          requestId: request.id
-        })
-      );
+  app.post(
+    "/v1/auth/logout",
+    {
+      preHandler: app.rateLimit(authWriteRateLimit)
+    },
+    async (request) => {
+      const input = logoutRequestSchema.parse(request.body);
+      await repository.revokeByRefreshToken(input.refreshToken);
+      return { success: true as const };
     }
+  );
 
-    const accessToken = parsed.data.authorization.slice("Bearer ".length);
-    const session = await repository.getSessionByAccessToken(accessToken);
-    if (!session) {
-      return reply.status(401).send(
-        apiErrorSchema.parse({
-          code: "UNAUTHORIZED",
-          message: "Missing or invalid auth token",
-          requestId: request.id
-        })
-      );
+  app.get(
+    "/v1/auth/me",
+    {
+      preHandler: app.rateLimit(authReadRateLimit)
+    },
+    async (request, reply) => {
+      const parsed = authHeaderSchema.safeParse(request.headers);
+
+      if (!parsed.success || !parsed.data.authorization) {
+        return reply.status(401).send(
+          apiErrorSchema.parse({
+            code: "UNAUTHORIZED",
+            message: "Missing or invalid auth token",
+            requestId: request.id
+          })
+        );
+      }
+
+      const accessToken = parsed.data.authorization.slice("Bearer ".length);
+      const session = await repository.getSessionByAccessToken(accessToken);
+      if (!session) {
+        return reply.status(401).send(
+          apiErrorSchema.parse({
+            code: "UNAUTHORIZED",
+            message: "Missing or invalid auth token",
+            requestId: request.id
+          })
+        );
+      }
+
+      return meResponseSchema.parse({
+        userId: session.userId,
+        email: "owner@gazellecoffee.com",
+        methods: ["apple", "passkey", "magic-link"]
+      });
     }
-
-    return meResponseSchema.parse({
-      userId: session.userId,
-      email: "owner@gazellecoffee.com",
-      methods: ["apple", "passkey", "magic-link"]
-    });
-  });
+  );
 
   app.post("/v1/auth/internal/ping", async (request) => {
     const parsed = payloadSchema.parse(request.body ?? {});
