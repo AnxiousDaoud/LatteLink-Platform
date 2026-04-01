@@ -97,4 +97,4 @@ Create project board columns:
 - [ ] `GHCR_TOKEN` (if GHCR images are private)
 
 Notes:
-- `gh secret list --repo GazelleDev/GazelleMobilePlatform` and per-environment secret list commands returned no configured secrets on `2026-03-09`.
+- `gh secret list --repo AnxiousDaoud/LatteLink-Platform` and per-environment secret list commands returned no configured secrets on `2026-03-09`.

@@ -1,0 +1,91 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Syne:wght@600;700;800&display=swap");
+
+:root {
+  --page-max:        1120px;
+  --color-bg:        #09090f;
+  --color-bg-2:      #0d0e16;
+  --color-bg-card:   #111320;
+  --color-border:    #1a1d2e;
+  --color-border-s:  #13151f;
+
+  --color-blue-300:  #a8c4ff;
+  --color-blue-400:  #7aaaff;
+  --color-blue-500:  #4a7eff;
+  --color-blue-600:  #2a5fff;
+  --color-blue-700:  #1535e8;
+
+  --color-gray-100:  #f0f2f8;
+  --color-gray-200:  #d8dce8;
+  --color-gray-400:  #8892aa;
+  --color-gray-500:  #5a6278;
+  --color-gray-600:  #3a3f55;
+  --color-gray-700:  #252840;
+  --color-gray-800:  #181a28;
+
+  --font-display: "Syne", sans-serif;
+  --font-body:    "DM Sans", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-gray-100);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+.page-shell {
+  width: min(var(--page-max), calc(100% - 80px));
+  margin: 0 auto;
+}
+
+/* Grid background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(74, 126, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74, 126, 255, 0.022) 1px, transparent 1px);
+  background-size: 52px 52px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scroll progress bar */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #1535e8, #4a7eff, #7aaaff);
+  z-index: 200;
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+@media (max-width: 1024px) {
+  .page-shell {
+    width: min(var(--page-max), calc(100% - 48px));
+  }
+}
+
+@media (max-width: 720px) {
+  .page-shell {
+    width: min(var(--page-max), calc(100% - 32px));
+  }
+}
