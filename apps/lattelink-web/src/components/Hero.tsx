@@ -43,46 +43,6 @@ function AnimEntry({
   );
 }
 
-function Orb({
-  size,
-  top,
-  left,
-  bottom,
-  right,
-  color,
-  animDuration,
-  mouseScale,
-}: {
-  size: number;
-  top?: string;
-  left?: string;
-  bottom?: string;
-  right?: string;
-  color: string;
-  animDuration: number;
-  mouseScale: number;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        width: size,
-        height: size * 0.65,
-        top,
-        left,
-        bottom,
-        right,
-        background: color,
-        borderRadius: "50%",
-        filter: "blur(80px)",
-        pointerEvents: "none",
-        animation: `orbFloat ${animDuration}s ease-in-out infinite`,
-      }}
-      data-mouse-scale={mouseScale}
-    />
-  );
-}
-
 export function Hero() {
   // Parallax mouse effect on orbs
   const mouseX = useMotionValue(0);

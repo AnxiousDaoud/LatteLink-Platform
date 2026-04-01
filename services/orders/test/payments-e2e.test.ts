@@ -25,6 +25,9 @@ const sampleQuotePayload = {
   pointsToRedeem: 0
 };
 
+const defaultOrderUserId = "123e4567-e89b-12d3-a456-426614174000";
+const internalPaymentsToken = "orders-internal-token";
+
 type LoyaltyBalance = {
   userId: string;
   availablePoints: number;
@@ -48,14 +51,13 @@ type NotificationDispatchEvent = {
 
 function buildLoyaltyHarnessApp() {
   const app = Fastify();
-  const defaultUserId = "123e4567-e89b-12d3-a456-426614174000";
   const balancesByUserId = new Map<string, LoyaltyBalance>();
   const ledgerByUserId = new Map<string, LoyaltyLedgerEntry[]>();
   const idempotencyByUserId = new Map<string, Map<string, { fingerprint: string; response: unknown }>>();
 
   function resolveUserId(headers: Record<string, unknown>) {
     const headerValue = headers["x-user-id"];
-    return typeof headerValue === "string" ? headerValue : defaultUserId;
+    return typeof headerValue === "string" ? headerValue : defaultOrderUserId;
   }
 
   function ensureBalance(userId: string) {
@@ -108,7 +110,7 @@ function buildLoyaltyHarnessApp() {
 
   app.post("/v1/loyalty/internal/ledger/apply", async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const userId = String(body.userId ?? defaultUserId);
+    const userId = String(body.userId ?? defaultOrderUserId);
     const orderId = String(body.orderId ?? "");
     const idempotencyKey = String(body.idempotencyKey ?? "");
     const mutationType = String(body.type ?? "");
@@ -227,13 +229,15 @@ describe.sequential("orders + payments e2e", () => {
   let previousPaymentsBaseUrl: string | undefined;
   let previousLoyaltyBaseUrl: string | undefined;
   let previousNotificationsBaseUrl: string | undefined;
+  let previousOrdersInternalToken: string | undefined;
 
   async function createOrder(input?: { pointsToRedeem?: number; userId?: string }) {
     if (!ordersApp) {
       throw new Error("Orders app not initialized");
     }
 
-    const headers = input?.userId ? { "x-user-id": input.userId } : undefined;
+    const userId = input?.userId ?? defaultOrderUserId;
+    const headers = { "x-user-id": userId };
     const quoteResponse = await ordersApp.inject({
       method: "POST",
       url: "/v1/orders/quote",
@@ -263,7 +267,9 @@ describe.sequential("orders + payments e2e", () => {
     previousPaymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL;
     previousLoyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL;
     previousNotificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL;
+    previousOrdersInternalToken = process.env.ORDERS_INTERNAL_API_TOKEN;
 
+    process.env.ORDERS_INTERNAL_API_TOKEN = internalPaymentsToken;
     paymentsApp = await buildPaymentsApp();
     await paymentsApp.listen({ host: "127.0.0.1", port: 0 });
     const paymentsAddress = paymentsApp.server.address() as AddressInfo | null;
@@ -328,6 +334,12 @@ describe.sequential("orders + payments e2e", () => {
       delete process.env.NOTIFICATIONS_SERVICE_BASE_URL;
     } else {
       process.env.NOTIFICATIONS_SERVICE_BASE_URL = previousNotificationsBaseUrl;
+    }
+
+    if (previousOrdersInternalToken === undefined) {
+      delete process.env.ORDERS_INTERNAL_API_TOKEN;
+    } else {
+      process.env.ORDERS_INTERNAL_API_TOKEN = previousOrdersInternalToken;
     }
   });
 
