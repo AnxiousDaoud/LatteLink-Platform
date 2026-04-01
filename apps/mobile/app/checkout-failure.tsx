@@ -1,159 +1,241 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { GlassActionPill } from "../src/cart/GlassActionPill";
 import { useCheckoutFlow } from "../src/orders/flow";
 import { formatOrderDateTime } from "../src/orders/history";
-import { Button, Card, GlassCard, ScreenScroll, SectionLabel, TitleBlock, uiPalette } from "../src/ui/system";
+import { uiPalette, uiTypography } from "../src/ui/system";
+
+function DetailRow({
+  label,
+  value,
+  strong = false,
+  mono = false
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  mono?: boolean;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, strong ? styles.detailValueStrong : null, mono ? styles.detailValueMono : null]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function formatFailureStage(stage?: "quote" | "create" | "pay") {
+  switch (stage) {
+    case "quote":
+      return "Reviewing your cart";
+    case "create":
+      return "Creating your order";
+    case "pay":
+      return "Processing payment";
+    default:
+      return "Checkout";
+  }
+}
+
+function formatUsd(amountCents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(amountCents / 100);
+}
 
 export default function CheckoutFailureScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { failure, retryOrder, clearFailure } = useCheckoutFlow();
 
   const createdButUnpaid = failure?.stage === "pay" && failure.order;
+  const title = createdButUnpaid ? "Payment Didn’t Finish" : "Payment Didn’t Go Through";
+  const body = createdButUnpaid
+    ? "Your order is still open. You can retry the payment without creating a duplicate order."
+    : "Nothing was charged. Return to your cart, check the order, and try again when you’re ready.";
+  const updatedAt = failure ? formatOrderDateTime(failure.occurredAt) : "Just now";
+
+  function returnToCart() {
+    clearFailure();
+    router.replace("/cart");
+  }
+
+  function goToOrders() {
+    clearFailure();
+    router.dismissTo("/(tabs)/orders");
+  }
+
+  function goToMenu() {
+    clearFailure();
+    router.dismissTo("/(tabs)/menu");
+  }
 
   return (
-    <ScreenScroll>
-      <TitleBlock
-        title="Payment Not Completed"
-        subtitle="The cart stays intact so you can recover cleanly instead of starting over."
-      />
-
-      <GlassCard style={{ marginTop: 16 }}>
-        <SectionLabel label="Checkout Outcome" />
-        <View style={styles.heroHeader}>
-          <View style={styles.heroIconWrap}>
-            <Ionicons name="alert-circle-outline" size={22} color={uiPalette.primaryText} />
+    <View style={styles.screen}>
+      <View style={styles.content}>
+        <View style={styles.mainContent}>
+          <View style={styles.sheetLead}>
+            <View style={styles.handle} />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.heroTitle}>
-              {createdButUnpaid ? "The order exists, but payment did not finish." : "Payment did not go through."}
-            </Text>
-            <Text style={styles.heroCopy}>
-              {createdButUnpaid
-                ? "Retry from the cart and the app will attempt payment on the same pending order instead of creating a duplicate."
-                : "You can return to the cart, review the order, and try again."}
-            </Text>
+
+          <View style={styles.heroBlock}>
+            <View style={styles.heroTopRow}>
+              <Text style={styles.title}>{title}</Text>
+              <View style={styles.heroIconWrap}>
+                <Ionicons name="alert-circle-outline" size={22} color={uiPalette.danger} />
+              </View>
+            </View>
+            <Text style={styles.body}>{body}</Text>
+          </View>
+
+          <View style={styles.detailsSection}>
+            <DetailRow label="Stopped at" value={formatFailureStage(failure?.stage)} />
+            {failure?.order ? <DetailRow label="Pickup code" value={failure.order.pickupCode} strong mono /> : null}
+            {failure?.order ? <DetailRow label="Order total" value={formatUsd(failure.order.total.amountCents)} strong /> : null}
+            <DetailRow label="Updated" value={updatedAt} />
+
+            {failure?.message ? (
+              <View style={styles.messageBlock}>
+                <Text style={styles.messageLabel}>What happened</Text>
+                <Text style={styles.messageText}>{failure.message}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
-        {failure ? (
-          <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>Latest message</Text>
-            <Text style={styles.metaValue}>{failure.message}</Text>
-            <Text style={styles.metaFootnote}>{formatOrderDateTime(failure.occurredAt)}</Text>
-          </View>
-        ) : null}
-
-        {failure?.order ? (
-          <View style={styles.metaCard}>
-            <Text style={styles.metaLabel}>Pending order</Text>
-            <Text style={styles.pendingCode}>{failure.order.pickupCode}</Text>
-            <Text style={styles.metaFootnote}>A payment retry will target this order first.</Text>
-          </View>
-        ) : null}
-      </GlassCard>
-
-      <Card style={{ marginTop: 12 }}>
-        <SectionLabel label="Next Step" />
-        <Text style={styles.bodyText}>
-          You can retry immediately, switch back to browsing, or review active orders and their status separately.
-        </Text>
-        <Button
-          label={retryOrder ? "Retry Payment" : "Return to Cart"}
-          onPress={() => {
-            clearFailure();
-            router.replace("/cart");
-          }}
-          style={{ marginTop: 14 }}
-          left={<Ionicons name="refresh-outline" size={16} color={uiPalette.primaryText} />}
-        />
-        <Button
-          label="View Orders"
-          variant="secondary"
-          onPress={() => {
-            clearFailure();
-            router.replace("/(tabs)/orders");
-          }}
-          style={{ marginTop: 10 }}
-        />
-        <Button
-          label="Back to Menu"
-          variant="ghost"
-          onPress={() => {
-            clearFailure();
-            router.replace("/(tabs)/menu");
-          }}
-          style={{ marginTop: 10 }}
-        />
-      </Card>
-    </ScreenScroll>
+        <View style={[styles.footerContent, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <GlassActionPill label={retryOrder ? "Retry Payment" : "Return to Cart"} onPress={returnToCart} tone="dark" />
+          <GlassActionPill label={createdButUnpaid ? "View Orders" : "Back to Menu"} onPress={createdButUnpaid ? goToOrders : goToMenu} />
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  heroHeader: {
-    marginTop: 8,
+  screen: {
+    flex: 1,
+    backgroundColor: uiPalette.surfaceStrong
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    justifyContent: "space-between"
+  },
+  mainContent: {
+    flex: 1
+  },
+  sheetLead: {
+    paddingTop: 10,
+    paddingBottom: 24
+  },
+  handle: {
+    alignSelf: "center",
+    width: 46,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(23, 21, 19, 0.16)"
+  },
+  heroBlock: {
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: uiPalette.border
+  },
+  heroTopRow: {
     flexDirection: "row",
-    gap: 16,
-    alignItems: "flex-start"
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 16
   },
   heroIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
+    width: 42,
+    height: 42,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: uiPalette.warning
+    backgroundColor: "rgba(180, 91, 79, 0.10)"
   },
-  heroTitle: {
-    fontSize: 28,
-    fontWeight: "700",
+  title: {
+    flex: 1,
+    fontSize: 19,
+    lineHeight: 24,
+    letterSpacing: 2,
+    textTransform: "uppercase",
     color: uiPalette.text,
-    letterSpacing: -0.8
+    fontFamily: uiTypography.displayFamily,
+    fontWeight: "600"
   },
-  heroCopy: {
+  body: {
     marginTop: 8,
-    fontSize: 14,
+    maxWidth: 520,
+    fontSize: 15,
     lineHeight: 22,
-    color: uiPalette.textSecondary
+    color: uiPalette.textSecondary,
+    fontFamily: uiTypography.bodyFamily
   },
-  metaCard: {
-    marginTop: 16,
-    borderRadius: 18,
-    padding: 14,
-    backgroundColor: "rgba(255, 248, 240, 0.76)",
-    borderWidth: 1,
-    borderColor: uiPalette.border
+  detailsSection: {
+    flex: 1,
+    justifyContent: "center",
+    paddingTop: 18
   },
-  metaLabel: {
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: uiPalette.border
+  },
+  detailLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: uiPalette.textMuted,
+    letterSpacing: 0.8,
     textTransform: "uppercase",
-    letterSpacing: 0.8
+    color: uiPalette.textMuted,
+    fontFamily: uiTypography.bodyFamily
   },
-  metaValue: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 21,
-    color: uiPalette.text
-  },
-  metaFootnote: {
-    marginTop: 8,
-    fontSize: 12,
-    color: uiPalette.textMuted
-  },
-  pendingCode: {
-    marginTop: 8,
-    fontSize: 24,
-    fontWeight: "700",
-    letterSpacing: 1.8,
-    color: uiPalette.walnut
-  },
-  bodyText: {
-    marginTop: 8,
-    fontSize: 13,
+  detailValue: {
+    flex: 1,
+    textAlign: "right",
+    fontSize: 16,
     lineHeight: 20,
-    color: uiPalette.textSecondary
+    color: uiPalette.text,
+    fontFamily: uiTypography.bodyFamily
+  },
+  detailValueStrong: {
+    fontWeight: "600"
+  },
+  detailValueMono: {
+    letterSpacing: 1.4,
+    fontFamily: uiTypography.monoFamily
+  },
+  messageBlock: {
+    paddingTop: 18,
+    gap: 8
+  },
+  messageLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    color: uiPalette.textMuted,
+    fontFamily: uiTypography.bodyFamily
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: uiPalette.textSecondary,
+    fontFamily: uiTypography.bodyFamily
+  },
+  footerContent: {
+    gap: 12,
+    paddingTop: 24
   }
 });

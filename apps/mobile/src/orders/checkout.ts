@@ -82,6 +82,26 @@ export function quoteItemsEqual(left: QuoteItem[], right: QuoteItem[]) {
   });
 }
 
+function resolveCheckoutErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error) || !error.message) {
+    return fallback;
+  }
+
+  const jsonSuffixMatch = error.message.match(/:\s*(\{[\s\S]*\})$/);
+  if (jsonSuffixMatch) {
+    try {
+      const parsed = JSON.parse(jsonSuffixMatch[1]) as { message?: unknown };
+      if (typeof parsed.message === "string" && parsed.message.trim().length > 0) {
+        return parsed.message;
+      }
+    } catch {
+      // Fall through to the original error message when the suffix is not valid JSON.
+    }
+  }
+
+  return error.message;
+}
+
 export function useApplePayCheckoutMutation() {
   return useMutation({
     mutationFn: async (input: CheckoutInput) => {
@@ -114,7 +134,7 @@ export function useApplePayCheckoutMutation() {
             idempotencyKey: createCheckoutIdempotencyKey()
           });
         } catch (error) {
-          const message = error instanceof Error ? error.message : "Unable to complete payment.";
+          const message = resolveCheckoutErrorMessage(error, "Unable to complete payment.");
           throw new CheckoutSubmissionError(message, "pay", input.existingOrder);
         }
       }
@@ -128,7 +148,7 @@ export function useApplePayCheckoutMutation() {
           pointsToRedeem: input.pointsToRedeem ?? 0
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to prepare checkout.";
+        const message = resolveCheckoutErrorMessage(error, "Unable to prepare checkout.");
         throw new CheckoutSubmissionError(message, "quote");
       }
 
@@ -139,7 +159,7 @@ export function useApplePayCheckoutMutation() {
           quoteHash: quote.quoteHash
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to create order.";
+        const message = resolveCheckoutErrorMessage(error, "Unable to create order.");
         throw new CheckoutSubmissionError(message, "create");
       }
 
@@ -154,7 +174,7 @@ export function useApplePayCheckoutMutation() {
           idempotencyKey: createCheckoutIdempotencyKey()
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to complete payment.";
+        const message = resolveCheckoutErrorMessage(error, "Unable to complete payment.");
         throw new CheckoutSubmissionError(message, "pay", orderSnapshot);
       }
     }

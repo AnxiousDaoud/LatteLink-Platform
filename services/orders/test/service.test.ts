@@ -567,4 +567,68 @@ describe("orders service layer", () => {
       code: "INVALID_USER_CONTEXT"
     });
   });
+
+  it("rejects createOrder when the user already has an active order", async () => {
+    const { deps } = await createTestDeps(repositories);
+    const initialQuoteResult = await createQuote({
+      input: sampleQuotePayload,
+      deps
+    });
+    if ("error" in initialQuoteResult) {
+      throw new Error(`Quote creation failed: ${initialQuoteResult.error.code}`);
+    }
+
+    await deps.repository.saveQuote(initialQuoteResult.quote);
+
+    const initialOrderResult = await createOrder({
+      input: {
+        quoteId: initialQuoteResult.quote.quoteId,
+        quoteHash: initialQuoteResult.quote.quoteHash
+      },
+      requestId: "first-active-order",
+      requestUserContext: { userId: defaultTestUserId },
+      deps
+    });
+    if ("error" in initialOrderResult) {
+      throw new Error(`Initial order creation failed: ${initialOrderResult.error.code}`);
+    }
+
+    const secondQuoteResult = await createQuote({
+      input: {
+        ...sampleQuotePayload,
+        pointsToRedeem: 0
+      },
+      deps
+    });
+    if ("error" in secondQuoteResult) {
+      throw new Error(`Second quote creation failed: ${secondQuoteResult.error.code}`);
+    }
+
+    await deps.repository.saveQuote(secondQuoteResult.quote);
+
+    const secondOrderResult = await createOrder({
+      input: {
+        quoteId: secondQuoteResult.quote.quoteId,
+        quoteHash: secondQuoteResult.quote.quoteHash
+      },
+      requestId: "reject-second-active-order",
+      requestUserContext: { userId: defaultTestUserId },
+      deps
+    });
+
+    expect("error" in secondOrderResult).toBe(true);
+    if (!("error" in secondOrderResult)) {
+      throw new Error("Expected active order conflict");
+    }
+
+    expect(secondOrderResult.error).toMatchObject({
+      statusCode: 409,
+      code: "ACTIVE_ORDER_EXISTS",
+      details: {
+        orderId: initialOrderResult.order.id,
+        status: "PENDING_PAYMENT",
+        pickupCode: initialOrderResult.order.pickupCode
+      }
+    });
+  });
 });

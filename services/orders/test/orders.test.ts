@@ -394,6 +394,67 @@ describe("orders service", () => {
     await app.close();
   });
 
+  it("rejects creating a second order while the same user still has an active order", async () => {
+    const app = await buildApp();
+
+    const firstQuoteResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders/quote",
+      payload: sampleQuotePayload
+    });
+    expect(firstQuoteResponse.statusCode).toBe(200);
+    const firstQuote = orderQuoteSchema.parse(firstQuoteResponse.json());
+
+    const firstCreateResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders",
+      headers: {
+        "x-user-id": defaultTestUserId
+      },
+      payload: {
+        quoteId: firstQuote.quoteId,
+        quoteHash: firstQuote.quoteHash
+      }
+    });
+    expect(firstCreateResponse.statusCode).toBe(200);
+    const firstOrder = orderSchema.parse(firstCreateResponse.json());
+
+    const secondQuoteResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders/quote",
+      payload: {
+        ...sampleQuotePayload,
+        pointsToRedeem: 0
+      }
+    });
+    expect(secondQuoteResponse.statusCode).toBe(200);
+    const secondQuote = orderQuoteSchema.parse(secondQuoteResponse.json());
+
+    const secondCreateResponse = await app.inject({
+      method: "POST",
+      url: "/v1/orders",
+      headers: {
+        "x-user-id": defaultTestUserId
+      },
+      payload: {
+        quoteId: secondQuote.quoteId,
+        quoteHash: secondQuote.quoteHash
+      }
+    });
+
+    expect(secondCreateResponse.statusCode).toBe(409);
+    expect(secondCreateResponse.json()).toMatchObject({
+      code: "ACTIVE_ORDER_EXISTS",
+      details: {
+        orderId: firstOrder.id,
+        status: "PENDING_PAYMENT",
+        pickupCode: firstOrder.pickupCode
+      }
+    });
+
+    await app.close();
+  });
+
   it("fails startup when DATABASE_URL is missing outside explicit in-memory mode", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("DATABASE_URL", "");

@@ -18,7 +18,12 @@ import {
 } from "@gazelle/contracts-orders";
 import { z } from "zod";
 import { reconcileOrderFulfillmentState } from "./fulfillment.js";
-import { createOrderTimelineEntry, OrderTransitionError, transitionOrderStatus } from "./lifecycle.js";
+import {
+  createOrderTimelineEntry,
+  isTerminalOrderStatus,
+  OrderTransitionError,
+  transitionOrderStatus
+} from "./lifecycle.js";
 import { type OrdersRepository, type QuoteCatalogItem } from "./repository.js";
 
 const notificationOrderStatusSchema = z.enum([
@@ -225,6 +230,19 @@ function buildMissingOrderUserContextError(orderId: string) {
     code: "ORDER_USER_CONTEXT_MISSING",
     message: "Order user context is missing",
     details: { orderId }
+  });
+}
+
+function buildActiveOrderExistsError(order: Order) {
+  return buildServiceError({
+    statusCode: 409,
+    code: "ACTIVE_ORDER_EXISTS",
+    message: "You already have an active order. Complete or cancel it before starting a new one.",
+    details: {
+      orderId: order.id,
+      status: order.status,
+      pickupCode: order.pickupCode
+    }
   });
 }
 
@@ -679,6 +697,28 @@ async function reconcilePersistedOrderFulfillmentState(params: {
   return reconciledOrder;
 }
 
+async function findActiveOrderForUser(params: {
+  userId: string;
+  requestId: string;
+  deps: OrderServiceDeps;
+}) {
+  const orders = await params.deps.repository.listOrdersByUser(params.userId);
+
+  for (const order of orders) {
+    const reconciledOrder = await reconcilePersistedOrderFulfillmentState({
+      order,
+      requestId: params.requestId,
+      deps: params.deps
+    });
+
+    if (!isTerminalOrderStatus(reconciledOrder.status)) {
+      return reconciledOrder;
+    }
+  }
+
+  return undefined;
+}
+
 async function requestSuccessfulCharge(params: {
   orderId: string;
   input: PayOrderRequest;
@@ -915,6 +955,17 @@ export async function createOrder(params: {
   const existingOrder = await deps.repository.getOrderForCreateIdempotency(input.quoteId, input.quoteHash);
   if (existingOrder) {
     return { order: existingOrder };
+  }
+
+  const activeOrder = await findActiveOrderForUser({
+    userId: requestUserId,
+    requestId,
+    deps
+  });
+  if (activeOrder) {
+    return {
+      error: buildActiveOrderExistsError(activeOrder)
+    };
   }
 
   const order = createOrderFromQuote(quote);

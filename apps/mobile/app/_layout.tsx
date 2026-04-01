@@ -79,7 +79,14 @@ export default function RootLayout() {
                         contentStyle: { backgroundColor: uiPalette.surfaceStrong }
                       }}
                     />
-                    <Stack.Screen name="checkout-failure" />
+                    <Stack.Screen
+                      name="checkout-failure"
+                      options={{
+                        presentation: "modal",
+                        animation: "slide_from_bottom",
+                        contentStyle: { backgroundColor: uiPalette.surfaceStrong }
+                      }}
+                    />
                     <Stack.Screen
                       name="refunds/[orderId]"
                       options={{
