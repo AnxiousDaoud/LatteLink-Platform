@@ -24,7 +24,6 @@ Deploy the V1 client dashboard as a static site on the same free-first host as t
 
 ## Required GitHub Variables
 
-- `FREE_API_DOMAIN`
 - `FREE_CLIENT_DASHBOARD_DOMAIN`
 - `FREE_DEPLOY_PATH` (optional, default `/opt/gazelle-free`)
 
@@ -34,12 +33,18 @@ Deploy the V1 client dashboard as a static site on the same free-first host as t
 - `FREE_DEPLOY_USER`
 - `FREE_DEPLOY_SSH_KEY`
 - `LETSENCRYPT_EMAIL`
+- `FREE_CLIENT_DASHBOARD_API_BASE_URL`
 
 ## Build-Time Runtime Wiring
 
 The dashboard is a Vite app and needs the production API URL at build time:
 
-- `VITE_API_BASE_URL=https://<FREE_API_DOMAIN>`
+- `VITE_API_BASE_URL=<FREE_CLIENT_DASHBOARD_API_BASE_URL>`
+
+Use this secret as the active API target for the deployed dashboard. This lets you:
+
+- point the live dashboard at a local or tunneled API before backend deployment
+- later rotate the secret to the real production API URL without changing workflow code
 
 The workflow builds with that value automatically.
 
@@ -60,7 +65,7 @@ The workflow builds with that value automatically.
 
 - `https://<FREE_CLIENT_DASHBOARD_DOMAIN>`
 - sign-in screen loads
-- authenticated dashboard requests hit `https://<FREE_API_DOMAIN>/v1/...`
+- authenticated dashboard requests hit the configured `FREE_CLIENT_DASHBOARD_API_BASE_URL`
 
 ## Notes
 
