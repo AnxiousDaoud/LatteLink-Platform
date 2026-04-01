@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
+  googleOAuthStartResponseSchema,
   operatorDevAccessRequestSchema,
+  operatorGoogleExchangeRequestSchema,
   operatorPasswordSignInSchema,
   operatorSessionSchema,
   operatorUserListResponseSchema,
@@ -150,6 +152,39 @@ export async function requestOperatorDevAccess(params: { apiBaseUrl: string; ema
     method: "POST",
     body: operatorDevAccessRequestSchema.parse({
       email: params.email.trim()
+    }),
+    schema: operatorSessionSchema
+  });
+
+  return toStoredSession(params.apiBaseUrl, session);
+}
+
+export function startOperatorGoogleSignIn(params: { apiBaseUrl: string; redirectUri: string }) {
+  const search = new URLSearchParams({
+    redirectUri: params.redirectUri
+  });
+
+  return requestJson({
+    apiBaseUrl: params.apiBaseUrl,
+    path: `/operator/auth/google/start?${search.toString()}`,
+    schema: googleOAuthStartResponseSchema
+  });
+}
+
+export async function exchangeOperatorGoogleCode(params: {
+  apiBaseUrl: string;
+  code: string;
+  state: string;
+  redirectUri: string;
+}) {
+  const session = await requestJson({
+    apiBaseUrl: params.apiBaseUrl,
+    path: "/operator/auth/google/exchange",
+    method: "POST",
+    body: operatorGoogleExchangeRequestSchema.parse({
+      code: params.code,
+      state: params.state,
+      redirectUri: params.redirectUri
     }),
     schema: operatorSessionSchema
   });

@@ -7,6 +7,21 @@ export const appleExchangeRequestSchema = z.object({
   nonce: z.string().min(1)
 });
 
+export const googleOAuthStartRequestSchema = z.object({
+  redirectUri: z.string().url()
+});
+
+export const googleOAuthStartResponseSchema = z.object({
+  authorizeUrl: z.string().url(),
+  stateExpiresAt: z.string().datetime()
+});
+
+export const operatorGoogleExchangeRequestSchema = z.object({
+  code: z.string().min(1),
+  state: z.string().min(1),
+  redirectUri: z.string().url()
+});
+
 export const passkeyChallengeRequestSchema = z.object({
   userId: z.string().uuid().optional()
 });
@@ -239,6 +254,18 @@ export const authContract = {
 export const operatorAuthContract = {
   basePath: "/operator/auth",
   routes: {
+    googleStart: {
+      method: "GET",
+      path: "/google/start",
+      request: googleOAuthStartRequestSchema,
+      response: googleOAuthStartResponseSchema
+    },
+    googleExchange: {
+      method: "POST",
+      path: "/google/exchange",
+      request: operatorGoogleExchangeRequestSchema,
+      response: operatorSessionSchema
+    },
     magicLinkRequest: {
       method: "POST",
       path: "/magic-link/request",

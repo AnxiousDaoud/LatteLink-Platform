@@ -7,6 +7,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./client-dashboard:/srv/client-dashboard:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -39,6 +40,10 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - PASSKEY_RP_ID=${PASSKEY_RP_ID:-localhost}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      - GOOGLE_OAUTH_STATE_SECRET=${GOOGLE_OAUTH_STATE_SECRET:-}
+      - GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS=${GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS:-}
 
   orders:
     image: ghcr.io/gazelledev/gazellemobileplatform/orders:${IMAGE_TAG:-latest}

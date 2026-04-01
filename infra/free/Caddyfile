@@ -5,3 +5,11 @@
 
   tls {$LETSENCRYPT_EMAIL}
 }
+
+{$CLIENT_DASHBOARD_DOMAIN:localhost} {
+  encode gzip
+
+  root * /srv/client-dashboard
+  try_files {path} /index.html
+  file_server
+}

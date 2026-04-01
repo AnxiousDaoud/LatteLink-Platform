@@ -171,6 +171,7 @@ export interface IdentityPasskeyCredentialTable {
 export interface OperatorUserTable {
   operator_user_id: string;
   email: string;
+  google_sub: string | null;
   display_name: string;
   password_hash: string | null;
   role: "owner" | "manager" | "staff";
@@ -196,7 +197,7 @@ export interface OperatorSessionTable {
   access_expires_at: string | null;
   expires_at: string;
   revoked_at: string | null;
-  auth_method: "magic-link" | "password" | "refresh";
+  auth_method: "magic-link" | "password" | "google" | "refresh";
   created_at: Generated<string>;
   updated_at: Generated<string>;
 }

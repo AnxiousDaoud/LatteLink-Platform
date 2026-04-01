@@ -1,12 +1,14 @@
-# Operator Dashboard Product Spec
+# Client Dashboard Product Spec
 
 Last updated: `2026-04-01`
 
 ## Purpose
 
-The operator dashboard is the client-facing operations workspace for each LatteLink store.
+The client dashboard is the client-facing operations workspace for each LatteLink store.
 
 It is not an engineering console and it should not feel like internal tooling. It is part of the store's product experience and must feel as polished, branded, and trustworthy as the customer-facing LatteLink web app.
+
+For implementation, internal services, routes, and data models may still use `operator` naming for now. This spec uses `Client Dashboard` as the product name.
 
 The dashboard must support two realities at once:
 
@@ -15,13 +17,37 @@ The dashboard must support two realities at once:
 
 ## Product Intent
 
-The operator dashboard should become the back-office counterpart to LatteLink:
+The client dashboard should become the back-office counterpart to LatteLink:
 
 - same visual quality as the public LatteLink web experience
 - store-scoped login for owners and staff
 - role-based permissions enforced by backend services
 - a clear separation between operational actions and business configuration
 - future-ready foundations for multi-store, multi-role, and multi-client expansion
+
+## V1 Scope
+
+The V1 target is a single-store pilot-ready client dashboard.
+
+Included in V1:
+
+- single-store dashboard experience
+- `owner` and `staff` roles
+- email/password sign-in
+- Google SSO for already-provisioned store accounts
+- live order board and order status transitions
+- store configuration editing for owners
+- menu create/edit/remove/visibility controls when the backend menu is authoritative
+- staff account management for owners
+- branded, production-quality UI aligned with LatteLink
+
+Explicitly deferred until after V1:
+
+- Apple SSO
+- audit history UI
+- multi-store switcher and cross-location session logic
+- manager-specific UI flows beyond the shared role foundation
+- advanced analytics, loyalty, and customer-management surfaces
 
 ## Primary Users
 
@@ -63,7 +89,7 @@ This avoids collapsing all permissions into just `owner` and `staff` and gives r
 ## Core Product Rules
 
 1. The dashboard is store-scoped.
-2. Every operator user has a role.
+2. Every client dashboard user has a role.
 3. Role checks must be enforced server-side.
 4. UI visibility must reflect permissions, but must never be the only control.
 5. Operator actions must call authoritative backend business logic.
@@ -106,11 +132,19 @@ For the near term, the product should behave as:
 
 The `manager` role can be modeled in contracts and permissions early, but the UI can defer it if needed.
 
+### Post-V1 Notes
+
+For current delivery planning:
+
+- treat `manager` as a reserved role foundation, not a required V1 UX surface
+- keep the dashboard single-store only
+- treat Apple SSO and audit history as post-V1 work
+
 ## Functional Requirements
 
 ### 1. Authentication and Access
 
-The operator dashboard must move from the current shared staff token model to real operator identity.
+The client dashboard must move from the current shared staff token model to real operator identity.
 
 Required behavior:
 

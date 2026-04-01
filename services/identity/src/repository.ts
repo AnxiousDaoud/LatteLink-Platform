@@ -73,6 +73,7 @@ type PersistedMagicLinkRow = {
 type PersistedOperatorUserRow = {
   operator_user_id: string;
   email: string;
+  google_sub: string | null;
   display_name: string;
   password_hash: string | null;
   role: OperatorRole;
@@ -173,6 +174,12 @@ export type IdentityRepository = {
   listOperatorUsers(locationId?: string): Promise<OperatorUserRecord[]>;
   getOperatorUserById(operatorUserId: string): Promise<OperatorUserRecord | undefined>;
   getOperatorUserByEmail(email: string): Promise<OperatorUserRecord | undefined>;
+  getOperatorUserByGoogleSub(googleSub: string): Promise<OperatorUserRecord | undefined>;
+  resolveOperatorUserForGoogleSignIn(input: {
+    googleSub: string;
+    email?: string;
+    emailVerified: boolean;
+  }): Promise<OperatorUserRecord | undefined>;
   verifyOperatorPassword(email: string, password: string): Promise<OperatorUserRecord | undefined>;
   createOperatorUser(input: {
     displayName: string;
@@ -188,7 +195,7 @@ export type IdentityRepository = {
   saveOperatorMagicLink(input: { token: string; email: string; expiresAt: string }): Promise<void>;
   getOperatorMagicLink(token: string): Promise<OperatorMagicLinkRecord | undefined>;
   consumeOperatorMagicLink(token: string, operatorUserId: string): Promise<void>;
-  saveOperatorSession(session: StoredOperatorSession, authMethod: "magic-link" | "password" | "refresh"): Promise<void>;
+  saveOperatorSession(session: StoredOperatorSession, authMethod: "magic-link" | "password" | "google" | "refresh"): Promise<void>;
   rotateOperatorRefreshSession(
     refreshToken: string,
     createNextSession: (operatorUserId: string) => StoredOperatorSession,
@@ -389,6 +396,7 @@ export function createInMemoryIdentityRepository(): IdentityRepository {
   const magicLinksByToken = new Map<string, MagicLinkRecord>();
   const operatorUsersById = new Map<string, OperatorUserRecord>();
   const operatorUserIdByEmail = new Map<string, string>();
+  const operatorUserIdByGoogleSub = new Map<string, string>();
   const operatorPasswordHashByUserId = new Map<string, string>();
   const operatorMagicLinksByToken = new Map<string, OperatorMagicLinkRecord>();
 
@@ -603,6 +611,40 @@ export function createInMemoryIdentityRepository(): IdentityRepository {
 
       const record = operatorUsersById.get(operatorUserId);
       return record ? { ...record } : undefined;
+    },
+    async getOperatorUserByGoogleSub(googleSub) {
+      const operatorUserId = operatorUserIdByGoogleSub.get(googleSub);
+      if (!operatorUserId) {
+        return undefined;
+      }
+
+      const record = operatorUsersById.get(operatorUserId);
+      return record ? { ...record } : undefined;
+    },
+    async resolveOperatorUserForGoogleSignIn(input) {
+      const existingByGoogleSub = operatorUserIdByGoogleSub.get(input.googleSub);
+      if (existingByGoogleSub) {
+        const existing = operatorUsersById.get(existingByGoogleSub);
+        return existing && existing.active ? { ...existing } : undefined;
+      }
+
+      if (!input.emailVerified || !input.email) {
+        return undefined;
+      }
+
+      const normalizedEmail = normalizeEmail(input.email);
+      const operatorUserId = operatorUserIdByEmail.get(normalizedEmail);
+      if (!operatorUserId) {
+        return undefined;
+      }
+
+      const existing = operatorUsersById.get(operatorUserId);
+      if (!existing || !existing.active) {
+        return undefined;
+      }
+
+      operatorUserIdByGoogleSub.set(input.googleSub, operatorUserId);
+      return { ...existing };
     },
     async verifyOperatorPassword(email, password) {
       const operatorUserId = operatorUserIdByEmail.get(normalizeEmail(email));
@@ -1310,6 +1352,109 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
       }
 
       return toOperatorUserRecord(row as PersistedOperatorUserRow);
+    },
+    async getOperatorUserByGoogleSub(googleSub) {
+      const row = await db
+        .selectFrom("operator_users")
+        .selectAll()
+        .where("google_sub", "=", googleSub)
+        .executeTakeFirst();
+
+      if (!row) {
+        return undefined;
+      }
+
+      return toOperatorUserRecord(row as PersistedOperatorUserRow);
+    },
+    async resolveOperatorUserForGoogleSignIn(input) {
+      const normalizedEmail = input.email ? normalizeEmail(input.email) : undefined;
+      const now = new Date().toISOString();
+
+      return db.transaction().execute(async (trx) => {
+        const existingGoogle = await trx
+          .selectFrom("operator_users")
+          .selectAll()
+          .where("google_sub", "=", input.googleSub)
+          .executeTakeFirst();
+
+        if (existingGoogle) {
+          if (!existingGoogle.active) {
+            return undefined;
+          }
+
+          if (input.emailVerified && normalizedEmail && normalizedEmail !== existingGoogle.email) {
+            const conflicting = await trx
+              .selectFrom("operator_users")
+              .select("operator_user_id")
+              .where("email", "=", normalizedEmail)
+              .executeTakeFirst();
+
+            if (!conflicting || conflicting.operator_user_id === existingGoogle.operator_user_id) {
+              await trx
+                .updateTable("operator_users")
+                .set({
+                  email: normalizedEmail,
+                  updated_at: now
+                })
+                .where("operator_user_id", "=", existingGoogle.operator_user_id)
+                .execute();
+            }
+          }
+
+          const refreshed = await trx
+            .selectFrom("operator_users")
+            .selectAll()
+            .where("operator_user_id", "=", existingGoogle.operator_user_id)
+            .executeTakeFirstOrThrow();
+
+          return toOperatorUserRecord(refreshed as PersistedOperatorUserRow);
+        }
+
+        if (!input.emailVerified || !normalizedEmail) {
+          return undefined;
+        }
+
+        const existingEmail = await trx
+          .selectFrom("operator_users")
+          .selectAll()
+          .where("email", "=", normalizedEmail)
+          .executeTakeFirst();
+
+        if (!existingEmail || !existingEmail.active) {
+          return undefined;
+        }
+
+        try {
+          await trx
+            .updateTable("operator_users")
+            .set({
+              google_sub: input.googleSub,
+              updated_at: now
+            })
+            .where("operator_user_id", "=", existingEmail.operator_user_id)
+            .execute();
+        } catch {
+          const concurrentGoogle = await trx
+            .selectFrom("operator_users")
+            .selectAll()
+            .where("google_sub", "=", input.googleSub)
+            .executeTakeFirst();
+
+          if (!concurrentGoogle || !concurrentGoogle.active) {
+            return undefined;
+          }
+
+          return toOperatorUserRecord(concurrentGoogle as PersistedOperatorUserRow);
+        }
+
+        const updated = await trx
+          .selectFrom("operator_users")
+          .selectAll()
+          .where("operator_user_id", "=", existingEmail.operator_user_id)
+          .executeTakeFirstOrThrow();
+
+        return toOperatorUserRecord(updated as PersistedOperatorUserRow);
+      });
     },
     async verifyOperatorPassword(email, password) {
       const row = await db

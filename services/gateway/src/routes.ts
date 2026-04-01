@@ -5,12 +5,15 @@ import { apiErrorSchema, authSessionSchema } from "@gazelle/contracts-core";
 import {
   appleExchangeRequestSchema,
   authContract,
+  googleOAuthStartRequestSchema,
+  googleOAuthStartResponseSchema,
   logoutRequestSchema,
   magicLinkRequestSchema,
   magicLinkVerifySchema,
   meResponseSchema,
   operatorAuthContract,
   operatorDevAccessRequestSchema,
+  operatorGoogleExchangeRequestSchema,
   operatorMeResponseSchema,
   operatorPasswordSignInSchema,
   operatorUserCreateSchema,
@@ -1162,6 +1165,50 @@ export async function registerRoutes(app: FastifyInstance) {
         path: "/v1/operator/auth/sign-in",
         body: input,
         responseSchema: operatorAuthContract.routes.signIn.response
+      });
+    }
+  );
+
+  app.get(
+    "/v1/operator/auth/google/start",
+    {
+      preHandler: app.rateLimit(authReadRateLimit)
+    },
+    async (request, reply) => {
+      const input = googleOAuthStartRequestSchema.parse(request.query);
+      const search = new URLSearchParams({
+        redirectUri: input.redirectUri
+      });
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: identityBaseUrl,
+        serviceLabel: "Identity",
+        method: "GET",
+        path: `/v1/operator/auth/google/start?${search.toString()}`,
+        responseSchema: googleOAuthStartResponseSchema
+      });
+    }
+  );
+
+  app.post(
+    "/v1/operator/auth/google/exchange",
+    {
+      preHandler: app.rateLimit(authWriteRateLimit)
+    },
+    async (request, reply) => {
+      const input = operatorGoogleExchangeRequestSchema.parse(request.body);
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: identityBaseUrl,
+        serviceLabel: "Identity",
+        method: "POST",
+        path: "/v1/operator/auth/google/exchange",
+        body: input,
+        responseSchema: operatorAuthContract.routes.googleExchange.response
       });
     }
   );

@@ -13,6 +13,7 @@ Run the full service stack on one low-cost host before AWS cutover.
 - Services: gateway, identity, catalog, orders, payments, loyalty, notifications
 - Dependencies: PostgreSQL, Valkey
 - Edge: Caddy with TLS for `api.<your-domain>`
+- Optional static client dashboard on the same host
 
 ## Prerequisites
 
@@ -28,6 +29,7 @@ Run the full service stack on one low-cost host before AWS cutover.
 - Caddy config: `infra/free/Caddyfile`
 - Runtime env template: `infra/free/.env.example`
 - Workflow: `.github/workflows/deploy-free.yml`
+- Client dashboard workflow: `.github/workflows/client-dashboard-free.yml`
 
 ## Required GitHub Variables
 
@@ -47,6 +49,8 @@ Optional:
 
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
+- `FREE_CLIENT_DASHBOARD_DOMAIN` if deploying the client dashboard lane
+- `GOOGLE_OAUTH_*` env values if enabling Google SSO for the client dashboard
 
 ## Deploy
 

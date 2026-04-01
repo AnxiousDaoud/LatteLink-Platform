@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   appleExchangeRequestSchema,
+  googleOAuthStartRequestSchema,
   magicLinkRequestSchema,
+  operatorGoogleExchangeRequestSchema,
   operatorPasswordSignInSchema,
   operatorUserCreateSchema,
   passkeyVerifyRequestSchema
@@ -24,6 +26,25 @@ describe("contracts-auth", () => {
     });
 
     expect(data.nonce).toBe("legacy-nonce");
+  });
+
+  it("accepts Google OAuth start payloads", () => {
+    const data = googleOAuthStartRequestSchema.parse({
+      redirectUri: "http://localhost:5173/?google_auth_callback=1"
+    });
+
+    expect(data.redirectUri).toContain("google_auth_callback=1");
+  });
+
+  it("accepts operator Google exchange payloads", () => {
+    const data = operatorGoogleExchangeRequestSchema.parse({
+      code: "google-auth-code",
+      state: "signed-state",
+      redirectUri: "http://localhost:5173/?google_auth_callback=1"
+    });
+
+    expect(data.code).toBe("google-auth-code");
+    expect(data.state).toBe("signed-state");
   });
 
   it("accepts passkey register verify payload", () => {

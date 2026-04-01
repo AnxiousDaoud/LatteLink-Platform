@@ -4,11 +4,13 @@ import {
   createOperatorMenuItem,
   createOperatorStaffUser,
   deleteOperatorMenuItem,
+  exchangeOperatorGoogleCode,
   fetchOperatorSnapshot,
   logoutOperatorSession,
   refreshOperatorSession,
   resolveDefaultApiBaseUrl,
   signInOperatorWithPassword,
+  startOperatorGoogleSignIn,
   updateOperatorMenuItem,
   updateOperatorMenuItemVisibility,
   updateOperatorOrderStatus,
@@ -167,6 +169,59 @@ function isLocalDevAccessEnabled() {
   }
 
   return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
+function getGoogleCallbackRedirectUri() {
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1/?google_auth_callback=1";
+  }
+
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.hash = "";
+  url.search = "";
+  url.searchParams.set("google_auth_callback", "1");
+  return url.toString();
+}
+
+function readGoogleCallbackParams() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("google_auth_callback") !== "1") {
+    return null;
+  }
+
+  const code = url.searchParams.get("code");
+  const stateValue = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+
+  return {
+    redirectUri: getGoogleCallbackRedirectUri(),
+    code: code?.trim() || undefined,
+    state: stateValue?.trim() || undefined,
+    error: error?.trim() || undefined
+  };
+}
+
+function clearGoogleCallbackParams() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete("google_auth_callback");
+  url.searchParams.delete("code");
+  url.searchParams.delete("state");
+  url.searchParams.delete("scope");
+  url.searchParams.delete("authuser");
+  url.searchParams.delete("prompt");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_subtype");
+  const nextPath = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, document.title, nextPath);
 }
 
 function setNotice(message: string | null) {
@@ -331,7 +386,7 @@ function formatDashboardDate() {
 }
 
 function getOperatorInitials(name: string | undefined) {
-  const tokens = (name ?? "Operator")
+  const tokens = (name ?? "Client")
     .split(/\s+/)
     .map((token) => token.trim())
     .filter((token) => token.length > 0)
@@ -457,7 +512,7 @@ function resetDashboardData() {
   state.creatingTeamUser = false;
 }
 
-async function signOut(message = "Signed out of the operator workspace.") {
+async function signOut(message = "Signed out of the client dashboard.") {
   const currentSession = state.session;
   clearStoredSession();
   state.session = null;
@@ -529,9 +584,9 @@ async function loadDashboard() {
       clearPendingCancel();
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load operator data.";
+    const message = error instanceof Error ? error.message : "Unable to load client dashboard data.";
     if (message.toLowerCase().includes("refresh") || message.toLowerCase().includes("auth")) {
-      await signOut("Your operator session expired. Sign in again to continue.");
+      await signOut("Your client dashboard session expired. Sign in again to continue.");
       return;
     }
     setError(message);
@@ -560,6 +615,11 @@ async function bootstrap() {
   render();
 
   state.initializing = false;
+  const handledGoogleCallback = await handleGoogleCallback();
+  if (handledGoogleCallback) {
+    return;
+  }
+
   if (state.session) {
     await loadDashboard();
     return;
@@ -616,7 +676,7 @@ function renderAuthScreen() {
             ${renderBrandMark()}
             <span class="brand-wordmark">Latte<span>Link</span></span>
           </div>
-          <span class="auth-nav__tag">Operator</span>
+          <span class="auth-nav__tag">Client Dashboard</span>
         </div>
       </header>
 
@@ -624,7 +684,7 @@ function renderAuthScreen() {
         <section class="auth-card">
           <div class="auth-card__header">
             <p class="eyebrow">Store access</p>
-            <h1>Sign in to your operator workspace.</h1>
+            <h1>Sign in to your client dashboard.</h1>
             <p class="muted-copy">Use the email and password assigned to your store account.</p>
           </div>
 
@@ -667,11 +727,11 @@ function renderAuthScreen() {
                 <small>Coming soon</small>
               </span>
             </button>
-            <button class="sso-button" type="button" disabled>
+            <button class="sso-button" type="button" data-action="start-google-sign-in" ${state.signingIn ? "disabled" : ""}>
               <span class="sso-button__icon">G</span>
               <span class="sso-button__meta">
                 <strong>Sign in with Google</strong>
-                <small>Coming soon</small>
+                <small>Use your store Google account</small>
               </span>
             </button>
           </div>
@@ -1157,7 +1217,7 @@ function renderMenuSection() {
       ${
         state.appConfig?.featureFlags.menuEditing
           ? ""
-          : `<article class="dash-surface dash-empty-surface"><p class="muted-copy">Menu editing is disabled for this store. Operators can review the live menu but cannot change it.</p></article>`
+          : `<article class="dash-surface dash-empty-surface"><p class="muted-copy">Menu editing is disabled for this store. Staff can review the live menu but cannot change it.</p></article>`
       }
       ${createForm}
       <article class="dash-surface">
@@ -1262,7 +1322,7 @@ function renderTeamSection() {
               <article class="dash-surface">
                 <div class="dash-surface-head">
                   <div>
-                    <div class="dash-panel-title">Create operator</div>
+                    <div class="dash-panel-title">Create account</div>
                     <h3 class="dash-surface-title">Add a team member</h3>
                   </div>
                 </div>
@@ -1288,7 +1348,7 @@ function renderTeamSection() {
                     <input name="password" type="password" placeholder="Minimum 8 characters" minlength="8" required />
                   </label>
                   <button class="button button--primary" type="submit" ${state.creatingTeamUser ? "disabled" : ""}>
-                    ${state.creatingTeamUser ? "Creating…" : "Create operator"}
+                    ${state.creatingTeamUser ? "Creating…" : "Create account"}
                   </button>
                 </form>
               </article>
@@ -1392,7 +1452,7 @@ function renderDashboardContent() {
 
 function renderDashboard() {
   ensureSectionIsAvailable();
-  const locationLabel = state.appConfig?.brand.locationName ?? state.storeConfig?.storeName ?? "Operator dashboard";
+  const locationLabel = state.appConfig?.brand.locationName ?? state.storeConfig?.storeName ?? "Client dashboard";
   const marketLabel = state.appConfig?.brand.marketLabel ?? "Store operations";
   const liveEnabled = state.appConfig?.featureFlags.orderTracking !== false;
 
@@ -1413,7 +1473,7 @@ function renderDashboard() {
           </div>
         </div>
 
-        <nav class="dash-nav" aria-label="Operator sections">
+        <nav class="dash-nav" aria-label="Client dashboard sections">
           ${renderNavItems()}
         </nav>
 
@@ -1421,7 +1481,7 @@ function renderDashboard() {
           <div class="dash-user-row">
             <div class="dash-avatar">${escapeHtml(getOperatorInitials(state.session?.operator.displayName))}</div>
             <div>
-              <div class="dash-user-name">${escapeHtml(state.session?.operator.displayName ?? "Operator")}</div>
+              <div class="dash-user-name">${escapeHtml(state.session?.operator.displayName ?? "Client")}</div>
               <div class="dash-user-role">${escapeHtml(getOperatorRoleLabel(state.session?.operator.role ?? "staff"))}</div>
             </div>
           </div>
@@ -1486,6 +1546,79 @@ async function handlePasswordSignIn(form: HTMLFormElement) {
     state.signingIn = false;
     render();
   }
+}
+
+async function handleGoogleSignInStart() {
+  const apiBaseUrl = state.authApiBaseUrl || resolveDefaultApiBaseUrl();
+
+  try {
+    state.signingIn = true;
+    state.authApiBaseUrl = apiBaseUrl;
+    persistApiBaseUrl(apiBaseUrl);
+    setError(null);
+    render();
+
+    const start = await startOperatorGoogleSignIn({
+      apiBaseUrl,
+      redirectUri: getGoogleCallbackRedirectUri()
+    });
+
+    if (typeof window !== "undefined") {
+      window.location.assign(start.authorizeUrl);
+      return;
+    }
+  } catch (error) {
+    state.signingIn = false;
+    setError(error instanceof Error ? error.message : "Unable to start Google sign-in.");
+    render();
+  }
+}
+
+async function handleGoogleCallback() {
+  const callback = readGoogleCallbackParams();
+  if (!callback) {
+    return false;
+  }
+
+  state.signingIn = true;
+  setError(null);
+  render();
+
+  if (callback.error) {
+    clearGoogleCallbackParams();
+    state.signingIn = false;
+    setError("Google sign-in was canceled or could not be completed.");
+    render();
+    return true;
+  }
+
+  if (!callback.code || !callback.state) {
+    clearGoogleCallbackParams();
+    state.signingIn = false;
+    setError("Google sign-in returned incomplete callback data.");
+    render();
+    return true;
+  }
+
+  try {
+    const session = await exchangeOperatorGoogleCode({
+      apiBaseUrl: state.authApiBaseUrl || resolveDefaultApiBaseUrl(),
+      code: callback.code,
+      state: callback.state,
+      redirectUri: callback.redirectUri
+    });
+
+    clearGoogleCallbackParams();
+    state.signingIn = false;
+    await applyVerifiedSession(session, `Signed in with Google as ${session.operator.displayName}.`);
+  } catch (error) {
+    clearGoogleCallbackParams();
+    state.signingIn = false;
+    setError(error instanceof Error ? error.message : "Unable to complete Google sign-in.");
+    render();
+  }
+
+  return true;
 }
 
 async function handleMenuCreateSubmit(form: HTMLFormElement) {
@@ -1594,11 +1727,11 @@ async function handleTeamCreateSubmit(form: HTMLFormElement) {
       role: formData.get("role"),
       password: formData.get("password")
     });
-    setNotice("Created operator account.");
+    setNotice("Created team member account.");
     form.reset();
     await loadDashboard();
   } catch (error) {
-    setError(error instanceof Error ? error.message : "Unable to create operator account.");
+    setError(error instanceof Error ? error.message : "Unable to create team member account.");
   } finally {
     state.creatingTeamUser = false;
     render();
@@ -1630,10 +1763,10 @@ async function handleTeamUserSubmit(form: HTMLFormElement) {
       password: formData.get("password"),
       active
     });
-    setNotice("Updated operator access.");
+    setNotice("Updated team member access.");
     await loadDashboard();
   } catch (error) {
-    setError(error instanceof Error ? error.message : "Unable to update operator access.");
+    setError(error instanceof Error ? error.message : "Unable to update team member access.");
   } finally {
     state.busyTeamUserId = null;
     render();
@@ -1654,10 +1787,10 @@ async function handleOrderAdvance(orderId: string, status: "IN_PREP" | "READY" |
   try {
     state.busyOrderId = orderId;
     clearPendingCancel();
+    setNotice(null);
     setError(null);
     render();
     await updateOperatorOrderStatus(state.session, orderId, { status, note });
-    setNotice(`Updated order to ${formatOrderStatus(status)}.`);
     await loadDashboard();
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to update order.");
@@ -1692,7 +1825,7 @@ async function handleMenuItemDelete(itemId: string) {
     return;
   }
 
-  if (typeof window !== "undefined" && !window.confirm("Remove this menu item from the operator-managed menu?")) {
+  if (typeof window !== "undefined" && !window.confirm("Remove this menu item from the client-managed menu?")) {
     return;
   }
 
@@ -1758,6 +1891,11 @@ root.addEventListener("click", (event) => {
   const action = actionElement.dataset.action;
   if (action === "refresh") {
     void loadDashboard();
+    return;
+  }
+
+  if (action === "start-google-sign-in") {
+    void handleGoogleSignInStart();
     return;
   }
 
@@ -1834,7 +1972,7 @@ root.addEventListener("click", (event) => {
   if (action === "confirm-cancel-order") {
     const orderId = actionElement.dataset.orderId;
     if (orderId) {
-      void handleOrderAdvance(orderId, "CANCELED", "Canceled by operator");
+      void handleOrderAdvance(orderId, "CANCELED", "Canceled by staff");
     }
     return;
   }

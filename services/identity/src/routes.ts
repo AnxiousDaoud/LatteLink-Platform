@@ -9,11 +9,14 @@ import {
 } from "@simplewebauthn/server";
 import {
   appleExchangeRequestSchema,
+  googleOAuthStartRequestSchema,
+  googleOAuthStartResponseSchema,
   logoutRequestSchema,
   magicLinkRequestSchema,
   magicLinkVerifySchema,
   meResponseSchema,
   operatorDevAccessRequestSchema,
+  operatorGoogleExchangeRequestSchema,
   operatorMeResponseSchema,
   operatorPasswordSignInSchema,
   operatorSessionSchema,
@@ -53,6 +56,7 @@ const defaultPasskeyVerifyRateLimitMax = 12;
 const defaultPasskeyChallengeRateLimitMax = 24;
 const defaultAccessTokenTtlMs = 30 * 60 * 1000;
 const defaultOperatorLocationId = "flagship-01";
+const defaultGoogleOAuthStateTtlMs = 10 * 60 * 1000;
 // Successful refresh rotation extends the session's idle lifetime by issuing a new refresh token.
 // We intentionally keep this as an idle timeout for now; absolute session caps are a future policy choice.
 const defaultRefreshSessionTtlMs = 30 * 24 * 60 * 60 * 1000;
@@ -101,6 +105,137 @@ function buildOperatorMagicLinkUrl(baseUrl: string, token: string) {
   const url = new URL("/", baseUrl);
   url.searchParams.set("operator_token", token);
   return url.toString();
+}
+
+const googleTokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  token_type: z.string().min(1).optional(),
+  scope: z.string().min(1).optional()
+});
+
+const googleUserInfoSchema = z.object({
+  sub: z.string().min(1),
+  email: z.string().email().optional(),
+  email_verified: z.union([z.boolean(), z.string()]).optional(),
+  name: z.string().min(1).optional()
+});
+
+type GoogleOAuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  stateSecret: string;
+  allowedRedirectUris: string[];
+  authorizeEndpoint: string;
+  tokenEndpoint: string;
+  userInfoEndpoint: string;
+  stateTtlMs: number;
+};
+
+function loadGoogleOperatorConfig(): GoogleOAuthConfig | undefined {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim();
+  const stateSecret =
+    process.env.GOOGLE_OAUTH_STATE_SECRET?.trim() || process.env.JWT_SECRET?.trim() || undefined;
+
+  if (!clientId || !clientSecret || !stateSecret) {
+    return undefined;
+  }
+
+  return {
+    clientId,
+    clientSecret,
+    stateSecret,
+    allowedRedirectUris: parseCommaSeparatedEnv(process.env.GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS),
+    authorizeEndpoint: process.env.GOOGLE_OAUTH_AUTHORIZE_ENDPOINT?.trim() || "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenEndpoint: process.env.GOOGLE_OAUTH_TOKEN_ENDPOINT?.trim() || "https://oauth2.googleapis.com/token",
+    userInfoEndpoint:
+      process.env.GOOGLE_OAUTH_USERINFO_ENDPOINT?.trim() || "https://openidconnect.googleapis.com/v1/userinfo",
+    stateTtlMs: toPositiveInteger(process.env.GOOGLE_OAUTH_STATE_TTL_MS, defaultGoogleOAuthStateTtlMs)
+  };
+}
+
+function isAllowedGoogleRedirectUri(config: GoogleOAuthConfig, redirectUri: string) {
+  return config.allowedRedirectUris.length === 0 || config.allowedRedirectUris.includes(redirectUri);
+}
+
+function buildGoogleOAuthState(input: { redirectUri: string; stateSecret: string }) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      redirectUri: input.redirectUri,
+      issuedAt: Date.now()
+    }),
+    "utf8"
+  ).toString("base64url");
+  const signature = createHmac("sha256", input.stateSecret).update(payload).digest("base64url");
+
+  return `${payload}.${signature}`;
+}
+
+function parseGoogleOAuthState(input: {
+  state: string;
+  stateSecret: string;
+  maxAgeMs: number;
+}): { redirectUri: string } | undefined {
+  const [payload, signature] = input.state.split(".");
+  if (!payload || !signature) {
+    return undefined;
+  }
+
+  const expectedSignature = createHmac("sha256", input.stateSecret).update(payload).digest("base64url");
+  if (signature !== expectedSignature) {
+    return undefined;
+  }
+
+  try {
+    const parsed = z
+      .object({
+        redirectUri: z.string().url(),
+        issuedAt: z.number().int().nonnegative()
+      })
+      .parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
+
+    if (Date.now() - parsed.issuedAt > input.maxAgeMs) {
+      return undefined;
+    }
+
+    return {
+      redirectUri: parsed.redirectUri
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function buildGoogleAuthorizeUrl(input: { config: GoogleOAuthConfig; redirectUri: string; state: string }) {
+  const url = new URL(input.config.authorizeEndpoint);
+  url.searchParams.set("client_id", input.config.clientId);
+  url.searchParams.set("redirect_uri", input.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("state", input.state);
+  url.searchParams.set("prompt", "select_account");
+
+  return url.toString();
+}
+
+function normalizeGoogleEmailVerified(value: boolean | string | undefined) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return typeof value === "string" ? value.toLowerCase() === "true" : false;
+}
+
+function parseJsonSafely(rawValue: string) {
+  if (!rawValue) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(rawValue) as unknown;
+  } catch {
+    return rawValue;
+  }
 }
 
 function loadJwtSecret() {
@@ -221,7 +356,7 @@ async function issueOperatorSession(params: {
   repository: IdentityRepository;
   seed: string;
   operatorUserId: string;
-  authMethod: "magic-link" | "password" | "refresh";
+  authMethod: "magic-link" | "password" | "google" | "refresh";
 }) {
   const session = buildStoredOperatorSession(params.seed, params.operatorUserId);
   await params.repository.saveOperatorSession(session, params.authMethod);
@@ -837,6 +972,158 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         seed: `password:${operator.operatorUserId}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
         authMethod: "password"
+      });
+    }
+  );
+
+  app.get(
+    "/v1/operator/auth/google/start",
+    {
+      preHandler: app.rateLimit(authReadRateLimit)
+    },
+    async (request, reply) => {
+      const config = loadGoogleOperatorConfig();
+      if (!config) {
+        return reply
+          .status(503)
+          .send(buildApiError(request.id, "GOOGLE_SSO_NOT_CONFIGURED", "Google Sign-In is not configured"));
+      }
+
+      const input = googleOAuthStartRequestSchema.parse(request.query);
+      if (!isAllowedGoogleRedirectUri(config, input.redirectUri)) {
+        return reply
+          .status(400)
+          .send(buildApiError(request.id, "INVALID_REDIRECT_URI", "Google redirect URI is not allowed"));
+      }
+
+      const state = buildGoogleOAuthState({
+        redirectUri: input.redirectUri,
+        stateSecret: config.stateSecret
+      });
+
+      return googleOAuthStartResponseSchema.parse({
+        authorizeUrl: buildGoogleAuthorizeUrl({
+          config,
+          redirectUri: input.redirectUri,
+          state
+        }),
+        stateExpiresAt: new Date(Date.now() + config.stateTtlMs).toISOString()
+      });
+    }
+  );
+
+  app.post(
+    "/v1/operator/auth/google/exchange",
+    {
+      preHandler: app.rateLimit(authWriteRateLimit)
+    },
+    async (request, reply) => {
+      const config = loadGoogleOperatorConfig();
+      if (!config) {
+        return reply
+          .status(503)
+          .send(buildApiError(request.id, "GOOGLE_SSO_NOT_CONFIGURED", "Google Sign-In is not configured"));
+      }
+
+      const input = operatorGoogleExchangeRequestSchema.parse(request.body);
+      if (!isAllowedGoogleRedirectUri(config, input.redirectUri)) {
+        return reply
+          .status(400)
+          .send(buildApiError(request.id, "INVALID_REDIRECT_URI", "Google redirect URI is not allowed"));
+      }
+
+      const parsedState = parseGoogleOAuthState({
+        state: input.state,
+        stateSecret: config.stateSecret,
+        maxAgeMs: config.stateTtlMs
+      });
+      if (!parsedState || parsedState.redirectUri !== input.redirectUri) {
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "INVALID_GOOGLE_STATE", "Google Sign-In state is invalid or expired"));
+      }
+
+      let tokenResponse: Response;
+      try {
+        tokenResponse = await fetch(config.tokenEndpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded"
+          },
+          body: new URLSearchParams({
+            code: input.code,
+            client_id: config.clientId,
+            client_secret: config.clientSecret,
+            redirect_uri: input.redirectUri,
+            grant_type: "authorization_code"
+          })
+        });
+      } catch (error) {
+        request.log.error({ error, requestId: request.id }, "Google token exchange failed before response");
+        return reply
+          .status(502)
+          .send(buildApiError(request.id, "GOOGLE_TOKEN_EXCHANGE_FAILED", "Google token exchange failed"));
+      }
+
+      const parsedTokenBody = parseJsonSafely(await tokenResponse.text());
+      if (!tokenResponse.ok) {
+        return reply.status(502).send(
+          buildApiError(request.id, "GOOGLE_TOKEN_EXCHANGE_FAILED", "Google token exchange failed")
+        );
+      }
+
+      const parsedToken = googleTokenResponseSchema.safeParse(parsedTokenBody);
+      if (!parsedToken.success) {
+        return reply
+          .status(502)
+          .send(buildApiError(request.id, "GOOGLE_TOKEN_INVALID", "Google token response was invalid"));
+      }
+
+      let userInfoResponse: Response;
+      try {
+        userInfoResponse = await fetch(config.userInfoEndpoint, {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${parsedToken.data.access_token}`
+          }
+        });
+      } catch (error) {
+        request.log.error({ error, requestId: request.id }, "Google userinfo request failed before response");
+        return reply
+          .status(502)
+          .send(buildApiError(request.id, "GOOGLE_USERINFO_FAILED", "Google user info lookup failed"));
+      }
+
+      const parsedUserInfoBody = parseJsonSafely(await userInfoResponse.text());
+      if (!userInfoResponse.ok) {
+        return reply
+          .status(502)
+          .send(buildApiError(request.id, "GOOGLE_USERINFO_FAILED", "Google user info lookup failed"));
+      }
+
+      const parsedUserInfo = googleUserInfoSchema.safeParse(parsedUserInfoBody);
+      if (!parsedUserInfo.success) {
+        return reply
+          .status(502)
+          .send(buildApiError(request.id, "GOOGLE_USERINFO_INVALID", "Google user info response was invalid"));
+      }
+
+      const operator = await repository.resolveOperatorUserForGoogleSignIn({
+        googleSub: parsedUserInfo.data.sub,
+        email: parsedUserInfo.data.email,
+        emailVerified: normalizeGoogleEmailVerified(parsedUserInfo.data.email_verified)
+      });
+      if (!operator || !operator.active) {
+        return reply
+          .status(404)
+          .send(buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "No client dashboard access exists for this Google account"));
+      }
+
+      return issueOperatorSession({
+        repository,
+        seed: `google:${parsedUserInfo.data.sub}:${Date.now()}`,
+        operatorUserId: operator.operatorUserId,
+        authMethod: "google"
       });
     }
   );

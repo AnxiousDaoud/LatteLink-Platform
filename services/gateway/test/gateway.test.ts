@@ -184,6 +184,48 @@ describe("gateway", () => {
         );
       }
 
+      if (url.includes("/v1/operator/auth/google/start") && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
+            stateExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString()
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url.endsWith("/v1/operator/auth/google/exchange") && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            accessToken: "operator-google-access-token",
+            refreshToken: "operator-google-refresh-token",
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            operator: {
+              operatorUserId: "123e4567-e89b-12d3-a456-426614174999",
+              displayName: "Store Owner",
+              email: "owner@gazellecoffee.com",
+              role: "owner",
+              locationId: "flagship-01",
+              active: true,
+              capabilities: [
+                "orders:read",
+                "orders:write",
+                "menu:read",
+                "menu:write",
+                "menu:visibility",
+                "store:read",
+                "store:write",
+                "staff:read",
+                "staff:write"
+              ],
+              createdAt: "2026-03-20T00:00:00.000Z",
+              updatedAt: "2026-03-20T00:00:00.000Z"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       if (url.endsWith("/v1/auth/me") && method === "GET") {
         if (!authHeader) {
           return new Response(
@@ -794,6 +836,42 @@ describe("gateway", () => {
       payload: {
         email: "owner@gazellecoffee.com",
         password: "LatteLinkOwner123!"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      operator: {
+        email: "owner@gazellecoffee.com",
+        role: "owner"
+      }
+    });
+    await app.close();
+  });
+
+  it("starts operator Google sign-in through identity", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/operator/auth/google/start?redirectUri=http%3A%2F%2Flocalhost%3A5173%2F%3Fgoogle_auth_callback%3D1"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      authorizeUrl: expect.stringContaining("accounts.google.com")
+    });
+    await app.close();
+  });
+
+  it("exchanges operator Google auth codes through identity", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/google/exchange",
+      payload: {
+        code: "google-auth-code",
+        state: "signed-state",
+        redirectUri: "http://localhost:5173/?google_auth_callback=1"
       }
     });
 
