@@ -10,6 +10,7 @@ import {
   magicLinkVerifySchema,
   meResponseSchema,
   operatorAuthContract,
+  operatorDevAccessRequestSchema,
   operatorMeResponseSchema,
   operatorUserCreateSchema,
   operatorUserListResponseSchema,
@@ -1181,6 +1182,27 @@ export async function registerRoutes(app: FastifyInstance) {
         path: "/v1/operator/auth/magic-link/verify",
         body: input,
         responseSchema: operatorAuthContract.routes.magicLinkVerify.response
+      });
+    }
+  );
+
+  app.post(
+    "/v1/operator/auth/dev-access",
+    {
+      preHandler: app.rateLimit(authWriteRateLimit)
+    },
+    async (request, reply) => {
+      const input = operatorDevAccessRequestSchema.parse(request.body);
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: identityBaseUrl,
+        serviceLabel: "Identity",
+        method: "POST",
+        path: "/v1/operator/auth/dev-access",
+        body: input,
+        responseSchema: operatorAuthContract.routes.devAccess.response
       });
     }
   );

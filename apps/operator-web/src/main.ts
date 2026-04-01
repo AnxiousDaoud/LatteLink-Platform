@@ -7,6 +7,7 @@ import {
   fetchOperatorSnapshot,
   logoutOperatorSession,
   refreshOperatorSession,
+  requestOperatorDevAccess,
   requestOperatorMagicLink,
   resolveDefaultApiBaseUrl,
   updateOperatorMenuItem,
@@ -52,10 +53,10 @@ type AppState = {
   session: OperatorSession | null;
   authApiBaseUrl: string;
   authEmail: string;
-  authToken: string;
   initializing: boolean;
   loading: boolean;
   requestingMagicLink: boolean;
+  requestingDevAccess: boolean;
   verifyingMagicLink: boolean;
   errorMessage: string | null;
   notice: string | null;
@@ -82,6 +83,11 @@ type AppState = {
 
 const ordersRefreshIntervalMs = 30_000;
 const cancelConfirmTimeoutMs = 10_000;
+const devAccessProfiles = [
+  { label: "Store owner", email: "owner@gazellecoffee.com" },
+  { label: "Manager", email: "manager@gazellecoffee.com" },
+  { label: "Staff", email: "staff@gazellecoffee.com" }
+] as const;
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) {
@@ -96,10 +102,10 @@ const state: AppState = {
   session: initialStoredSession,
   authApiBaseUrl: initialStoredSession?.apiBaseUrl ?? loadStoredApiBaseUrl(),
   authEmail: initialStoredSession?.operator.email ?? "",
-  authToken: "",
   initializing: true,
   loading: false,
   requestingMagicLink: false,
+  requestingDevAccess: false,
   verifyingMagicLink: false,
   errorMessage: null,
   notice: null,
@@ -156,6 +162,18 @@ function formatRelativeRefresh(value: number | null) {
 
   const deltaSeconds = Math.max(0, Math.floor((Date.now() - value) / 1000));
   return deltaSeconds < 60 ? `Updated ${deltaSeconds}s ago` : `Updated ${Math.floor(deltaSeconds / 60)}m ago`;
+}
+
+function isLocalDevAccessEnabled() {
+  if (import.meta.env.DEV) {
+    return true;
+  }
+
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 }
 
 function setNotice(message: string | null) {
@@ -354,7 +372,6 @@ async function applyVerifiedSession(nextSession: OperatorSession, notice: string
   state.session = nextSession;
   state.authApiBaseUrl = nextSession.apiBaseUrl;
   state.authEmail = nextSession.operator.email;
-  state.authToken = "";
   persistApiBaseUrl(nextSession.apiBaseUrl);
   persistSession(nextSession);
   setError(null);
@@ -388,7 +405,6 @@ async function bootstrap() {
 
   const urlToken = getMagicLinkTokenFromUrl();
   if (urlToken) {
-    state.authToken = urlToken;
     state.verifyingMagicLink = true;
     state.initializing = false;
     setNotice("Verifying operator magic link…");
@@ -432,75 +448,114 @@ function renderBanner() {
   return `<div class="${toneClass}">${escapeHtml(message)}</div>`;
 }
 
-function renderAuthScreen() {
+function renderBrandMark() {
   return `
-    <main class="auth-layout">
-      <section class="auth-hero">
-        <div class="auth-hero__badge">LatteLink Operator</div>
-        <h1>Run store operations with the same polish as the customer app.</h1>
-        <p class="auth-copy">
-          Owners, managers, and staff use one workspace for live orders, menu controls, store settings, and team access.
-          This dashboard now uses real operator sessions instead of a shared token.
-        </p>
-        <div class="auth-feature-list">
-          <article class="feature-chip">
-            <strong>Orders</strong>
-            <span>Live prep board, handoff actions, and pickup-ready progression.</span>
-          </article>
-          <article class="feature-chip">
-            <strong>Menu</strong>
-            <span>Create items, adjust pricing, or only toggle visibility based on role.</span>
-          </article>
-          <article class="feature-chip">
-            <strong>Team</strong>
-            <span>Store-scoped access for owners, managers, and staff.</span>
-          </article>
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 54 54" fill="none">
+        <path d="M14 8 L14 36 Q14 45 23 45 L45 45" stroke="white" stroke-width="4.5" stroke-linecap="round" />
+        <path d="M23 23 A13 13 0 0 1 36 36" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.7" />
+        <circle cx="14" cy="8" r="5.5" fill="white" />
+        <circle cx="45" cy="45" r="5.5" fill="white" />
+      </svg>
+    </span>
+  `;
+}
+
+function renderAuthScreen() {
+  const showDevAccess = isLocalDevAccessEnabled();
+  const ssoUnavailable = state.requestingMagicLink || state.requestingDevAccess || state.verifyingMagicLink;
+  const devAccessButtons = showDevAccess
+    ? devAccessProfiles
+        .map(
+          (profile) => `
+            <button
+              class="dev-access-button"
+              type="button"
+              data-action="dev-access"
+              data-email="${escapeHtml(profile.email)}"
+              ${state.requestingDevAccess ? "disabled" : ""}
+            >
+              <strong>${escapeHtml(profile.label)}</strong>
+              <span>${escapeHtml(profile.email)}</span>
+            </button>
+          `
+        )
+        .join("")
+    : "";
+
+  return `
+    <div class="auth-page">
+      <header class="auth-nav">
+        <div class="auth-nav__shell">
+          <div class="brand-lockup">
+            ${renderBrandMark()}
+            <span class="brand-wordmark">Latte<span>Link</span></span>
+          </div>
+          <span class="auth-nav__tag">Operator</span>
         </div>
-      </section>
+      </header>
 
-      <section class="auth-panel">
-        <div class="auth-panel__header">
-          <p class="eyebrow">Secure Access</p>
-          <h2>Request a magic link</h2>
-          <p class="muted-copy">Use the operator email assigned to your store account.</p>
-        </div>
+      <main class="auth-stage">
+        <section class="auth-card">
+          <div class="auth-card__header">
+            <p class="eyebrow">Store access</p>
+            <h1>Sign in to your operator workspace.</h1>
+            <p class="muted-copy">Use your assigned store email or continue with a staged SSO entry point.</p>
+          </div>
 
-        ${renderBanner()}
+          ${renderBanner()}
 
-        <form class="form-stack" data-form="auth-request-link">
-          <label class="field">
-            <span>Gateway API</span>
-            <input name="apiBaseUrl" type="url" value="${escapeHtml(state.authApiBaseUrl)}" placeholder="http://127.0.0.1:8080/v1" required />
-          </label>
+          <form class="auth-stack" data-form="auth-request-link">
+            <label class="field">
+              <span>Work email</span>
+              <input name="email" type="email" value="${escapeHtml(state.authEmail)}" placeholder="owner@store.com" required />
+            </label>
 
-          <label class="field">
-            <span>Work email</span>
-            <input name="email" type="email" value="${escapeHtml(state.authEmail)}" placeholder="owner@store.com" required />
-          </label>
+            <label class="field field--compact">
+              <span>Gateway API</span>
+              <input name="apiBaseUrl" type="url" value="${escapeHtml(state.authApiBaseUrl)}" placeholder="http://127.0.0.1:8080/v1" required />
+            </label>
 
-          <button class="button button--primary" type="submit" ${state.requestingMagicLink ? "disabled" : ""}>
-            ${state.requestingMagicLink ? "Sending link…" : "Send magic link"}
-          </button>
-        </form>
+            <button class="button button--primary" type="submit" ${state.requestingMagicLink ? "disabled" : ""}>
+              ${state.requestingMagicLink ? "Sending link…" : "Email me a magic link"}
+            </button>
+          </form>
 
-        <div class="auth-divider"><span>or</span></div>
+          <div class="auth-divider"><span>or continue with</span></div>
 
-        <form class="form-stack" data-form="auth-verify-token">
-          <label class="field">
-            <span>Magic link token</span>
-            <input name="token" value="${escapeHtml(state.authToken)}" placeholder="Paste token if you are testing locally" required />
-          </label>
+          <div class="sso-stack">
+            <button class="sso-button" type="button" disabled ${ssoUnavailable ? "data-busy=true" : ""}>
+              <span class="sso-button__icon">A</span>
+              <span class="sso-button__meta">
+                <strong>Sign in with Apple</strong>
+                <small>Production flow not wired yet</small>
+              </span>
+            </button>
+            <button class="sso-button" type="button" disabled ${ssoUnavailable ? "data-busy=true" : ""}>
+              <span class="sso-button__icon">G</span>
+              <span class="sso-button__meta">
+                <strong>Sign in with Google</strong>
+                <small>Production flow not wired yet</small>
+              </span>
+            </button>
+          </div>
 
-          <button class="button button--secondary" type="submit" ${state.verifyingMagicLink ? "disabled" : ""}>
-            ${state.verifyingMagicLink ? "Verifying…" : "Verify token"}
-          </button>
-        </form>
-
-        <p class="auth-footnote">
-          Local default operator emails seed automatically in memory mode. Production stores should use invited staff accounts instead.
-        </p>
-      </section>
-    </main>
+          ${
+            showDevAccess
+              ? `
+                  <section class="dev-access">
+                    <div class="dev-access__header">
+                      <p class="eyebrow">Local dev access</p>
+                      <p class="muted-copy">Seeded operator sessions for the current store.</p>
+                    </div>
+                    <div class="dev-access__grid">${devAccessButtons}</div>
+                  </section>
+                `
+              : ""
+          }
+        </section>
+      </main>
+    </div>
   `;
 }
 
@@ -1196,7 +1251,7 @@ async function handleMagicLinkRequest(form: HTMLFormElement) {
     setError(null);
     render();
     await requestOperatorMagicLink({ apiBaseUrl, email });
-    setNotice(`Magic link sent to ${email}. Open the email on this device or paste the token below.`);
+    setNotice(`Magic link sent to ${email}. Open the email on this device to finish sign-in.`);
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to request a magic link.");
   } finally {
@@ -1205,30 +1260,21 @@ async function handleMagicLinkRequest(form: HTMLFormElement) {
   }
 }
 
-async function handleMagicLinkVerify(form: HTMLFormElement) {
-  const formData = new FormData(form);
-  const token = String(formData.get("token") ?? "").trim();
-
-  if (!token) {
-    setError("A magic link token is required.");
-    render();
-    return;
-  }
-
+async function handleDevAccess(email: string) {
   try {
-    state.verifyingMagicLink = true;
-    state.authToken = token;
+    state.requestingDevAccess = true;
+    state.authEmail = email;
     setError(null);
     render();
-    const session = await verifyOperatorMagicLink({
+    const session = await requestOperatorDevAccess({
       apiBaseUrl: state.authApiBaseUrl,
-      token
+      email
     });
-    await applyVerifiedSession(session, "Operator session established.");
+    await applyVerifiedSession(session, `Local dev access opened for ${email}.`);
   } catch (error) {
-    setError(error instanceof Error ? error.message : "Unable to verify the operator magic link.");
+    setError(error instanceof Error ? error.message : "Unable to open local dev access.");
   } finally {
-    state.verifyingMagicLink = false;
+    state.requestingDevAccess = false;
     render();
   }
 }
@@ -1466,10 +1512,6 @@ root.addEventListener("submit", (event) => {
     void handleMagicLinkRequest(target);
     return;
   }
-  if (formType === "auth-verify-token") {
-    void handleMagicLinkVerify(target);
-    return;
-  }
   if (formType === "menu-create") {
     void handleMenuCreateSubmit(target);
     return;
@@ -1510,6 +1552,14 @@ root.addEventListener("click", (event) => {
 
   if (action === "sign-out") {
     void signOut();
+    return;
+  }
+
+  if (action === "dev-access") {
+    const email = actionElement.dataset.email;
+    if (email) {
+      void handleDevAccess(email);
+    }
     return;
   }
 

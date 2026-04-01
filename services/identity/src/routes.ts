@@ -13,6 +13,7 @@ import {
   magicLinkRequestSchema,
   magicLinkVerifySchema,
   meResponseSchema,
+  operatorDevAccessRequestSchema,
   operatorMeResponseSchema,
   operatorSessionSchema,
   operatorUserCreateSchema,
@@ -267,6 +268,7 @@ async function resolveOperatorFromBearer(params: {
 }
 
 export type RegisterRoutesOptions = {
+  allowDevOperatorAccess?: boolean;
   mailSender?: MailSender;
   repository?: IdentityRepository;
 };
@@ -279,6 +281,9 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   const magicLinkExpiryMinutes = toPositiveInteger(process.env.MAGIC_LINK_EXPIRY_MINUTES, 15);
   const magicLinkBaseUrl = process.env.MAGIC_LINK_BASE_URL?.trim() || "http://localhost:8080";
   const operatorMagicLinkBaseUrl = process.env.OPERATOR_MAGIC_LINK_BASE_URL?.trim() || "http://localhost:5173";
+  const allowDevOperatorAccess =
+    options.allowDevOperatorAccess ??
+    (process.env.ALLOW_DEV_OPERATOR_LOGIN === "true" || process.env.NODE_ENV !== "production");
   const appleSignInVerificationEnabled = process.env.APPLE_SIGN_IN_VERIFY === "true";
   const authWriteRateLimit = {
     max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_AUTH_WRITE_MAX, defaultAuthWriteRateLimitMax),
@@ -886,6 +891,36 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
       return issueOperatorSession({
         repository,
         seed: input.token,
+        operatorUserId: operator.operatorUserId,
+        authMethod: "magic-link"
+      });
+    }
+  );
+
+  app.post(
+    "/v1/operator/auth/dev-access",
+    {
+      preHandler: app.rateLimit(authWriteRateLimit)
+    },
+    async (request, reply) => {
+      if (!allowDevOperatorAccess) {
+        return reply
+          .status(404)
+          .send(buildApiError(request.id, "DEV_OPERATOR_ACCESS_DISABLED", "Dev operator access is disabled"));
+      }
+
+      const input = operatorDevAccessRequestSchema.parse(request.body);
+      const operator = await repository.getOperatorUserByEmail(input.email);
+
+      if (!operator || !operator.active) {
+        return reply.status(404).send(
+          buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "No operator access exists for that email address")
+        );
+      }
+
+      return issueOperatorSession({
+        repository,
+        seed: `dev-access:${operator.email}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
         authMethod: "magic-link"
       });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  operatorDevAccessRequestSchema,
   operatorSessionSchema,
   operatorUserListResponseSchema,
   operatorUserSchema
@@ -146,6 +147,20 @@ export async function verifyOperatorMagicLink(params: { apiBaseUrl: string; toke
     body: {
       token: params.token.trim()
     },
+    schema: operatorSessionSchema
+  });
+
+  return toStoredSession(params.apiBaseUrl, session);
+}
+
+export async function requestOperatorDevAccess(params: { apiBaseUrl: string; email: string }) {
+  const session = await requestJson({
+    apiBaseUrl: params.apiBaseUrl,
+    path: "/operator/auth/dev-access",
+    method: "POST",
+    body: operatorDevAccessRequestSchema.parse({
+      email: params.email.trim()
+    }),
     schema: operatorSessionSchema
   });
 

@@ -118,6 +118,39 @@ describe("gateway", () => {
         });
       }
 
+      if (url.endsWith("/v1/operator/auth/dev-access") && method === "POST") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { email?: string };
+        return new Response(
+          JSON.stringify({
+            accessToken: "operator-access-token",
+            refreshToken: "operator-refresh-token",
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            operator: {
+              operatorUserId: "123e4567-e89b-12d3-a456-426614174999",
+              displayName: "Store Owner",
+              email: body.email ?? "owner@gazellecoffee.com",
+              role: "owner",
+              locationId: "flagship-01",
+              active: true,
+              capabilities: [
+                "orders:read",
+                "orders:write",
+                "menu:read",
+                "menu:write",
+                "menu:visibility",
+                "store:read",
+                "store:write",
+                "staff:read",
+                "staff:write"
+              ],
+              createdAt: "2026-03-20T00:00:00.000Z",
+              updatedAt: "2026-03-20T00:00:00.000Z"
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       if (url.endsWith("/v1/auth/me") && method === "GET") {
         if (!authHeader) {
           return new Response(
@@ -625,6 +658,26 @@ describe("gateway", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    await app.close();
+  });
+
+  it("proxies operator dev access sessions", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/dev-access",
+      payload: {
+        email: "owner@gazellecoffee.com"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      operator: {
+        email: "owner@gazellecoffee.com",
+        role: "owner"
+      }
+    });
     await app.close();
   });
 

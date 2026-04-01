@@ -232,4 +232,52 @@ describe("magic link auth", () => {
 
     await app.close();
   });
+
+  it("issues a seeded operator session through the dev-access route", async () => {
+    const repository = createInMemoryIdentityRepository();
+    const { sender } = createCapturingMailSender();
+    const app = await buildApp({ repository, mailSender: sender, allowDevOperatorAccess: true });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/dev-access",
+      payload: {
+        email: "owner@gazellecoffee.com"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+      operator: {
+        email: "owner@gazellecoffee.com",
+        role: "owner",
+        locationId: "flagship-01"
+      }
+    });
+
+    await app.close();
+  });
+
+  it("rejects the dev-access route when explicitly disabled", async () => {
+    const repository = createInMemoryIdentityRepository();
+    const { sender } = createCapturingMailSender();
+    const app = await buildApp({ repository, mailSender: sender, allowDevOperatorAccess: false });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/dev-access",
+      payload: {
+        email: "owner@gazellecoffee.com"
+      }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      code: "DEV_OPERATOR_ACCESS_DISABLED"
+    });
+
+    await app.close();
+  });
 });

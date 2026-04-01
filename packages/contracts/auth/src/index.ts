@@ -157,6 +157,10 @@ export const operatorUserParamsSchema = z.object({
   operatorUserId: z.string().uuid()
 });
 
+export const operatorDevAccessRequestSchema = z.object({
+  email: z.string().trim().email()
+});
+
 export const authContract = {
   basePath: "/auth",
   routes: {
@@ -236,6 +240,12 @@ export const operatorAuthContract = {
       method: "POST",
       path: "/magic-link/verify",
       request: magicLinkVerifySchema,
+      response: operatorSessionSchema
+    },
+    devAccess: {
+      method: "POST",
+      path: "/dev-access",
+      request: operatorDevAccessRequestSchema,
       response: operatorSessionSchema
     },
     refresh: {
