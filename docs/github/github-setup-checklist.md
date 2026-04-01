@@ -1,6 +1,6 @@
 # GitHub Setup Checklist
 
-Last reviewed: `2026-03-11`
+Last reviewed: `2026-03-21`
 
 ## Repository
 - [x] org: `GazelleDev`
@@ -77,7 +77,12 @@ Create project board columns:
 - [ ] `APPLE_PRIVATE_KEY`
 - [ ] `APPLE_SERVICE_ID`
 - [ ] `APPLE_MERCHANT_ID`
-- [ ] `CLOVER_API_KEY`
+- [ ] `CLOVER_APP_ID`
+- [ ] `CLOVER_APP_SECRET`
+- [ ] `CLOVER_OAUTH_REDIRECT_URI`
+- [ ] `CLOVER_OAUTH_STATE_SECRET`
+- [ ] `CLOVER_BEARER_TOKEN`
+- [ ] `CLOVER_API_ACCESS_KEY`
 - [ ] `CLOVER_MERCHANT_ID`
 - [ ] `SES_FROM_EMAIL`
 - [ ] `EXPO_TOKEN`
@@ -92,4 +97,4 @@ Create project board columns:
 - [ ] `GHCR_TOKEN` (if GHCR images are private)
 
 Notes:
-- `gh secret list --repo GazelleDev/GazelleMobilePlatform` and per-environment secret list commands returned no configured secrets on `2026-03-09`.
+- `gh secret list --repo AnxiousDaoud/LatteLink-Platform` and per-environment secret list commands returned no configured secrets on `2026-03-09`.
