@@ -60,6 +60,20 @@ The current sections are:
 
 Do not mix multiple sections into one PR unless the user explicitly approves that exception.
 
+## Versioning Rule
+
+Versioning is part of the delivery flow, not a separate afterthought.
+
+Follow the repo versioning policy in [versioning.md](./versioning.md).
+
+The required rule set is:
+
+- decide the ticket's version impact before calling the ticket done
+- if a ticket changes shipped behavior, contracts, deployable runtime behavior, or release-facing functionality, include a `Changesets` entry as part of that ticket work
+- if a ticket is docs-only, process-only, test-only, or otherwise non-release-impacting, record the ticket as `version impact: none`
+- do not hand-edit package versions as ad hoc release bookkeeping
+- before opening a section PR from `dev` to `main`, run the section-close versioning step defined in [versioning.md](./versioning.md)
+
 ## Bootstrap Flow
 
 Start each cycle from current `main`.
@@ -79,11 +93,13 @@ For each ticket:
 
 1. Confirm the ticket exists in [v1-implementation-tickets.md](../roadmaps/v1-implementation-tickets.md).
 2. Update the ticket status before implementation if the status is stale.
-3. Make only the changes required for that ticket.
-4. Run the verification relevant to that ticket.
-5. Update the ticket `done` and `blocked` notes so the ticket reflects reality.
-6. Commit the ticket work on `dev`.
-7. Push `dev` to `origin` immediately after the commit.
+3. Decide the ticket's version impact using [versioning.md](./versioning.md): `none`, `patch`, `minor`, or `major`.
+4. Make only the changes required for that ticket.
+5. If the ticket has release impact, add the matching `Changesets` entry in the same ticket work.
+6. Run the verification relevant to that ticket.
+7. Update the ticket `done` and `blocked` notes so the ticket reflects reality.
+8. Commit the ticket work on `dev`.
+9. Push `dev` to `origin` immediately after the commit.
 
 Do not batch unrelated tickets into one commit.
 
@@ -112,6 +128,8 @@ Change log:
 
 `Verification:` may be added when useful, but `Tickets:` and `Change log:` are mandatory.
 
+When a ticket has release impact, the commit should also include the matching `Changesets` file.
+
 ## Push Rules
 
 After every ticket commit:
@@ -130,6 +148,8 @@ Each PR must include:
 
 - all relevant ticket IDs
 - the section name
+- the target version
+- the version impact summary
 - a concise summary of the shipped work
 - verification performed
 - risk and rollback notes when applicable
@@ -143,6 +163,10 @@ Recommended PR body structure:
 ## Tickets
 - BE-V1-01
 - BE-V1-02
+
+## Version
+- Target version: `0.2.0`
+- Version impact: `minor`
 
 ## Change log
 - summarize the completed ticket work

@@ -1051,3 +1051,42 @@ Acceptance criteria:
 - each PR from `dev` to `main` lists all included tickets
 - `dev` exists locally and on `origin` from current `main`
 - ticket sections are the default PR grouping boundary
+
+### XS-V1-05 Versioning and Release Identification
+
+Status:
+
+- `owner`: Codex
+- `status`: validated locally, pending merge to main
+- `done`: documented the repo versioning policy around the existing `Changesets` setup, defined when ticket work requires a changeset, defined the section-close versioning flow before `dev` to `main` PRs, and wired the development-flow runbook to require explicit version impact
+- `blocked`: no external blocker
+
+Goal:
+Define one exact versioning flow for the remaining V1 work so release identity, semantic version bumps, and PR version impact are explicit and repeatable.
+
+Scope:
+
+- standardize on semantic versioning for repo releases
+- use the existing `Changesets` tooling already configured in the repo
+- define when a ticket requires a changeset versus `version impact: none`
+- define the section-close versioning step before opening a `dev` to `main` PR
+- define PR requirements for target version and version impact
+- reserve `1.0.0` for the first real live V1 deployment
+
+Key deliverables:
+
+- one documented versioning runbook
+- development-flow rules updated to reference the versioning flow
+- root package scripts for `Changesets` create, status, and version commands
+
+Dependencies:
+
+- `XS-V1-04`
+
+Acceptance criteria:
+
+- the repo has one documented versioning source of truth and flow
+- version-affecting tickets have an explicit versioning path
+- section PRs from `dev` to `main` state target version and version impact
+- `1.0.0` is explicitly reserved for the first live V1 deployment
+- versioning uses the repo's existing `Changesets` setup instead of an ad hoc process
