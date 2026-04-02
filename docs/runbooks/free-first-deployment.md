@@ -1,6 +1,6 @@
 # Free-First Deployment (GitHub Student + DigitalOcean)
 
-Last reviewed: `2026-03-11`
+Last reviewed: `2026-04-01`
 
 ## Goal
 
@@ -34,8 +34,19 @@ Run the full service stack on one low-cost host before AWS cutover.
 ## Required GitHub Variables
 
 - `FREE_API_DOMAIN` (example: `api.yourdomain.com`)
-- `FREE_DEPLOY_PATH` (example: `/opt/gazelle-free`)
-- `FREE_IMAGE_TAG` (example: `latest`)
+- `FREE_IMAGE_REGISTRY_PREFIX` (example: `ghcr.io/anxiousdaoud/lattelink-platform`)
+
+Recommended:
+
+- `FREE_DEPLOY_PATH` (default: `/opt/gazelle-free`)
+- `FREE_IMAGE_TAG` (default: `latest`)
+- `FREE_PASSKEY_RP_ID` (defaults to `FREE_API_DOMAIN`)
+
+Optional:
+
+- `FREE_CORS_ALLOWED_ORIGINS`
+- `FREE_CLIENT_DASHBOARD_DOMAIN`
+- `FREE_GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS`
 
 ## Required GitHub Secrets
 
@@ -44,14 +55,52 @@ Run the full service stack on one low-cost host before AWS cutover.
 - `FREE_DEPLOY_SSH_KEY`
 - `LETSENCRYPT_EMAIL`
 - `FREE_POSTGRES_PASSWORD`
+- `FREE_GATEWAY_INTERNAL_API_TOKEN`
+- `FREE_ORDERS_INTERNAL_API_TOKEN`
+- `FREE_LOYALTY_INTERNAL_API_TOKEN`
+- `FREE_NOTIFICATIONS_INTERNAL_API_TOKEN`
+- `FREE_JWT_SECRET`
 
 Optional:
 
 - `GHCR_USERNAME`
 - `GHCR_TOKEN`
-- `FREE_CLIENT_DASHBOARD_DOMAIN` if deploying the client dashboard lane
 - `FREE_CLIENT_DASHBOARD_ENV` if deploying the client dashboard before the backend
-- `GOOGLE_OAUTH_*` env values if enabling Google SSO for the client dashboard
+- `FREE_GOOGLE_OAUTH_CLIENT_ID`
+- `FREE_GOOGLE_OAUTH_CLIENT_SECRET`
+- `FREE_GOOGLE_OAUTH_STATE_SECRET`
+
+## Runtime Env Written By `deploy-free`
+
+The workflow writes the server-side `.env` file from GitHub vars and secrets. The important runtime values are:
+
+- edge and routing
+  - `API_DOMAIN`
+  - `CLIENT_DASHBOARD_DOMAIN` if already configured or provided
+  - `LETSENCRYPT_EMAIL`
+- image/source selection
+  - `IMAGE_REGISTRY_PREFIX`
+  - `IMAGE_TAG`
+- data and auth
+  - `POSTGRES_PASSWORD`
+  - `DATABASE_URL`
+  - `JWT_SECRET`
+- internal service auth
+  - `GATEWAY_INTERNAL_API_TOKEN`
+  - `ORDERS_INTERNAL_API_TOKEN`
+  - `LOYALTY_INTERNAL_API_TOKEN`
+  - `NOTIFICATIONS_INTERNAL_API_TOKEN`
+- gateway runtime
+  - `CORS_ALLOWED_ORIGINS`
+  - `PUBLIC_API_BASE_URL`
+  - `PASSKEY_RP_ID`
+- optional Google SSO
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_STATE_SECRET`
+  - `GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS`
+
+If `FREE_CORS_ALLOWED_ORIGINS` is not set, the workflow defaults CORS to the deployed client dashboard domain when available.
 
 ## Deploy
 
@@ -70,6 +119,7 @@ docker compose up -d --remove-orphans
 - `https://api.<your-domain>/ready`
 - `https://api.<your-domain>/metrics`
 - Service docs route: `https://api.<your-domain>/docs`
+- If the client dashboard lane is live, confirm API requests from `https://<FREE_CLIENT_DASHBOARD_DOMAIN>` pass CORS.
 
 ## Backup and Restore Drill
 
