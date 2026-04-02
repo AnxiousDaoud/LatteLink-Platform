@@ -120,16 +120,20 @@ docker compose up -d --remove-orphans
 
 ## Backup and Restore Drill
 
-Daily backup:
+Use the host-side rehearsal scripts copied with `infra/free`:
 
 ```bash
-docker exec -t gazelle-postgres pg_dump -U gazelle gazelle > backup.sql
+./bin/rehearse-postgres-restore.sh
 ```
 
-Restore rehearsal:
+Manual backup only:
 
 ```bash
-cat backup.sql | docker exec -i gazelle-postgres psql -U gazelle gazelle
+./bin/backup-postgres.sh ./backups/gazelle-$(date +%Y%m%d-%H%M%S).dump
 ```
+
+For the full drill and scratch-restore flow, use:
+
+- `docs/runbooks/free-first-postgres-restore-drill.md`
 
 Record restore timestamp and validation result in release notes.
