@@ -20,7 +20,7 @@ const plans = [
       "Stripe payments",
     ],
     featured: false,
-    cta: "Book intro",
+    cta: "Request intro",
   },
   {
     tier: "Growth",
@@ -37,7 +37,7 @@ const plans = [
     ],
     featured: true,
     badge: "Most Popular",
-    cta: "Book intro",
+    cta: "Request intro",
   },
   {
     tier: "Enterprise",

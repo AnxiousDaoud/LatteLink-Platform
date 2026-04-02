@@ -358,7 +358,7 @@ export function Hero() {
             }}
           >
             <Link href={demoHref} className="hero-btn">
-              Book a pilot intro
+              Request a pilot intro
               <ArrowRight />
             </Link>
             <Link href="#proof" className="hero-btn-ghost">
@@ -369,8 +369,8 @@ export function Hero() {
         </AnimEntry>
         <AnimEntry delay={0.55}>
           <div className="hero-cta-note">
-            30-minute intro. We review fit, walk through the workflow, and map
-            the fastest path to a pilot launch.
+            Send the shop details once. We reply within one business day with
+            fit feedback and the fastest path to a pilot launch.
           </div>
         </AnimEntry>
 

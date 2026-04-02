@@ -9,8 +9,8 @@ const steps = [
   {
     num: "01",
     icon: "☎️",
-    title: "Book a pilot intro",
-    desc: "Tell us about your shop, your menu, and how customers order today. We will quickly tell you whether LatteLink is the right fit.",
+    title: "Request a pilot intro",
+    desc: "Tell us about your shop, your menu, and how customers order today. We quickly confirm whether LatteLink is the right fit before scheduling the walkthrough.",
     visual: "We start with fit, not a hard sell.",
   },
   {
@@ -118,7 +118,7 @@ export function HowItWorks() {
           <SectionEye>Process</SectionEye>
         </AnimateIn>
         <AnimateIn delay={0.05}>
-          <SectionH>From intro call to pilot launch, fast.</SectionH>
+          <SectionH>From intro request to pilot launch, fast.</SectionH>
         </AnimateIn>
         <AnimateIn delay={0.1}>
           <SectionP>

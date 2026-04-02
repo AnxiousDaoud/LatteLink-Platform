@@ -76,7 +76,7 @@ export function Nav() {
 
           {/* CTA */}
           <Link href={demoHref} className="btn-primary-nav nav-cta">
-            Book intro
+            Request intro
           </Link>
         </div>
       </nav>
