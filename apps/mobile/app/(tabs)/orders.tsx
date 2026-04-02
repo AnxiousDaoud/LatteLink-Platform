@@ -689,7 +689,12 @@ export default function OrdersScreen() {
             trailing={!ordersQuery.isLoading && !ordersQuery.error ? `${orderHistory.length} total` : undefined}
           />
 
-          {ordersQuery.error ? <Text style={styles.sectionMessage}>Unable to load recent orders.</Text> : null}
+          {ordersQuery.error ? (
+            <View style={styles.sectionMessageBlock}>
+              <Text style={styles.sectionMessage}>Unable to load recent orders.</Text>
+              <Button label="Retry" variant="secondary" onPress={refreshOrders} style={styles.sectionMessageAction} />
+            </View>
+          ) : null}
           {!ordersQuery.isLoading && !ordersQuery.error && orderHistory.length === 0 ? (
             <Text style={styles.sectionMessage}>Completed pickups and older orders will collect here.</Text>
           ) : null}
@@ -1017,6 +1022,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 23,
     color: uiPalette.textSecondary
+  },
+  sectionMessageBlock: {
+    marginTop: 18,
+    alignItems: "flex-start",
+    gap: 12
+  },
+  sectionMessageAction: {
+    alignSelf: "flex-start"
   },
   historyList: {
     marginTop: 8

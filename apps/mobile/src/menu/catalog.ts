@@ -352,10 +352,13 @@ export function useAppConfigQuery() {
     queryFn: async (): Promise<AppConfig> => {
       try {
         return await apiClient.appConfig();
-      } catch {
+      } catch (primaryError) {
         try {
           return await catalogApiClient.appConfig();
         } catch {
+          if (!__DEV__) {
+            throw primaryError;
+          }
           return fallbackAppConfig;
         }
       }

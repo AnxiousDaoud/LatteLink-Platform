@@ -271,19 +271,25 @@ export default function CartModalScreen() {
   const { retryOrder, clearRetryOrder, clearFailure, setConfirmation, setFailure } = useCheckoutFlow();
   const appConfigQuery = useAppConfigQuery();
   const menuQuery = useMenuQuery();
-  const menu = resolveMenuData(menuQuery.data);
   const storeConfigQuery = useStoreConfigQuery();
-  const appConfig = resolveAppConfigData(appConfigQuery.data);
-  const storeConfig = resolveStoreConfigData(storeConfigQuery.data);
-  const pricingSummary = buildPricingSummary(subtotalCents, storeConfig.taxRateBasisPoints);
+  const menu = menuQuery.data ? resolveMenuData(menuQuery.data) : null;
+  const appConfig = appConfigQuery.data ? resolveAppConfigData(appConfigQuery.data) : null;
+  const storeConfig = storeConfigQuery.data ? resolveStoreConfigData(storeConfigQuery.data) : null;
+  const pricingSummary = buildPricingSummary(subtotalCents, storeConfig?.taxRateBasisPoints ?? 0);
   const checkoutMutation = useApplePayCheckoutMutation();
-  const nativeApplePayAvailable = canAttemptNativeApplePay() && appConfig.paymentCapabilities.applePay;
-  const showDevFallback = __DEV__;
+  const checkoutUnavailableMessage = !storeConfig
+    ? "Store details are temporarily unavailable. Retry loading checkout before paying."
+    : !appConfig
+      ? "Checkout configuration is temporarily unavailable. Retry loading checkout before paying."
+      : null;
+  const checkoutReady = checkoutUnavailableMessage === null;
+  const nativeApplePayAvailable = Boolean(checkoutReady && canAttemptNativeApplePay() && appConfig?.paymentCapabilities.applePay);
+  const showDevFallback = __DEV__ && checkoutReady;
   const quoteItems = useMemo(() => toQuoteItems(items), [items]);
   const retryableOrder = retryOrder && quoteItemsEqual(quoteItems, retryOrder.quoteItems) ? retryOrder : undefined;
   const menuItemsById = useMemo(
-    () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item])),
-    [menu.categories]
+    () => new Map((menu?.categories ?? []).flatMap((category) => category.items).map((item) => [item.id, item])),
+    [menu?.categories]
   );
   const [pendingRemovalLineId, setPendingRemovalLineId] = useState<string | null>(null);
   const pendingRemovalItem = useMemo(
@@ -295,19 +301,22 @@ export default function CartModalScreen() {
   const [applePayToken, setApplePayToken] = useState("");
   const [nativeApplePayPending, setNativeApplePayPending] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  const stickyActionDisabled = isAuthenticated ? nativeApplePayPending || checkoutMutation.isPending || !nativeApplePayAvailable : false;
+  const stickyActionDisabled = isAuthenticated ? !checkoutReady || nativeApplePayPending || checkoutMutation.isPending || !nativeApplePayAvailable : false;
   const stickyActionLabel = isAuthenticated
-    ? nativeApplePayPending
-      ? "Opening Apple Pay…"
-      : checkoutMutation.isPending
-        ? "Processing…"
-        : retryableOrder
-          ? "Retry Apple Pay"
-          : nativeApplePayAvailable
-            ? "Pay with Apple Pay"
-            : "Apple Pay unavailable"
+    ? !checkoutReady
+      ? "Checkout unavailable"
+      : nativeApplePayPending
+        ? "Opening Apple Pay…"
+        : checkoutMutation.isPending
+          ? "Processing…"
+          : retryableOrder
+            ? "Retry Apple Pay"
+            : nativeApplePayAvailable
+              ? "Pay with Apple Pay"
+              : "Apple Pay unavailable"
     : getCheckoutRecoveryActionLabel(authRecoveryState);
   const stickyActionIcon: keyof typeof Ionicons.glyphMap = isAuthenticated ? "logo-apple" : "log-in-outline";
+  const stickyActionValue = formatUsd(checkoutReady ? pricingSummary.totalCents : subtotalCents);
 
   useEffect(() => {
     if (retryOrder && !quoteItemsEqual(quoteItems, retryOrder.quoteItems)) {
@@ -325,6 +334,11 @@ export default function CartModalScreen() {
     await queryClient.invalidateQueries({ queryKey: ["account"] });
   }
 
+  function refreshCheckoutContext() {
+    setStatusMessage("");
+    void Promise.allSettled([appConfigQuery.refetch(), storeConfigQuery.refetch(), menuQuery.refetch()]);
+  }
+
   function resetCartState() {
     setClearSheetOpen(false);
     setPendingRemovalLineId(null);
@@ -335,6 +349,11 @@ export default function CartModalScreen() {
   }
 
   function submitCheckout(paymentInput: { applePayToken: string } | { applePayWallet: ApplePayWalletPayload }) {
+    if (!storeConfig || !appConfig) {
+      setStatusMessage(checkoutUnavailableMessage ?? "Checkout is temporarily unavailable.");
+      return;
+    }
+
     setStatusMessage("Submitting your order…");
 
     checkoutMutation.mutate(
@@ -394,6 +413,11 @@ export default function CartModalScreen() {
   }
 
   async function handleNativeApplePayCheckout() {
+    if (!storeConfig || !appConfig) {
+      setStatusMessage(checkoutUnavailableMessage ?? "Checkout is temporarily unavailable.");
+      return;
+    }
+
     if (!nativeApplePayAvailable) {
       setStatusMessage(
         showDevFallback
@@ -432,8 +456,13 @@ export default function CartModalScreen() {
           <View style={styles.headerRow}>
             <View style={styles.headerCopy}>
               <Text style={styles.headerTitle}>Order Review</Text>
-              <Text style={styles.headerSubtitle}>{`Estimated wait is ${storeConfig.prepEtaMinutes} min`}</Text>
+              <Text style={styles.headerSubtitle}>
+                {storeConfig ? `Estimated wait is ${storeConfig.prepEtaMinutes} min` : "Checkout details unavailable"}
+              </Text>
             </View>
+            {checkoutUnavailableMessage ? (
+              <HeaderActionChip label="Retry" icon="refresh-outline" onPress={refreshCheckoutContext} />
+            ) : null}
           </View>
 
         </View>
@@ -527,17 +556,20 @@ export default function CartModalScreen() {
                 </View>
               </View>
 
+              {checkoutUnavailableMessage ? <StatusBanner message={checkoutUnavailableMessage} tone="warning" /> : null}
               {statusMessage ? <StatusBanner message={statusMessage} tone={retryableOrder ? "warning" : "info"} /> : null}
 
               <View style={styles.checkoutDeck}>
-                <View style={styles.pickupMethodBlock}>
-                  <Text style={styles.pickupMethodLabel}>Pickup method</Text>
-                  <View style={styles.pickupMethodRow}>
-                    <Text style={styles.pickupMethodName}>Counter pickup</Text>
-                    <Text style={styles.pickupMethodEta}>{`${storeConfig.prepEtaMinutes} min`}</Text>
+                {storeConfig ? (
+                  <View style={styles.pickupMethodBlock}>
+                    <Text style={styles.pickupMethodLabel}>Pickup method</Text>
+                    <View style={styles.pickupMethodRow}>
+                      <Text style={styles.pickupMethodName}>Counter pickup</Text>
+                      <Text style={styles.pickupMethodEta}>{`${storeConfig.prepEtaMinutes} min`}</Text>
+                    </View>
+                    <Text style={styles.pickupMethodBody}>{storeConfig.pickupInstructions}</Text>
                   </View>
-                  <Text style={styles.pickupMethodBody}>{storeConfig.pickupInstructions}</Text>
-                </View>
+                ) : null}
 
                 <SectionHeading eyebrow="Checkout" title="Pay" />
                 <View style={styles.checkoutContent}>
@@ -545,15 +577,21 @@ export default function CartModalScreen() {
 
                   <View style={styles.summaryWrap}>
                     <SummaryRow label={`Items (${itemCount})`} value={formatUsd(pricingSummary.subtotalCents)} />
-                    <SummaryRow
-                      label={`Tax (${(storeConfig.taxRateBasisPoints / 100).toFixed(2)}%)`}
-                      value={formatUsd(pricingSummary.taxCents)}
-                    />
-                    <View style={styles.summaryDivider} />
-                    <SummaryRow label="Total due today" value={formatUsd(pricingSummary.totalCents)} emphasized />
+                    {storeConfig ? (
+                      <>
+                        <SummaryRow
+                          label={`Tax (${(storeConfig.taxRateBasisPoints / 100).toFixed(2)}%)`}
+                          value={formatUsd(pricingSummary.taxCents)}
+                        />
+                        <View style={styles.summaryDivider} />
+                        <SummaryRow label="Total due today" value={formatUsd(pricingSummary.totalCents)} emphasized />
+                      </>
+                    ) : (
+                      <Text style={styles.summaryNote}>Reconnect store details to load live tax, pickup timing, and checkout totals.</Text>
+                    )}
                   </View>
 
-                  {isAuthenticated ? (
+                  {isAuthenticated && checkoutReady ? (
                     <>
                       <View style={styles.deckDivider} />
 
@@ -598,6 +636,20 @@ export default function CartModalScreen() {
                         </View>
                       ) : null}
                     </>
+                  ) : isAuthenticated ? (
+                    <>
+                      <View style={styles.deckDivider} />
+
+                      <View style={styles.paymentStatusRow}>
+                        <View style={styles.paymentStatusIconWrap}>
+                          <Ionicons name="refresh-outline" size={16} color={uiPalette.warning} />
+                        </View>
+                        <View style={styles.paymentStatusCopy}>
+                          <Text style={styles.paymentStatusTitle}>Checkout needs a refresh</Text>
+                          <Text style={styles.paymentStatusBody}>Use the retry action in the header to restore live pricing and Apple Pay.</Text>
+                        </View>
+                      </View>
+                    </>
                   ) : null}
                 </View>
               </View>
@@ -609,7 +661,7 @@ export default function CartModalScreen() {
           <View pointerEvents="box-none" style={[styles.stickyFooterWrap, { bottom: stickyFooterBottom }]}>
             <StickyActionPill
               label={stickyActionLabel}
-              value={formatUsd(pricingSummary.totalCents)}
+              value={stickyActionValue}
               icon={stickyActionIcon}
               disabled={stickyActionDisabled}
               onPress={() => {
@@ -684,7 +736,9 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
-    alignItems: "flex-start"
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12
   },
   headerCopy: {
     flex: 1
@@ -1050,6 +1104,12 @@ const styles = StyleSheet.create({
   summaryDivider: {
     height: 1,
     backgroundColor: "rgba(23, 21, 19, 0.08)"
+  },
+  summaryNote: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 19,
+    color: uiPalette.textSecondary
   },
   paymentStatusRow: {
     flexDirection: "row",
