@@ -2,7 +2,6 @@ import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypt
 import type { FastifyBaseLogger } from "fastify";
 import { authSessionSchema } from "@gazelle/contracts-core";
 import {
-  operatorSessionSchema,
   resolveOperatorCapabilities,
   type OperatorRole,
   type OperatorUser
@@ -18,7 +17,6 @@ import {
 import { z } from "zod";
 
 type AuthSession = z.output<typeof authSessionSchema>;
-type OperatorSession = z.output<typeof operatorSessionSchema>;
 
 type PersistedSessionRow = {
   access_token: string;
@@ -666,7 +664,22 @@ export function createInMemoryIdentityRepository(): IdentityRepository {
       if (existingId) {
         const existing = operatorUsersById.get(existingId);
         if (existing) {
-          return existing;
+          const updated: OperatorUserRecord = {
+            ...existing,
+            displayName: input.displayName.trim(),
+            role: input.role,
+            locationId: input.locationId,
+            active: true,
+            capabilities: resolveOperatorCapabilities(input.role),
+            updatedAt: new Date().toISOString()
+          };
+
+          operatorUsersById.set(existingId, updated);
+          if (!operatorPasswordHashByUserId.has(existingId)) {
+            operatorPasswordHashByUserId.set(existingId, hashOperatorPassword(input.password));
+          }
+
+          return { ...updated };
         }
       }
 

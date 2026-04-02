@@ -13,6 +13,10 @@ Enable Google sign-in for already-provisioned client dashboard accounts.
 - First-time Google sign-in must map to an existing active dashboard account.
 - If no active dashboard account exists for the verified email, access is denied.
 
+Provision the owner account first with:
+
+- [client-dashboard-owner-provisioning.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/client-dashboard-owner-provisioning.md)
+
 ## Required Google Console Setup
 
 Create a Google OAuth web application and capture:
