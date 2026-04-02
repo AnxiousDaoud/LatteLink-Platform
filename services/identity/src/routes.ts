@@ -381,6 +381,20 @@ function buildApiError(requestId: string, code: string, message: string) {
   });
 }
 
+function logIdentityMutation(
+  request: { id: string; log: { info(payload: Record<string, unknown>, message: string): void } },
+  message: string,
+  details: Record<string, unknown>
+) {
+  request.log.info(
+    {
+      requestId: request.id,
+      ...details
+    },
+    message
+  );
+}
+
 async function resolveOperatorFromBearer(params: {
   repository: IdentityRepository;
   authorizationHeader: string | undefined;
@@ -898,6 +912,9 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         );
       }
 
+      logIdentityMutation(request, "customer session rotated", {
+        userId: rotatedSession.userId
+      });
       return rotatedSession;
     }
   );
@@ -910,6 +927,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     async (request) => {
       const input = logoutRequestSchema.parse(request.body);
       await repository.revokeByRefreshToken(input.refreshToken);
+      logIdentityMutation(request, "customer session revoked", {});
       return { success: true as const };
     }
   );
@@ -967,12 +985,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .send(buildApiError(request.id, "INVALID_OPERATOR_CREDENTIALS", "Email or password is incorrect"));
       }
 
-      return issueOperatorSession({
+      const session = await issueOperatorSession({
         repository,
         seed: `password:${operator.operatorUserId}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
         authMethod: "password"
       });
+      logIdentityMutation(request, "operator session issued", {
+        operatorUserId: session.operator.operatorUserId,
+        email: session.operator.email,
+        role: session.operator.role,
+        locationId: session.operator.locationId,
+        authMethod: "password"
+      });
+      return session;
     }
   );
 
@@ -1119,12 +1145,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .send(buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "No client dashboard access exists for this Google account"));
       }
 
-      return issueOperatorSession({
+      const session = await issueOperatorSession({
         repository,
         seed: `google:${parsedUserInfo.data.sub}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
         authMethod: "google"
       });
+      logIdentityMutation(request, "operator session issued", {
+        operatorUserId: session.operator.operatorUserId,
+        email: session.operator.email,
+        role: session.operator.role,
+        locationId: session.operator.locationId,
+        authMethod: "google"
+      });
+      return session;
     }
   );
 
@@ -1230,12 +1264,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         );
       }
 
-      return issueOperatorSession({
+      const session = await issueOperatorSession({
         repository,
         seed: `dev-access:${operator.email}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
         authMethod: "password"
       });
+      logIdentityMutation(request, "operator session issued", {
+        operatorUserId: session.operator.operatorUserId,
+        email: session.operator.email,
+        role: session.operator.role,
+        locationId: session.operator.locationId,
+        authMethod: "dev-access"
+      });
+      return session;
     }
   );
 
@@ -1265,12 +1307,19 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .send(buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "Operator access is not active"));
       }
 
-      return operatorSessionSchema.parse({
+      const session = operatorSessionSchema.parse({
         accessToken: rotatedSession.accessToken,
         refreshToken: rotatedSession.refreshToken,
         expiresAt: rotatedSession.expiresAt,
         operator
       });
+      logIdentityMutation(request, "operator session rotated", {
+        operatorUserId: session.operator.operatorUserId,
+        email: session.operator.email,
+        role: session.operator.role,
+        locationId: session.operator.locationId
+      });
+      return session;
     }
   );
 
@@ -1282,6 +1331,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     async (request) => {
       const input = logoutRequestSchema.parse(request.body);
       await repository.revokeOperatorByRefreshToken(input.refreshToken);
+      logIdentityMutation(request, "operator session revoked", {});
       return { success: true as const };
     }
   );
@@ -1357,6 +1407,12 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         ...input,
         locationId: operator.locationId || defaultOperatorLocationId
       });
+      logIdentityMutation(request, "operator user created", {
+        actorOperatorUserId: operator.operatorUserId,
+        targetOperatorUserId: created.operatorUserId,
+        targetRole: created.role,
+        locationId: created.locationId
+      });
       return created;
     }
   );
@@ -1392,6 +1448,12 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         return reply.status(404).send(buildApiError(request.id, "OPERATOR_NOT_FOUND", "Operator user was not found"));
       }
 
+      logIdentityMutation(request, "operator user updated", {
+        actorOperatorUserId: operator.operatorUserId,
+        targetOperatorUserId: updated.operatorUserId,
+        updatedFields: Object.keys(input),
+        locationId: updated.locationId
+      });
       return updated;
     }
   );

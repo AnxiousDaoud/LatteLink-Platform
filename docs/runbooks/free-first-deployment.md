@@ -28,6 +28,7 @@ Run the full service stack on one low-cost host before AWS cutover.
 - Compose bundle: `infra/free/docker-compose.yml`
 - Caddy config: `infra/free/Caddyfile`
 - Runtime env template: `infra/free/.env.example`
+- Smoke-check script: `infra/free/bin/smoke-check.sh`
 - Workflow: `.github/workflows/deploy-free.yml`
 
 ## Required GitHub Variables
@@ -112,11 +113,34 @@ docker compose up -d --remove-orphans
 
 ## Validate
 
+Run the smoke script first:
+
+```bash
+API_BASE_URL=https://api.<your-domain>/v1 \
+CLIENT_DASHBOARD_ORIGIN=https://<your-client-dashboard-domain> \
+./infra/free/bin/smoke-check.sh
+```
+
+Optional operator auth flow:
+
+```bash
+API_BASE_URL=https://api.<your-domain>/v1 \
+SMOKE_OPERATOR_EMAIL=owner@example.com \
+SMOKE_OPERATOR_PASSWORD='replace-me' \
+./infra/free/bin/smoke-check.sh
+```
+
+Manual spot checks:
+
 - `https://api.<your-domain>/health`
 - `https://api.<your-domain>/ready`
 - `https://api.<your-domain>/metrics`
+- `https://api.<your-domain>/v1/meta/contracts`
 - Service docs route: `https://api.<your-domain>/docs`
-- If the client dashboard lane is live, confirm API requests from its Vercel domain pass CORS.
+
+For the full checklist and request-trace workflow, use:
+
+- `docs/runbooks/free-first-smoke-check.md`
 
 ## Backup and Restore Drill
 
