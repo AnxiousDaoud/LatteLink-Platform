@@ -1012,3 +1012,42 @@ Acceptance criteria:
 - a provisioned dashboard user can authenticate on the live domain
 - live payments work with the intended production provider configuration
 - a signed mobile build can complete the pilot flow against the deployed backend
+
+### XS-V1-04 Development Flow and Change Control
+
+Status:
+
+- `owner`: Codex
+- `status`: validated locally, pending merge to main
+- `done`: defined the exact `main`/`dev` branch flow, documented the ticket-before-change rule, documented per-ticket commit and push behavior, documented per-section PR behavior, and created the working `dev` branch from current `main`
+- `blocked`: no external blocker
+
+Goal:
+Define one exact operating flow for all remaining V1 work so repo changes are ticketed, traceable, and merged in a repeatable way.
+
+Scope:
+
+- define `main` vs `dev` responsibilities
+- require a ticket before any repo change
+- require per-ticket commits on `dev`
+- require push to `origin/dev` after each ticket commit
+- define section-based PR flow from `dev` to `main`
+- define required commit-body and PR-body content
+
+Key deliverables:
+
+- one documented development-flow runbook
+- one active `dev` branch on `origin`
+- one required commit and PR format tied to ticket IDs
+
+Dependencies:
+
+- none
+
+Acceptance criteria:
+
+- no repo change proceeds without a ticket in this document
+- each commit includes `Tickets` and `Change log`
+- each PR from `dev` to `main` lists all included tickets
+- `dev` exists locally and on `origin` from current `main`
+- ticket sections are the default PR grouping boundary
