@@ -5,6 +5,7 @@ import { AnimateIn, Stagger, StaggerItem } from "./AnimateIn";
 import { SectionEye, SectionH } from "./Features";
 import { contactEmail, demoHref } from "@/lib/site";
 import { LeadCapture } from "./LeadCapture";
+import { TrackedAnchor } from "./TrackedAnchor";
 
 const stats = [
   { value: "Pilot", suffix: "", label: "Current stage" },
@@ -340,7 +341,13 @@ export function CTA() {
                 </div>
                 <div className="cta-contact-line">
                   Prefer a direct thread?{" "}
-                  <Link href={`mailto:${contactEmail}`}>{contactEmail}</Link>
+                  <TrackedAnchor
+                    href={`mailto:${contactEmail}`}
+                    eventName="email_contact_click"
+                    eventProperties={{ placement: "contact_section", destination: "email" }}
+                  >
+                    {contactEmail}
+                  </TrackedAnchor>
                 </div>
               </div>
               <LeadCapture />

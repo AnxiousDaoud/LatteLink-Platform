@@ -75,6 +75,21 @@ If none of those variables are set:
 - local development accepts the form and logs the request to the server console
 - production returns a clean failure message that tells the lead to email `hello@lattelink.app`
 
+## Analytics Configuration
+
+The site now supports a GA4 baseline for pageviews and CTA events. Add this Vercel environment variable when you are ready to measure production traffic:
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+
+When it is set, the homepage records:
+
+- pageviews
+- CTA clicks from the nav, hero, pricing cards, and direct email links
+- lead-form starts
+- lead-form submission success and failure
+
+If the variable is absent, the site stays functional and emits no analytics events.
+
 ## Production Checks
 
 After the first deployment is live:
@@ -85,7 +100,8 @@ After the first deployment is live:
 4. Confirm the configured webhook/email sink received the lead
 5. Confirm `https://lattelink.da0ud.me/robots.txt` loads
 6. Confirm `https://lattelink.da0ud.me/sitemap.xml` loads
-7. Confirm the deployed page title and Open Graph metadata match the production domain
+7. Confirm the deployed page title, manifest, and social metadata match the production domain
+8. Confirm GA4 receives a pageview and at least one CTA event after clicking `Request intro`
 
 ## Repo Notes
 

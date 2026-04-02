@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { type FormEvent, useState, useTransition } from "react";
 import { contactEmail } from "@/lib/site";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { TrackedAnchor } from "./TrackedAnchor";
 
 type LeadCaptureResult =
   | { status: "idle" }
@@ -11,6 +12,7 @@ type LeadCaptureResult =
 
 export function LeadCapture() {
   const [result, setResult] = useState<LeadCaptureResult>({ status: "idle" });
+  const [hasTrackedStart, setHasTrackedStart] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -41,6 +43,10 @@ export function LeadCapture() {
           | null;
 
         if (!response.ok) {
+          trackAnalyticsEvent("lead_form_failed", {
+            placement: "contact_form",
+            reason: response.status,
+          });
           setResult({
             status: "error",
             message:
@@ -51,6 +57,11 @@ export function LeadCapture() {
         }
 
         form.reset();
+        setHasTrackedStart(false);
+        trackAnalyticsEvent("lead_form_submitted", {
+          placement: "contact_form",
+          destination: "pilot_intro",
+        });
         setResult({
           status: "success",
           message:
@@ -58,6 +69,10 @@ export function LeadCapture() {
             "Intro request received. We will reply within one business day to confirm fit and schedule the walkthrough.",
         });
       } catch {
+        trackAnalyticsEvent("lead_form_failed", {
+          placement: "contact_form",
+          reason: "network",
+        });
         setResult({
           status: "error",
           message:
@@ -78,7 +93,21 @@ export function LeadCapture() {
         </p>
       </div>
 
-      <form className="lead-form" onSubmit={handleSubmit}>
+      <form
+        className="lead-form"
+        onSubmit={handleSubmit}
+        onFocusCapture={() => {
+          if (hasTrackedStart) {
+            return;
+          }
+
+          setHasTrackedStart(true);
+          trackAnalyticsEvent("lead_form_started", {
+            placement: "contact_form",
+            destination: "pilot_intro",
+          });
+        }}
+      >
         <label className="lead-field">
           <span className="lead-field__label">Full name</span>
           <input
@@ -168,7 +197,14 @@ export function LeadCapture() {
       </div>
 
       <div className="lead-card__footer">
-        Prefer direct email? <Link href={`mailto:${contactEmail}`}>{contactEmail}</Link>
+        Prefer direct email?{" "}
+        <TrackedAnchor
+          href={`mailto:${contactEmail}`}
+          eventName="email_contact_click"
+          eventProperties={{ placement: "contact_form", destination: "email" }}
+        >
+          {contactEmail}
+        </TrackedAnchor>
       </div>
 
       <style jsx>{`

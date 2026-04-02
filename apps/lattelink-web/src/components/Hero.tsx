@@ -1,9 +1,9 @@
 "use client";
 
 import { motion, useMotionValue, useSpring } from "framer-motion";
-import Link from "next/link";
 import { useEffect } from "react";
 import { demoHref } from "@/lib/site";
+import { TrackedAnchor } from "./TrackedAnchor";
 
 const ease = [0.16, 1, 0.3, 1] as const;
 
@@ -357,14 +357,24 @@ export function Hero() {
               marginBottom: 64,
             }}
           >
-            <Link href={demoHref} className="hero-btn">
+            <TrackedAnchor
+              href={demoHref}
+              className="hero-btn"
+              eventName="cta_click"
+              eventProperties={{ placement: "hero", label: "request_pilot_intro", destination: "contact" }}
+            >
               Request a pilot intro
               <ArrowRight />
-            </Link>
-            <Link href="#proof" className="hero-btn-ghost">
+            </TrackedAnchor>
+            <TrackedAnchor
+              href="#proof"
+              className="hero-btn-ghost"
+              eventName="section_navigation_click"
+              eventProperties={{ placement: "hero", label: "why_cafes_take_the_call", destination: "proof" }}
+            >
               Why cafés take the call
               <ArrowDown />
-            </Link>
+            </TrackedAnchor>
           </div>
         </AnimEntry>
         <AnimEntry delay={0.55}>
