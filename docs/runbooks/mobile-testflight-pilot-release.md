@@ -38,6 +38,7 @@ Reference values are defined in:
 
 ### Build Inputs
 
+- run `pnpm --filter @gazelle/mobile release:check -- beta`
 - confirm `APP_VARIANT=beta`
 - confirm `IOS_BUNDLE_IDENTIFIER` matches the pilot TestFlight app
 - confirm `EXPO_PUBLIC_API_BASE_URL` points to the pilot backend
@@ -61,6 +62,27 @@ Do not submit a build if:
 - upload the `beta` build to TestFlight
 - assign only the intended pilot testers
 - include the release notes and known issues list below
+
+## External Setup Matrix
+
+These values must line up across Expo, Apple, and the pilot environment before the first live TestFlight build:
+
+| Surface | Value | Notes |
+| --- | --- | --- |
+| Expo/EAS | `APP_VARIANT=beta` | comes from the `beta` profile in [apps/mobile/eas.json](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/mobile/eas.json) |
+| Expo/EAS | `IOS_BUNDLE_IDENTIFIER` | should match the App Store Connect pilot app record |
+| Expo/EAS | `EXPO_PUBLIC_API_BASE_URL` | must be the public pilot backend URL ending in `/v1` |
+| Expo/EAS | `EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID` | must match the Apple Pay merchant configured for the pilot |
+| App Store Connect | bundle identifier | should match the EAS `beta` bundle identifier exactly |
+| Apple Developer | Merchant ID | must match the value used in Expo env |
+| Apple Developer | Associated domains | should match the pilot auth/API domain setup when enabled |
+
+Recommended first pilot mapping:
+
+- `APP_VARIANT=beta`
+- `IOS_BUNDLE_IDENTIFIER=com.lattelink.mobile.beta`
+- `EXPO_PUBLIC_API_BASE_URL=https://api.<pilot-domain>/v1`
+- `EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID=merchant.com.lattelink.mobile.beta`
 
 ## Release Notes Template
 

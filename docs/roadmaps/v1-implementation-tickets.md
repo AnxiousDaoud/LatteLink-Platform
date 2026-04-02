@@ -364,7 +364,7 @@ Status:
 
 - `owner`: Codex
 - `status`: repo-complete, external rollout blocked
-- `done`: the EAS/build-matrix groundwork is in the repo and documented for internal, beta, and production style builds
+- `done`: the EAS/build-matrix groundwork is in the repo and documented for internal, beta, and production style builds, and a profile-aware mobile release preflight now validates env safety before EAS build handoff
 - `blocked`: final API/payment env values, EAS credentials, and the real pilot build secrets still need to be supplied externally
 
 Goal:
@@ -432,7 +432,7 @@ Status:
 
 - `owner`: Codex
 - `status`: blocked on external release setup
-- `done`: the runbook/release groundwork is in place for a controlled pilot release
+- `done`: the runbook/release groundwork is in place for a controlled pilot release, including the external value matrix needed for the first pilot TestFlight build
 - `blocked`: Apple developer/TestFlight setup, signed builds, tester distribution, and the first live candidate release are external steps
 
 Goal:
