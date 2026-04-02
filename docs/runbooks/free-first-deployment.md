@@ -88,6 +88,11 @@ Optional:
 - `FREE_CORS_ALLOWED_ORIGINS`
 - `FREE_CLIENT_DASHBOARD_DOMAIN` if you want the workflow to derive the dashboard CORS origin automatically
 - `FREE_GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS`
+- `FREE_PAYMENTS_PROVIDER_MODE` (`simulated` by default, `live` for real Clover)
+- `FREE_CLOVER_OAUTH_ENVIRONMENT` (`sandbox` or `production`)
+- `FREE_CLOVER_CHARGE_ENDPOINT`
+- `FREE_CLOVER_REFUND_ENDPOINT`
+- `FREE_CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT`
 
 ## Required GitHub Secrets
 
@@ -109,6 +114,15 @@ Optional:
 - `FREE_GOOGLE_OAUTH_CLIENT_ID`
 - `FREE_GOOGLE_OAUTH_CLIENT_SECRET`
 - `FREE_GOOGLE_OAUTH_STATE_SECRET`
+- `FREE_CLOVER_BEARER_TOKEN`
+- `FREE_CLOVER_API_KEY`
+- `FREE_CLOVER_API_ACCESS_KEY`
+- `FREE_CLOVER_MERCHANT_ID`
+- `FREE_CLOVER_APP_ID`
+- `FREE_CLOVER_APP_SECRET`
+- `FREE_CLOVER_OAUTH_REDIRECT_URI`
+- `FREE_CLOVER_OAUTH_STATE_SECRET`
+- `FREE_CLOVER_WEBHOOK_SHARED_SECRET`
 
 ## Runtime Env Written By `deploy-free`
 
@@ -138,8 +152,25 @@ The workflow writes the server-side `.env` file from GitHub vars and secrets. Th
   - `GOOGLE_OAUTH_CLIENT_SECRET`
   - `GOOGLE_OAUTH_STATE_SECRET`
   - `GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS`
+- optional live Clover runtime
+  - `PAYMENTS_PROVIDER_MODE`
+  - `CLOVER_PROVIDER_MODE`
+  - `CLOVER_BEARER_TOKEN`
+  - `CLOVER_API_KEY`
+  - `CLOVER_API_ACCESS_KEY`
+  - `CLOVER_MERCHANT_ID`
+  - `CLOVER_OAUTH_ENVIRONMENT`
+  - `CLOVER_APP_ID`
+  - `CLOVER_APP_SECRET`
+  - `CLOVER_OAUTH_REDIRECT_URI`
+  - `CLOVER_OAUTH_STATE_SECRET`
+  - `CLOVER_CHARGE_ENDPOINT`
+  - `CLOVER_REFUND_ENDPOINT`
+  - `CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT`
+  - `CLOVER_WEBHOOK_SHARED_SECRET`
 
 If `FREE_CORS_ALLOWED_ORIGINS` is not set, the workflow defaults CORS to `FREE_CLIENT_DASHBOARD_DOMAIN` when available.
+If `FREE_PAYMENTS_PROVIDER_MODE=live`, the workflow validates the generated server `.env` with `./bin/check-live-payments-env.sh` before running `docker compose up`.
 
 ## Deploy
 

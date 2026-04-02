@@ -151,7 +151,7 @@ Status:
 
 - `owner`: Codex
 - `status`: repo-complete, locally validated
-- `done`: hardened timeout/reconciliation handling, updated payment recovery docs, and revalidated the happy-path customer quote/create/pay/get flow against the live local stack in simulated-provider mode
+- `done`: hardened timeout/reconciliation handling, updated payment recovery docs, revalidated the happy-path customer quote/create/pay/get flow against the live local stack in simulated-provider mode, and wired the free-first deploy path for live Clover/Apple Pay configuration with rollout validation
 - `blocked`: real Clover credentials, Apple Pay live validation, webhook secrets, and production reconciliation procedures still depend on external provider setup
 
 Goal:

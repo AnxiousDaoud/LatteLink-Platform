@@ -174,3 +174,35 @@ pnpm --filter @gazelle/orders lint
 pnpm --filter @gazelle/orders typecheck
 pnpm --filter @gazelle/orders test
 ```
+
+## Free-First Rollout Mapping
+
+For the DigitalOcean/free-first deployment lane, the live Clover inputs are split between GitHub variables and secrets.
+
+GitHub variables:
+
+- `FREE_PAYMENTS_PROVIDER_MODE` -> `PAYMENTS_PROVIDER_MODE` and `CLOVER_PROVIDER_MODE`
+- `FREE_CLOVER_OAUTH_ENVIRONMENT` -> `CLOVER_OAUTH_ENVIRONMENT`
+- `FREE_CLOVER_CHARGE_ENDPOINT` -> `CLOVER_CHARGE_ENDPOINT`
+- `FREE_CLOVER_REFUND_ENDPOINT` -> `CLOVER_REFUND_ENDPOINT`
+- `FREE_CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT` -> `CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT`
+
+GitHub secrets:
+
+- `FREE_CLOVER_BEARER_TOKEN` -> `CLOVER_BEARER_TOKEN`
+- `FREE_CLOVER_API_KEY` -> `CLOVER_API_KEY` legacy fallback
+- `FREE_CLOVER_API_ACCESS_KEY` -> `CLOVER_API_ACCESS_KEY`
+- `FREE_CLOVER_MERCHANT_ID` -> `CLOVER_MERCHANT_ID`
+- `FREE_CLOVER_APP_ID` -> `CLOVER_APP_ID`
+- `FREE_CLOVER_APP_SECRET` -> `CLOVER_APP_SECRET`
+- `FREE_CLOVER_OAUTH_REDIRECT_URI` -> `CLOVER_OAUTH_REDIRECT_URI`
+- `FREE_CLOVER_OAUTH_STATE_SECRET` -> `CLOVER_OAUTH_STATE_SECRET`
+- `FREE_CLOVER_WEBHOOK_SHARED_SECRET` -> `CLOVER_WEBHOOK_SHARED_SECRET`
+
+Before enabling `FREE_PAYMENTS_PROVIDER_MODE=live`, validate the final env shape with:
+
+```bash
+./infra/free/bin/check-live-payments-env.sh infra/free/.env.example
+```
+
+On the host, `deploy-free` runs the same validation against the generated server `.env` before `docker compose up`.
