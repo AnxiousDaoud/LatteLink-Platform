@@ -180,6 +180,17 @@ describe("gateway", () => {
         );
       }
 
+      if (url.endsWith("/v1/operator/auth/providers") && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            google: {
+              configured: true
+            }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       if (url.includes("/v1/operator/auth/google/start") && method === "GET") {
         return new Response(
           JSON.stringify({
@@ -1062,6 +1073,22 @@ describe("gateway", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       authorizeUrl: expect.stringContaining("accounts.google.com")
+    });
+    await app.close();
+  });
+
+  it("reports operator auth provider readiness through identity", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/operator/auth/providers"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      google: {
+        configured: true
+      }
     });
     await app.close();
   });

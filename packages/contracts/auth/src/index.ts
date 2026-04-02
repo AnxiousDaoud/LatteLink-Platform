@@ -22,6 +22,12 @@ export const operatorGoogleExchangeRequestSchema = z.object({
   redirectUri: z.string().url()
 });
 
+export const operatorAuthProvidersSchema = z.object({
+  google: z.object({
+    configured: z.boolean()
+  })
+});
+
 export const passkeyChallengeRequestSchema = z.object({
   userId: z.string().uuid().optional()
 });
@@ -254,6 +260,12 @@ export const authContract = {
 export const operatorAuthContract = {
   basePath: "/operator/auth",
   routes: {
+    providers: {
+      method: "GET",
+      path: "/providers",
+      request: z.undefined(),
+      response: operatorAuthProvidersSchema
+    },
     googleStart: {
       method: "GET",
       path: "/google/start",

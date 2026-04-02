@@ -47,6 +47,26 @@ GOOGLE_OAUTH_STATE_SECRET=replace-with-long-random-secret
 GOOGLE_OAUTH_ALLOWED_REDIRECT_URIS=https://client.example.com/?google_auth_callback=1
 ```
 
+## Readiness Check
+
+Before telling stores to use Google, verify:
+
+```bash
+curl https://api.example.com/v1/operator/auth/providers
+```
+
+Expected shape:
+
+```json
+{
+  "google": {
+    "configured": true
+  }
+}
+```
+
+The client dashboard now uses this readiness response to disable the Google button when the backend is not configured yet.
+
 ## Request Flow
 
 1. The browser calls `GET /v1/operator/auth/google/start?redirectUri=...`.

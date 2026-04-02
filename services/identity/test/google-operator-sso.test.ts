@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MailSender } from "../src/mail.js";
 import { buildApp } from "../src/app.js";
 import { createInMemoryIdentityRepository } from "../src/repository.js";
+import { provisionOwnerAccess } from "../src/provisioning.js";
 
 function createNoopMailSender(): MailSender {
   return {
@@ -61,6 +62,13 @@ describe("operator Google SSO", () => {
 
   it("starts Google sign-in and exchanges a verified Google user into an operator session", async () => {
     const repository = createInMemoryIdentityRepository();
+    await provisionOwnerAccess(repository, {
+      allowInMemory: true,
+      displayName: "Pilot Owner",
+      email: "pilot.owner@example.com",
+      locationId: "pilot-01",
+      password: "PilotOwner123!"
+    });
     const app = await buildApp({
       repository,
       mailSender: createNoopMailSender()
@@ -96,9 +104,9 @@ describe("operator Google SSO", () => {
         return new Response(
           JSON.stringify({
             sub: "google-user-123",
-            email: "owner@gazellecoffee.com",
+            email: "pilot.owner@example.com",
             email_verified: true,
-            name: "Store Owner"
+            name: "Pilot Owner"
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
@@ -120,8 +128,30 @@ describe("operator Google SSO", () => {
     expect(exchangeResponse.statusCode).toBe(200);
     expect(exchangeResponse.json()).toMatchObject({
       operator: {
-        email: "owner@gazellecoffee.com",
-        role: "owner"
+        email: "pilot.owner@example.com",
+        role: "owner",
+        locationId: "pilot-01"
+      }
+    });
+
+    await app.close();
+  });
+
+  it("reports Google provider readiness separately from the sign-in flow", async () => {
+    const app = await buildApp({
+      repository: createInMemoryIdentityRepository(),
+      mailSender: createNoopMailSender()
+    });
+
+    const providersResponse = await app.inject({
+      method: "GET",
+      url: "/v1/operator/auth/providers"
+    });
+
+    expect(providersResponse.statusCode).toBe(200);
+    expect(providersResponse.json()).toEqual({
+      google: {
+        configured: true
       }
     });
 

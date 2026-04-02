@@ -12,6 +12,7 @@ import {
   createOperatorStaffUser,
   deleteOperatorMenuItem,
   exchangeOperatorGoogleCode,
+  fetchOperatorAuthProviders,
   fetchOperatorSnapshot,
   isApiRequestError,
   logoutOperatorSession,
@@ -24,6 +25,7 @@ import {
   updateOperatorOrderStatus,
   updateOperatorStaffUser,
   updateOperatorStoreConfig,
+  type OperatorAuthProviders,
   type OperatorSession,
   type OperatorUser
 } from "./api.js";
@@ -64,6 +66,7 @@ type AppState = {
   authApiBaseUrl: string;
   authEmail: string;
   authPassword: string;
+  authProviders: OperatorAuthProviders | null;
   initializing: boolean;
   loading: boolean;
   signingIn: boolean;
@@ -112,6 +115,7 @@ const state: AppState = {
   authApiBaseUrl: initialStoredSession?.apiBaseUrl ?? loadStoredApiBaseUrl(),
   authEmail: initialStoredSession?.operator.email ?? "",
   authPassword: "",
+  authProviders: null,
   initializing: true,
   loading: false,
   signingIn: false,
@@ -182,6 +186,28 @@ function isLocalDevAccessEnabled() {
   }
 
   return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+}
+
+function isGoogleSignInConfigured() {
+  return state.authProviders?.google.configured === true;
+}
+
+async function loadAuthProviders() {
+  const apiBaseUrl = state.authApiBaseUrl || resolveDefaultApiBaseUrl();
+
+  try {
+    state.authProviders = await fetchOperatorAuthProviders({ apiBaseUrl });
+  } catch {
+    state.authProviders = {
+      google: {
+        configured: false
+      }
+    };
+  } finally {
+    if (!state.session) {
+      render();
+    }
+  }
 }
 
 function getGoogleCallbackRedirectUri() {
@@ -644,6 +670,7 @@ async function bootstrap() {
   render();
 
   state.initializing = false;
+  void loadAuthProviders();
   const handledGoogleCallback = await handleGoogleCallback();
   if (handledGoogleCallback) {
     return;
@@ -683,6 +710,13 @@ function renderBrandMark() {
 function renderAuthScreen() {
   const showLocalDevHints = isLocalDevAccessEnabled();
   const showApiField = showLocalDevHints;
+  const googleSsoConfigured = isGoogleSignInConfigured();
+  const googleButtonHint =
+    state.authProviders === null
+      ? "Checking availability"
+      : googleSsoConfigured
+        ? "Use your provisioned store Google account"
+        : "Unavailable for this environment";
   const devCredentials = showLocalDevHints
     ? devCredentialProfiles
         .map(
@@ -756,11 +790,16 @@ function renderAuthScreen() {
                 <small>Coming soon</small>
               </span>
             </button>
-            <button class="sso-button" type="button" data-action="start-google-sign-in" ${state.signingIn ? "disabled" : ""}>
+            <button
+              class="sso-button"
+              type="button"
+              data-action="start-google-sign-in"
+              ${state.signingIn || !googleSsoConfigured ? "disabled" : ""}
+            >
               <span class="sso-button__icon">G</span>
               <span class="sso-button__meta">
                 <strong>Sign in with Google</strong>
-                <small>Use your store Google account</small>
+                <small>${escapeHtml(googleButtonHint)}</small>
               </span>
             </button>
           </div>
@@ -1580,6 +1619,12 @@ async function handlePasswordSignIn(form: HTMLFormElement) {
 }
 
 async function handleGoogleSignInStart() {
+  if (!isGoogleSignInConfigured()) {
+    setError("Google Sign-In is not configured for this environment.");
+    render();
+    return;
+  }
+
   const apiBaseUrl = state.authApiBaseUrl || resolveDefaultApiBaseUrl();
 
   try {

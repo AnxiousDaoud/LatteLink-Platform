@@ -1073,6 +1073,24 @@ export async function registerRoutes(app: FastifyInstance) {
   );
 
   app.get(
+    "/v1/operator/auth/providers",
+    {
+      preHandler: app.rateLimit(authReadRateLimit)
+    },
+    async (request, reply) => {
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: identityBaseUrl,
+        serviceLabel: "Identity",
+        method: "GET",
+        path: "/v1/operator/auth/providers",
+        responseSchema: operatorAuthContract.routes.providers.response
+      });
+    }
+  );
+
+  app.get(
     "/v1/operator/auth/google/start",
     {
       preHandler: app.rateLimit(authReadRateLimit)

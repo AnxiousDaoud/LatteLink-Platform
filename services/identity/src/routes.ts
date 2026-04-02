@@ -15,6 +15,7 @@ import {
   magicLinkRequestSchema,
   magicLinkVerifySchema,
   meResponseSchema,
+  operatorAuthProvidersSchema,
   operatorDevAccessRequestSchema,
   operatorGoogleExchangeRequestSchema,
   operatorMeResponseSchema,
@@ -999,6 +1000,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         authMethod: "password"
       });
       return session;
+    }
+  );
+
+  app.get(
+    "/v1/operator/auth/providers",
+    {
+      preHandler: app.rateLimit(authReadRateLimit)
+    },
+    async () => {
+      return operatorAuthProvidersSchema.parse({
+        google: {
+          configured: Boolean(loadGoogleOperatorConfig())
+        }
+      });
     }
   );
 

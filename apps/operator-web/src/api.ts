@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   googleOAuthStartResponseSchema,
+  operatorAuthProvidersSchema,
   operatorDevAccessRequestSchema,
   operatorGoogleExchangeRequestSchema,
   operatorPasswordSignInSchema,
@@ -37,6 +38,7 @@ const storedOperatorSessionSchema = operatorSessionSchema.extend({
 
 export type OperatorUser = z.output<typeof operatorUserSchema>;
 export type OperatorSession = z.output<typeof storedOperatorSessionSchema>;
+export type OperatorAuthProviders = z.output<typeof operatorAuthProvidersSchema>;
 export type OperatorDashboardSnapshot = {
   appConfig: z.output<typeof appConfigSchema>;
   orders: OperatorOrder[];
@@ -184,6 +186,14 @@ export function startOperatorGoogleSignIn(params: { apiBaseUrl: string; redirect
     apiBaseUrl: params.apiBaseUrl,
     path: `/operator/auth/google/start?${search.toString()}`,
     schema: googleOAuthStartResponseSchema
+  });
+}
+
+export function fetchOperatorAuthProviders(params: { apiBaseUrl: string }) {
+  return requestJson({
+    apiBaseUrl: params.apiBaseUrl,
+    path: "/operator/auth/providers",
+    schema: operatorAuthProvidersSchema
   });
 }
 
