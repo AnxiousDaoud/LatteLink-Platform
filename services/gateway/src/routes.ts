@@ -76,7 +76,6 @@ const jwtAccessTokenClaimsSchema = z.object({
 const orderIdParamsSchema = z.object({ orderId: z.string().uuid() });
 const menuItemParamsSchema = z.object({ itemId: z.string().min(1) });
 const cancelOrderRequestSchema = z.object({ reason: z.string().min(1) });
-const staffHeaderSchema = z.object({ "x-staff-token": z.string().min(1).optional() });
 const adminOrderStatusUpdateSchema = z.object({
   status: z.enum(["IN_PREP", "READY", "COMPLETED", "CANCELED"]),
   note: z.string().min(1).optional()
@@ -118,47 +117,6 @@ async function requireBearerAuth(request: FastifyRequest, reply: FastifyReply) {
   return undefined;
 }
 
-function staffAccessUnavailable(requestId: string) {
-  return apiErrorSchema.parse({
-    code: "STAFF_ACCESS_NOT_CONFIGURED",
-    message: "Staff access token is not configured",
-    requestId
-  });
-}
-
-function ensureStaffTokenAuth(request: FastifyRequest, reply: FastifyReply, staffToken: string | undefined) {
-  if (!staffToken) {
-    reply.status(503).send(staffAccessUnavailable(request.id));
-    return false;
-  }
-
-  const parsed = staffHeaderSchema.safeParse(request.headers);
-  if (!parsed.success || parsed.data["x-staff-token"] !== staffToken) {
-    reply.status(401).send(
-      apiErrorSchema.parse({
-        code: "UNAUTHORIZED_STAFF_REQUEST",
-        message: "Missing or invalid staff token",
-        requestId: request.id
-      })
-    );
-    return false;
-  }
-
-  return true;
-}
-
-async function requireStaffAccess(request: FastifyRequest, reply: FastifyReply, staffToken: string | undefined) {
-  if (!ensureBearerAuth(request, reply)) {
-    return reply;
-  }
-
-  if (!ensureStaffTokenAuth(request, reply, staffToken)) {
-    return reply;
-  }
-
-  return undefined;
-}
-
 function forbidden(requestId: string, capability?: string) {
   return apiErrorSchema.parse({
     code: "FORBIDDEN",
@@ -173,64 +131,11 @@ async function resolveOperatorAccess(params: {
   request: FastifyRequest;
   reply: FastifyReply;
   identityBaseUrl: string;
-  fallbackStaffToken?: string;
   requiredCapability: z.output<typeof operatorMeResponseSchema>["capabilities"][number];
 }) {
-  const { request, reply, identityBaseUrl, fallbackStaffToken, requiredCapability } = params;
+  const { request, reply, identityBaseUrl, requiredCapability } = params;
   if (!ensureBearerAuth(request, reply)) {
     return undefined;
-  }
-
-  if (fallbackStaffToken) {
-    const parsedStaffHeader = staffHeaderSchema.safeParse(request.headers);
-    const presentedStaffToken = parsedStaffHeader.success ? parsedStaffHeader.data["x-staff-token"] : undefined;
-    if (presentedStaffToken) {
-      if (presentedStaffToken !== fallbackStaffToken) {
-        reply.status(401).send(
-          apiErrorSchema.parse({
-            code: "UNAUTHORIZED_STAFF_REQUEST",
-            message: "Missing or invalid staff token",
-            requestId: request.id
-          })
-        );
-        return undefined;
-      }
-
-      request.authenticatedOperator = operatorMeResponseSchema.parse({
-        operatorUserId: "00000000-0000-4000-8000-000000000001",
-        displayName: "Fallback staff operator",
-        email: "staff-token@gazelle.local",
-        role: "owner",
-        locationId: "flagship-01",
-        active: true,
-        capabilities: [
-          "orders:read",
-          "orders:write",
-          "menu:read",
-          "menu:write",
-          "menu:visibility",
-          "store:read",
-          "store:write",
-          "staff:read",
-          "staff:write"
-        ],
-        createdAt: new Date(0).toISOString(),
-        updatedAt: new Date(0).toISOString()
-      });
-      return request.authenticatedOperator;
-    }
-
-    const authorizationHeader = typeof request.headers.authorization === "string" ? request.headers.authorization : "";
-    if (!authorizationHeader.startsWith("Bearer operator-access-")) {
-      reply.status(401).send(
-        apiErrorSchema.parse({
-          code: "UNAUTHORIZED_STAFF_REQUEST",
-          message: "Missing or invalid staff token",
-          requestId: request.id
-        })
-      );
-      return undefined;
-    }
   }
 
   if (request.authenticatedOperator) {
@@ -838,7 +743,6 @@ export async function registerRoutes(app: FastifyInstance) {
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
   const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
   const gatewayInternalApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
-  const gatewayStaffApiToken = trimToUndefined(process.env.GATEWAY_STAFF_API_TOKEN);
   const jwtSecret = trimToUndefined(process.env.JWT_SECRET);
   const rateLimitWindowMs = toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
   const authWriteRateLimit = {
@@ -907,7 +811,6 @@ export async function registerRoutes(app: FastifyInstance) {
         request,
         reply,
         identityBaseUrl,
-        fallbackStaffToken: gatewayStaffApiToken,
         requiredCapability: capability
       });
 
