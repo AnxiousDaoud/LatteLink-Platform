@@ -33,6 +33,10 @@ The mobile app now uses `apps/mobile/eas.json` with three profiles:
 
 Use [apps/mobile/.env.example](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/mobile/.env.example) as the canonical shape.
 
+For release preparation and TestFlight handoff, continue with:
+
+- [mobile-testflight-pilot-release.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/mobile-testflight-pilot-release.md)
+
 Required values for every build:
 
 - `APP_VARIANT`
