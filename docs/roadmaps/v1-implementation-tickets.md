@@ -326,6 +326,40 @@ Acceptance criteria:
 - verified Clover webhook deliveries can authenticate through the public API path
 - the repo-side Clover failure is resolved without changing the rollout ticket scope
 
+### BE-V1-08 Clover Public Endpoint Rate Limiting
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-complete, locally validated
+- `done`: added gateway-side rate limits to the public Clover OAuth status/connect/callback/refresh and webhook ingress routes, plus targeted regression coverage proving the limits trip cleanly
+- `blocked`: none
+
+Goal:
+Protect the newly exposed public Clover ingress routes from avoidable abuse and accidental retry storms.
+
+Scope:
+
+- add dedicated gateway rate-limit buckets for public Clover OAuth reads
+- add dedicated gateway rate-limit buckets for public Clover OAuth writes
+- add dedicated gateway rate-limit buckets for public Clover webhook ingress
+- verify the limits with route-level tests
+
+Key deliverables:
+
+- `gateway` rate-limit config for public Clover routes
+- tests covering read, write, and webhook-limit behavior
+
+Dependencies:
+
+- `BE-V1-07`
+
+Acceptance criteria:
+
+- public Clover OAuth GET routes are rate limited at the gateway
+- Clover OAuth refresh is rate limited at the gateway
+- Clover webhook ingress is rate limited at the gateway before the request reaches `payments`
+
 ## Customer Frontend Mobile Tickets
 
 ### MF-V1-01 Session and Auth Hardening

@@ -2193,6 +2193,81 @@ describe("gateway", () => {
     await app.close();
   });
 
+  it("rate limits public Clover OAuth read routes when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_READ_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "GET",
+        url: "/v1/payments/clover/oauth/status"
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "GET",
+        url: "/v1/payments/clover/oauth/status"
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
+  it("rate limits Clover OAuth refresh writes when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_WRITE_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/clover/oauth/refresh"
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/clover/oauth/refresh"
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
+  it("rate limits Clover webhook ingress at the gateway when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_WEBHOOK_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/webhooks/clover",
+        payload: {
+          verificationCode: "verify-me-123"
+        }
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/webhooks/clover",
+        payload: {
+          verificationCode: "verify-me-123"
+        }
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
   it("propagates x-request-id upstream and exposes metrics counters", async () => {
     const app = await buildApp();
     const requestId = "trace-request-123";

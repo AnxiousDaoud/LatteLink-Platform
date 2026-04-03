@@ -945,6 +945,20 @@ export async function registerRoutes(app: FastifyInstance) {
     timeWindow: rateLimitWindowMs,
     keyGenerator: userScopedRateLimitKey
   };
+  const paymentsReadRateLimit = {
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_PAYMENTS_READ_MAX, 60),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  };
+  const paymentsWriteRateLimit = {
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_PAYMENTS_WRITE_MAX, 20),
+    timeWindow: rateLimitWindowMs,
+    keyGenerator: userScopedRateLimitKey
+  };
+  const paymentsWebhookRateLimit = {
+    max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_PAYMENTS_WEBHOOK_MAX, 120),
+    timeWindow: rateLimitWindowMs
+  };
   const loyaltyReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_LOYALTY_READ_MAX, 120),
     timeWindow: rateLimitWindowMs,
@@ -997,7 +1011,7 @@ export async function registerRoutes(app: FastifyInstance) {
     notifications: notificationsContract.basePath
   }));
 
-  app.get("/v1/payments/clover/oauth/status", async (request, reply) =>
+  app.get("/v1/payments/clover/oauth/status", { preHandler: app.rateLimit(paymentsReadRateLimit) }, async (request, reply) =>
     proxyOpaqueUpstream({
       request,
       reply,
@@ -1009,7 +1023,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.get("/v1/payments/clover/oauth/connect", async (request, reply) =>
+  app.get("/v1/payments/clover/oauth/connect", { preHandler: app.rateLimit(paymentsReadRateLimit) }, async (request, reply) =>
     proxyOpaqueUpstream({
       request,
       reply,
@@ -1021,7 +1035,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.get("/v1/payments/clover/oauth/callback", async (request, reply) =>
+  app.get("/v1/payments/clover/oauth/callback", { preHandler: app.rateLimit(paymentsReadRateLimit) }, async (request, reply) =>
     proxyOpaqueUpstream({
       request,
       reply,
@@ -1034,7 +1048,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.post("/v1/payments/clover/oauth/refresh", async (request, reply) =>
+  app.post("/v1/payments/clover/oauth/refresh", { preHandler: app.rateLimit(paymentsWriteRateLimit) }, async (request, reply) =>
     proxyOpaqueUpstream({
       request,
       reply,
@@ -1046,7 +1060,7 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
-  app.post("/v1/payments/webhooks/clover", async (request, reply) =>
+  app.post("/v1/payments/webhooks/clover", { preHandler: app.rateLimit(paymentsWebhookRateLimit) }, async (request, reply) =>
     proxyOpaqueUpstream({
       request,
       reply,
