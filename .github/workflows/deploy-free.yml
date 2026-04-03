@@ -249,8 +249,25 @@ jobs:
         env:
           FREE_API_DOMAIN: ${{ vars.FREE_API_DOMAIN }}
         run: |
-          curl --fail --silent --show-error "https://${FREE_API_DOMAIN}/health"
-          curl --fail --silent --show-error "https://${FREE_API_DOMAIN}/ready"
+          retry_curl() {
+            local url="$1"
+            local attempt
+
+            for attempt in $(seq 1 12); do
+              if curl --fail --silent --show-error "$url"; then
+                return 0
+              fi
+
+              echo "retry ${attempt}/12 for ${url}" >&2
+              sleep 5
+            done
+
+            echo "timed out waiting for ${url}" >&2
+            return 1
+          }
+
+          retry_curl "https://${FREE_API_DOMAIN}/health"
+          retry_curl "https://${FREE_API_DOMAIN}/ready"
 
       - name: Skip free deploy (prerequisites missing)
         if: steps.free-check.outputs.enabled != 'true'
