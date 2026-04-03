@@ -289,7 +289,8 @@ export default function CartModalScreen() {
   const cardCapabilityEnabled = Boolean(appConfig?.paymentCapabilities.card);
   const cardEntryConfigQuery = useCloverCardEntryConfigQuery(isAuthenticated && checkoutReady && cardCapabilityEnabled);
   const nativeApplePayAvailable = Boolean(checkoutReady && canAttemptNativeApplePay() && appConfig?.paymentCapabilities.applePay);
-  const cardEntryAvailable = Boolean(checkoutReady && cardCapabilityEnabled && cardEntryConfigQuery.data?.enabled);
+  const cardEntryVisible = Boolean(checkoutReady && cardCapabilityEnabled);
+  const cardEntryConfigured = Boolean(checkoutReady && cardCapabilityEnabled && cardEntryConfigQuery.data?.enabled);
   const cardEntryConfigPending = Boolean(isAuthenticated && checkoutReady && cardCapabilityEnabled && cardEntryConfigQuery.isLoading);
   const showDevFallback = __DEV__ && checkoutReady;
   const quoteItems = useMemo(() => toQuoteItems(items), [items]);
@@ -319,7 +320,7 @@ export default function CartModalScreen() {
       nativeApplePayPending ||
       cardCheckoutPending ||
       checkoutMutation.isPending ||
-      (!nativeApplePayAvailable && !cardEntryAvailable)
+      (!nativeApplePayAvailable && !cardEntryVisible)
     : false;
   const stickyActionLabel = isAuthenticated
     ? !checkoutReady
@@ -336,14 +337,14 @@ export default function CartModalScreen() {
             ? "Retry payment"
             : nativeApplePayAvailable
               ? "Pay with Apple Pay"
-              : cardEntryAvailable
+              : cardEntryVisible
                 ? "Use card below"
                 : "Payment unavailable"
     : getCheckoutRecoveryActionLabel(authRecoveryState);
   const stickyActionIcon: keyof typeof Ionicons.glyphMap = isAuthenticated
     ? nativeApplePayAvailable
       ? "logo-apple"
-      : cardEntryAvailable
+      : cardEntryVisible
         ? "card-outline"
         : "alert-circle-outline"
     : "log-in-outline";
@@ -696,14 +697,20 @@ export default function CartModalScreen() {
                             <Text style={styles.paymentStatusBody}>Use the footer to confirm payment when you are ready.</Text>
                           </View>
                         </View>
-                      ) : cardEntryAvailable ? (
+                      ) : cardEntryVisible ? (
                         <View style={styles.paymentStatusRow}>
                           <View style={styles.paymentStatusIconWrap}>
                             <Ionicons name="card-outline" size={16} color={uiPalette.text} />
                           </View>
                           <View style={styles.paymentStatusCopy}>
-                            <Text style={styles.paymentStatusTitle}>Card entry ready</Text>
-                            <Text style={styles.paymentStatusBody}>Enter a test card below to tokenize it with Clover and complete checkout.</Text>
+                            <Text style={styles.paymentStatusTitle}>
+                              {cardEntryConfigured ? "Card entry ready" : "Card entry available"}
+                            </Text>
+                            <Text style={styles.paymentStatusBody}>
+                              {cardEntryConfigured
+                                ? "Enter a test card below to tokenize it with Clover and complete checkout."
+                                : "Use the card form below. If Clover setup is still refreshing, any tokenization problem will show inline."}
+                            </Text>
                           </View>
                         </View>
                       ) : null}
@@ -739,12 +746,18 @@ export default function CartModalScreen() {
                         </View>
                       ) : null}
 
-                      {cardEntryAvailable ? (
+                      {cardEntryVisible ? (
                         <View style={styles.devSection}>
                           <Text style={styles.devEyebrow}>Card checkout</Text>
                           <Text style={styles.paymentStatusBody}>
                             Card details are sent directly to Clover for tokenization before your order is paid.
                           </Text>
+                          {!cardEntryConfigured && !cardEntryConfigPending ? (
+                            <StatusBanner
+                              message="Card setup has not been confirmed yet for this session. Try checkout below and any Clover configuration error will appear here."
+                              tone="warning"
+                            />
+                          ) : null}
                           <TextInput
                             value={cardNumber}
                             onChangeText={setCardNumber}
