@@ -927,8 +927,8 @@ Acceptance criteria:
 Status:
 
 - `owner`: Codex
-- `status`: not started
-- `done`: the repo already contains the per-surface pieces needed for rollout, including backend deploy and restore runbooks, client dashboard deployment and onboarding runbooks, mobile release preflight, and LatteLink web deployment preflight
+- `status`: validated locally, pending merge to main
+- `done`: created `docs/runbooks/v1-launch-packet.md` to consolidate the exact repo-ready to live-ready release sequence, authoritative rollout runbook links, a single external-input matrix, and the minimum evidence required for V1 launch signoff
 - `blocked`: no external blocker
 
 Goal:
