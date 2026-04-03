@@ -523,6 +523,127 @@ async function proxyUpstream<TResponse>(params: {
   return reply.status(upstreamResponse.status).send(parsedResponse.data);
 }
 
+async function proxyOpaqueUpstream(params: {
+  request: FastifyRequest;
+  reply: FastifyReply;
+  baseUrl: string;
+  serviceLabel: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+  body?: unknown;
+  additionalHeaders?: Record<string, string | undefined>;
+  forwardUserIdHeader?: boolean;
+  timeoutMs?: number;
+  redirect?: RequestRedirect;
+}) {
+  const {
+    request,
+    reply,
+    baseUrl,
+    serviceLabel,
+    method,
+    path,
+    body,
+    additionalHeaders,
+    forwardUserIdHeader = true,
+    timeoutMs = toPositiveInteger(process.env.GATEWAY_UPSTREAM_TIMEOUT_MS, defaultUpstreamTimeoutMs),
+    redirect = "follow"
+  } = params;
+
+  const headers: Record<string, string> = {
+    "x-request-id": request.id
+  };
+  const authorization = request.headers.authorization;
+  const userIdHeader = request.authenticatedUserId ?? toHeaderValue(request.headers["x-user-id"]);
+
+  if (typeof authorization === "string") {
+    headers.authorization = authorization;
+  }
+  if (forwardUserIdHeader && typeof userIdHeader === "string") {
+    headers["x-user-id"] = userIdHeader;
+  }
+  if (additionalHeaders) {
+    for (const [key, value] of Object.entries(additionalHeaders)) {
+      if (value) {
+        headers[key] = value;
+      }
+    }
+  }
+
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
+
+  let upstreamResponse: Response;
+  const timeoutController = new AbortController();
+  const timeoutHandle = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  try {
+    upstreamResponse = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      redirect,
+      signal: timeoutController.signal
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      request.log.warn(
+        { requestId: request.id, serviceLabel, method, path, timeoutMs },
+        "opaque upstream request timed out"
+      );
+      return reply.status(504).send(
+        apiErrorSchema.parse({
+          code: "UPSTREAM_TIMEOUT",
+          message: `${serviceLabel} service timed out`,
+          requestId: request.id
+        })
+      );
+    }
+
+    request.log.error(
+      { error, requestId: request.id, serviceLabel, method, path },
+      "opaque upstream request failed before response"
+    );
+    return reply.status(502).send(
+      apiErrorSchema.parse({
+        code: "UPSTREAM_UNAVAILABLE",
+        message: `${serviceLabel} service is unavailable`,
+        requestId: request.id
+      })
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
+  const rawBody = await upstreamResponse.text();
+  const contentType = upstreamResponse.headers.get("content-type");
+  const location = upstreamResponse.headers.get("location");
+  const cacheControl = upstreamResponse.headers.get("cache-control");
+
+  if (contentType) {
+    reply.header("content-type", contentType);
+  }
+  if (location) {
+    reply.header("location", location);
+  }
+  if (cacheControl) {
+    reply.header("cache-control", cacheControl);
+  }
+
+  reply.status(upstreamResponse.status);
+
+  if (rawBody.length === 0) {
+    return reply.send();
+  }
+
+  if (contentType?.toLowerCase().includes("application/json")) {
+    return reply.send(parseJsonSafely(rawBody));
+  }
+
+  return reply.send(rawBody);
+}
+
 async function fetchOrderForStream(params: {
   requestId: string;
   ordersBaseUrl: string;
@@ -788,6 +909,7 @@ export async function registerRoutes(app: FastifyInstance) {
   const ordersBaseUrl = process.env.ORDERS_SERVICE_BASE_URL ?? "http://127.0.0.1:3001";
   const ordersInternalApiToken = trimToUndefined(process.env.ORDERS_INTERNAL_API_TOKEN);
   const catalogBaseUrl = process.env.CATALOG_SERVICE_BASE_URL ?? "http://127.0.0.1:3002";
+  const paymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL ?? "http://127.0.0.1:3003";
   const loyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL ?? "http://127.0.0.1:3004";
   const notificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL ?? "http://127.0.0.1:3005";
   const gatewayInternalApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
@@ -874,6 +996,68 @@ export async function registerRoutes(app: FastifyInstance) {
     loyalty: loyaltyContract.basePath,
     notifications: notificationsContract.basePath
   }));
+
+  app.get("/v1/payments/clover/oauth/status", async (request, reply) =>
+    proxyOpaqueUpstream({
+      request,
+      reply,
+      baseUrl: paymentsBaseUrl,
+      serviceLabel: "Payments",
+      method: "GET",
+      path: "/v1/payments/clover/oauth/status",
+      forwardUserIdHeader: false
+    })
+  );
+
+  app.get("/v1/payments/clover/oauth/connect", async (request, reply) =>
+    proxyOpaqueUpstream({
+      request,
+      reply,
+      baseUrl: paymentsBaseUrl,
+      serviceLabel: "Payments",
+      method: "GET",
+      path: "/v1/payments/clover/oauth/connect",
+      forwardUserIdHeader: false
+    })
+  );
+
+  app.get("/v1/payments/clover/oauth/callback", async (request, reply) =>
+    proxyOpaqueUpstream({
+      request,
+      reply,
+      baseUrl: paymentsBaseUrl,
+      serviceLabel: "Payments",
+      method: "GET",
+      path: request.url,
+      forwardUserIdHeader: false,
+      redirect: "manual"
+    })
+  );
+
+  app.post("/v1/payments/clover/oauth/refresh", async (request, reply) =>
+    proxyOpaqueUpstream({
+      request,
+      reply,
+      baseUrl: paymentsBaseUrl,
+      serviceLabel: "Payments",
+      method: "POST",
+      path: "/v1/payments/clover/oauth/refresh",
+      forwardUserIdHeader: false
+    })
+  );
+
+  app.post("/v1/payments/webhooks/clover", async (request, reply) =>
+    proxyOpaqueUpstream({
+      request,
+      reply,
+      baseUrl: paymentsBaseUrl,
+      serviceLabel: "Payments",
+      method: "POST",
+      path: "/v1/payments/webhooks/clover",
+      body: request.body,
+      forwardUserIdHeader: false
+    })
+  );
 
   app.post(
     "/v1/auth/apple/exchange",

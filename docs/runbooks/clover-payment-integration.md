@@ -38,7 +38,7 @@ Live mode env:
 - `CLOVER_CHARGE_ENDPOINT` (supports `{merchantId}` template)
 - `CLOVER_REFUND_ENDPOINT` (supports `{merchantId}` and `{paymentId}` templates)
 - `CLOVER_APPLE_PAY_TOKENIZE_ENDPOINT` (required when charging with `applePayWallet`)
-- `CLOVER_WEBHOOK_SHARED_SECRET` (required; webhook requests are rejected until it is set)
+- `CLOVER_WEBHOOK_SHARED_SECRET` (required for verified webhook deliveries; set this to the Clover webhook auth code / `X-Clover-Auth` value after Clover validates the callback URL)
 - `ORDERS_SERVICE_BASE_URL` (defaults to `http://127.0.0.1:3001`)
 - `ORDERS_INTERNAL_API_TOKEN` (required in both `payments` and `orders`; payments charge/refund writes and orders reconciliation both reject requests until it is set)
 
@@ -92,6 +92,12 @@ Connection persistence:
 `payments` now accepts provider callbacks at:
 
 - `POST /v1/payments/webhooks/clover`
+
+Verification note:
+
+- Clover may first send a verification payload containing `verificationCode` before normal webhook auth is active.
+- `payments` now accepts that verification callback with `200` so Clover can validate the public URL.
+- after verification, production deliveries authenticate with the Clover auth header (`X-Clover-Auth`), which should match `CLOVER_WEBHOOK_SHARED_SECRET`
 
 On each webhook:
 

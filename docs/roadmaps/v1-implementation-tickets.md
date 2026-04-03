@@ -1,6 +1,6 @@
 # V1 Implementation Tickets
 
-Last updated: `2026-04-02`
+Last updated: `2026-04-03`
 
 ## Purpose
 
@@ -286,6 +286,45 @@ Acceptance criteria:
 
 - a failed pilot action can be traced across services
 - release verification has a repeatable checklist
+
+### BE-V1-07 Clover Public OAuth and Webhook Routing Fix
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-complete, locally validated
+- `done`: added public gateway passthrough for Clover OAuth status/connect/callback/refresh and webhook routes, preserved Clover redirect responses through the public API, accepted Clover verification callbacks before webhook auth enforcement, trusted `X-Clover-Auth`, and covered the new paths with targeted gateway/payments tests
+- `blocked`: hosted Clover production app verification, production test-merchant install/connect flow, and live-mode rollout evidence remain tracked separately in `XS-V1-07`
+
+Goal:
+Make the deployed public API compatible with Clover's production OAuth launch/callback flow and webhook verification flow.
+
+Scope:
+
+- expose Clover OAuth and webhook routes through `gateway`
+- preserve Clover redirect responses through the public API callback path
+- accept Clover webhook verification payloads before normal webhook auth enforcement
+- accept Clover's verified webhook auth header format in `payments`
+- add regression coverage for the public gateway and webhook handshake paths
+
+Key deliverables:
+
+- gateway passthrough for Clover OAuth status/connect/callback/refresh routes
+- public webhook forwarding for `POST /v1/payments/webhooks/clover`
+- payments webhook verification-code acceptance
+- support for Clover's `X-Clover-Auth` header
+- targeted tests covering the new public route behavior
+
+Dependencies:
+
+- `BE-V1-03`
+
+Acceptance criteria:
+
+- `https://api.<domain>/v1/payments/clover/oauth/callback` can preserve Clover redirect behavior
+- `https://api.<domain>/v1/payments/webhooks/clover` returns `200` for Clover verification payloads
+- verified Clover webhook deliveries can authenticate through the public API path
+- the repo-side Clover failure is resolved without changing the rollout ticket scope
 
 ## Customer Frontend Mobile Tickets
 
@@ -1052,7 +1091,7 @@ Status:
 
 - `owner`: User + Codex
 - `status`: blocked on Clover production developer/test-merchant setup and hosted webhook validation
-- `done`: the repo supports live Clover env wiring, OAuth connection endpoints, webhook reconciliation plumbing, and free-first deploy validation for production-mode Clover rollout
+- `done`: the rollout path, env wiring, and hosted validation checklist are defined; repo-side Clover gateway/webhook fixes are tracked separately in `BE-V1-07`
 - `blocked`: Clover production app setup, production test merchant install/connect flow, webhook verification, live-mode deploy, and provider QA transcripts still require external provider access
 
 Goal:
@@ -1078,6 +1117,7 @@ Key deliverables:
 Dependencies:
 
 - `XS-V1-03`
+- `BE-V1-07`
 
 Acceptance criteria:
 

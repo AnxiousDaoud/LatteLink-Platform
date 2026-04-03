@@ -874,6 +874,7 @@ function authorizeWebhookRequest(
 
   const requestHeaders = request.headers as Record<string, unknown>;
   const providedSecret =
+    getHeaderValue(requestHeaders, "x-clover-auth") ??
     getHeaderValue(requestHeaders, "x-clover-webhook-secret") ??
     getHeaderValue(requestHeaders, "x-webhook-secret") ??
     getHeaderValue(requestHeaders, "x-clover-signature");
@@ -1049,6 +1050,10 @@ function firstIsoDateAtPaths(value: unknown, paths: string[][]): string | undefi
   }
 
   return undefined;
+}
+
+function resolveCloverWebhookVerificationCode(value: unknown): string | undefined {
+  return firstStringAtPaths(value, [["verificationCode"], ["verification_code"]]);
 }
 
 export function summarizeCloverResponseForLogs(value: unknown): Record<string, string> {
@@ -2842,6 +2847,15 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.post("/v1/payments/webhooks/clover", { preHandler: app.rateLimit(paymentsWebhookRateLimit) }, async (request, reply) => {
+    const verificationCode = resolveCloverWebhookVerificationCode(request.body);
+    if (verificationCode) {
+      request.log.info({ requestId: request.id }, "accepted Clover webhook verification request");
+      return {
+        accepted: true,
+        verificationCode
+      };
+    }
+
     if (!authorizeWebhookRequest(request, reply, cloverWebhookSharedSecret)) {
       return;
     }
