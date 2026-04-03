@@ -77,6 +77,12 @@ Recommended sandbox flow:
 4. Confirm `GET /v1/payments/clover/oauth/status` reports `connected: true` and `credentialSource: "oauth"`.
 5. Verify `GET /ready` reports `providerConfigured: true`.
 
+Production note:
+
+- completing OAuth and webhook verification proves the Clover app connection is live, but it does not by itself validate charge/refund execution
+- the current production checkout path reaches live Clover through Apple Pay, so end-to-end transaction validation remains blocked until Apple credentials and an Apple Pay-enabled mobile build are available
+- there is no production-safe non-Apple fallback checkout path exposed today
+
 Direct Clover app-launch note:
 
 - Clover can launch your app before `code` and `state` exist. In that case Clover typically sends merchant context first, and your app must start the `/oauth/v2/authorize` step from there.

@@ -714,6 +714,41 @@ Acceptance criteria:
 - the app is installable and usable by pilot testers
 - the team has a clear way to gather and triage pilot feedback
 
+### MF-V1-06 Clover Card Token Checkout
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-in-progress
+- `done`: the checkout contracts and payments stack now accept a generalized Clover source token path in parallel with Apple Pay inputs, and the live backend can already expose authenticated Clover card-entry configuration
+- `blocked`: final mobile UX polish plus end-to-end validation still depends on confirming Clover test-card behavior in the connected target environment
+
+Goal:
+Add a real Clover card-token checkout path that does not depend on Apple Pay.
+
+Scope:
+
+- mobile card-entry UX
+- authenticated Clover card-entry config retrieval
+- tokenized card checkout submission
+- customer-visible payment-method gating
+
+Key deliverables:
+
+- customer checkout can submit a Clover `paymentSourceToken`
+- the mobile app only exposes card entry when Clover card tokenization is configured
+- pilot QA has a non-Apple payment path for end-to-end validation
+
+Dependencies:
+
+- connected Clover merchant OAuth credentials
+- Clover public API access key availability
+
+Acceptance criteria:
+
+- the mobile app can tokenize a card directly with Clover and pay an order with the resulting source token
+- card entry is hidden when Clover card tokenization is not configured for the current environment
+
 ## Client Dashboard Tickets
 
 ### CD-V1-01 Dashboard QA and Bug Scrub
@@ -1142,6 +1177,7 @@ Optional-but-likely within V1:
 
 - `CD-V1-04`
 - `LW-V1-02`
+- `MF-V1-06`
 - `MF-V1-05`
 
 ## After This Document
@@ -1305,9 +1341,9 @@ Acceptance criteria:
 Status:
 
 - `owner`: User + Codex
-- `status`: blocked on Clover production developer/test-merchant setup and hosted webhook validation
-- `done`: the rollout path, env wiring, and hosted validation checklist are defined; repo-side Clover gateway/webhook fixes are tracked separately in `BE-V1-07`
-- `blocked`: Clover production app setup, production test merchant install/connect flow, webhook verification, live-mode deploy, and provider QA transcripts still require external provider access
+- `status`: blocked on Apple Pay credentials and an Apple Pay-enabled mobile build for live transaction validation
+- `done`: Clover production app setup, production test merchant install/connect flow, public webhook verification, live-mode deploy, and hosted OAuth connection are complete; repo-side Clover gateway/webhook fixes are tracked separately in `BE-V1-07`
+- `blocked`: charge, refund, and reconciliation validation still require a real Apple Pay handoff because the current production flow does not expose a non-Apple payment fallback
 
 Goal:
 Validate Clover in production mode against a Clover production test merchant without connecting the pilot client's real merchant account.
@@ -1333,6 +1369,7 @@ Dependencies:
 
 - `XS-V1-03`
 - `BE-V1-07`
+- Apple Pay credentials and an Apple Pay-enabled mobile build
 
 Acceptance criteria:
 
@@ -1340,6 +1377,7 @@ Acceptance criteria:
 - `/v1/payments/clover/oauth/status` reports `connected: true` and `credentialSource: "oauth"`
 - Clover webhook verification succeeds against the public API
 - the production test merchant can complete the intended live Clover validation flow without using the pilot client's real merchant
+- at least one live charge and one refund are validated through the Apple Pay-backed mobile checkout path
 
 ### XS-V1-04 Development Flow and Change Control
 
