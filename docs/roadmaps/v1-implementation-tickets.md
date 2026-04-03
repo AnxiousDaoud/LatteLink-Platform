@@ -1,6 +1,6 @@
 # V1 Implementation Tickets
 
-Last updated: `2026-04-02`
+Last updated: `2026-04-03`
 
 ## Purpose
 
@@ -286,6 +286,114 @@ Acceptance criteria:
 
 - a failed pilot action can be traced across services
 - release verification has a repeatable checklist
+
+### BE-V1-07 Clover Public OAuth and Webhook Routing Fix
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-complete, locally validated
+- `done`: added public gateway passthrough for Clover OAuth status/connect/callback/refresh and webhook routes, preserved Clover redirect responses through the public API, accepted Clover verification callbacks before webhook auth enforcement, trusted `X-Clover-Auth`, and covered the new paths with targeted gateway/payments tests
+- `blocked`: hosted Clover production app verification, production test-merchant install/connect flow, and live-mode rollout evidence remain tracked separately in `XS-V1-07`
+
+Goal:
+Make the deployed public API compatible with Clover's production OAuth launch/callback flow and webhook verification flow.
+
+Scope:
+
+- expose Clover OAuth and webhook routes through `gateway`
+- preserve Clover redirect responses through the public API callback path
+- accept Clover webhook verification payloads before normal webhook auth enforcement
+- accept Clover's verified webhook auth header format in `payments`
+- add regression coverage for the public gateway and webhook handshake paths
+
+Key deliverables:
+
+- gateway passthrough for Clover OAuth status/connect/callback/refresh routes
+- public webhook forwarding for `POST /v1/payments/webhooks/clover`
+- payments webhook verification-code acceptance
+- support for Clover's `X-Clover-Auth` header
+- targeted tests covering the new public route behavior
+
+Dependencies:
+
+- `BE-V1-03`
+
+Acceptance criteria:
+
+- `https://api.<domain>/v1/payments/clover/oauth/callback` can preserve Clover redirect behavior
+- `https://api.<domain>/v1/payments/webhooks/clover` returns `200` for Clover verification payloads
+- verified Clover webhook deliveries can authenticate through the public API path
+- the repo-side Clover failure is resolved without changing the rollout ticket scope
+
+### BE-V1-08 Clover Public Endpoint Rate Limiting
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-complete, locally validated
+- `done`: added gateway-side rate limits to the public Clover OAuth status/connect/callback/refresh and webhook ingress routes, plus targeted regression coverage proving the limits trip cleanly
+- `blocked`: none
+
+Goal:
+Protect the newly exposed public Clover ingress routes from avoidable abuse and accidental retry storms.
+
+Scope:
+
+- add dedicated gateway rate-limit buckets for public Clover OAuth reads
+- add dedicated gateway rate-limit buckets for public Clover OAuth writes
+- add dedicated gateway rate-limit buckets for public Clover webhook ingress
+- verify the limits with route-level tests
+
+Key deliverables:
+
+- `gateway` rate-limit config for public Clover routes
+- tests covering read, write, and webhook-limit behavior
+
+Dependencies:
+
+- `BE-V1-07`
+
+Acceptance criteria:
+
+- public Clover OAuth GET routes are rate limited at the gateway
+- Clover OAuth refresh is rate limited at the gateway
+- Clover webhook ingress is rate limited at the gateway before the request reaches `payments`
+
+### BE-V1-09 Gateway Contract Artifact Drift Fix
+
+Status:
+
+- `owner`: Codex
+- `status`: repo-complete, locally validated
+- `done`: regenerated the committed gateway OpenAPI artifact and mobile SDK generated types after the Clover public-route additions, then reran the contract-compat coverage so the generated outputs match the live gateway surface again
+- `blocked`: none
+
+Goal:
+Bring the committed gateway OpenAPI and generated SDK artifacts back in sync after the Clover public-route changes.
+
+Scope:
+
+- regenerate committed gateway OpenAPI artifacts after the Clover route additions
+- regenerate the mobile SDK generated types from the updated gateway spec
+- verify the contract-drift guard passes locally
+- keep the fix scoped to generated artifacts and the tracking ticket
+
+Key deliverables:
+
+- updated `services/gateway/openapi/openapi.json`
+- updated `packages/sdk-mobile/src/generated/types.ts`
+- local contract-drift verification evidence
+
+Dependencies:
+
+- `BE-V1-07`
+
+Acceptance criteria:
+
+- committed gateway OpenAPI artifacts include the public Clover OAuth and webhook routes
+- committed SDK generated types match the updated gateway OpenAPI spec
+- the contract-drift guard no longer fails for the Clover public-route changes
 
 ## Customer Frontend Mobile Tickets
 
@@ -709,7 +817,7 @@ Status:
 - `owner`: Codex
 - `status`: repo-complete, code-health validated
 - `done`: the admin-console shell is scaffolded and currently passes `lint`, `typecheck`, and `build`
-- `blocked`: internal hosting, auth rollout, and real platform-admin browser QA are still external steps
+- `blocked`: live internal hosting, auth rollout, and platform-admin browser QA are deferred to `AC-V1-04`
 
 Goal:
 Start the internal control plane instead of leaving it theoretical.
@@ -734,6 +842,41 @@ Dependencies:
 Acceptance criteria:
 
 - the LatteLink team can log into an internal console and see the first control-plane surface
+
+### AC-V1-04 Live Internal Deployment, Auth Rollout, and Validation
+
+Status:
+
+- `owner`: Codex
+- `status`: pending
+- `done`: live rollout is intentionally separated from the repo-complete shell and tracked as its own external follow-through ticket
+- `blocked`: requires Vercel hosting, internal auth env setup, backend `INTERNAL_ADMIN_API_TOKEN` rollout, and real platform-admin browser QA
+
+Goal:
+Turn the admin console from a validated shell into a usable live internal tool.
+
+Scope:
+
+- Vercel deployment for `apps/admin-console`
+- internal admin auth environment configuration
+- live internal API token rollout on the backend
+- real browser validation for sign-in and first provisioning flow
+
+Key deliverables:
+
+- live admin-console domain
+- configured internal admin shared-password/session auth
+- working connectivity to live `/v1/internal/*` backend APIs
+- validated internal onboarding path for client/location/owner setup
+
+Dependencies:
+
+- `AC-V1-02`
+- `AC-V1-03`
+
+Acceptance criteria:
+
+- the LatteLink team can sign into the live admin console and complete the first real provisioning flow without raw DB or shell manipulation
 
 ## LatteLink Web Tickets
 
@@ -971,9 +1114,9 @@ Acceptance criteria:
 Status:
 
 - `owner`: User + Codex
-- `status`: blocked on external accounts, credentials, and hosted setup
-- `done`: repo-side deployment workflows, env examples, validation scripts, and core V1 product flows are in place; the repo now also passes `pnpm verify` when run outside the sandbox
-- `blocked`: live deployment targets, provider accounts, credentials, domains, and first-production validation all require external access
+- `status`: in progress, partially validated live
+- `done`: backend deployment, dashboard deployment, Google SSO rollout, LatteLink web rollout, and live lead-delivery validation are complete; the repo-side deployment workflows, env examples, and validation scripts are in place; payments remain intentionally in simulated mode for this ticket
+- `blocked`: non-Apple mobile release setup, signed build completion, and real-device QA still require external accounts and hosted tooling; live Clover provider validation is now tracked separately in `XS-V1-07`
 
 Goal:
 Complete the final non-repo steps required to take V1 live.
@@ -987,7 +1130,6 @@ Scope:
 - client dashboard `Vercel` project, domain, env vars, and deployed-browser QA
 - LatteLink web production env verification for lead capture and analytics
 - Google OAuth client credentials and redirect URI setup
-- live Clover credentials, webhook secret, and Apple Pay validation
 - `Expo / EAS`, App Store Connect, signed build setup, and first internal/TestFlight build
 - real-device mobile QA against the deployed backend
 
@@ -996,7 +1138,6 @@ Key deliverables:
 - live backend deployment
 - live client dashboard deployment
 - live LatteLink web verification
-- working provider configuration
 - first signed mobile build
 - final V1 launch evidence set
 
@@ -1010,8 +1151,49 @@ Acceptance criteria:
 - the client dashboard is reachable on its real public URL
 - the marketing site lead path and analytics are verified in production
 - a provisioned dashboard user can authenticate on the live domain
-- live payments work with the intended production provider configuration
+- the live rollout can operate with payments intentionally left in simulated mode until `XS-V1-07` is completed
 - a signed mobile build can complete the pilot flow against the deployed backend
+
+### XS-V1-07 Clover Production-Mode Provider Validation
+
+Status:
+
+- `owner`: User + Codex
+- `status`: blocked on Clover production developer/test-merchant setup and hosted webhook validation
+- `done`: the rollout path, env wiring, and hosted validation checklist are defined; repo-side Clover gateway/webhook fixes are tracked separately in `BE-V1-07`
+- `blocked`: Clover production app setup, production test merchant install/connect flow, webhook verification, live-mode deploy, and provider QA transcripts still require external provider access
+
+Goal:
+Validate Clover in production mode against a Clover production test merchant without connecting the pilot client's real merchant account.
+
+Scope:
+
+- create and configure the Clover production app
+- enable Clover ecommerce permissions and REST configuration for the deployed backend callback URLs
+- connect a Clover production test merchant through the repo's OAuth flow
+- configure webhook verification and shared-secret rollout against the public API
+- switch the deployed backend from simulated payments to live Clover mode
+- capture charge, refund, and reconciliation validation evidence against the production test merchant
+
+Key deliverables:
+
+- Clover production app configuration
+- Clover production test merchant connection
+- GitHub secrets and vars for live Clover mode
+- successful Clover OAuth status and webhook verification transcript
+- production test merchant payment validation evidence
+
+Dependencies:
+
+- `XS-V1-03`
+- `BE-V1-07`
+
+Acceptance criteria:
+
+- `deploy-free` passes with `FREE_PAYMENTS_PROVIDER_MODE=live`
+- `/v1/payments/clover/oauth/status` reports `connected: true` and `credentialSource: "oauth"`
+- Clover webhook verification succeeds against the public API
+- the production test merchant can complete the intended live Clover validation flow without using the pilot client's real merchant
 
 ### XS-V1-04 Development Flow and Change Control
 

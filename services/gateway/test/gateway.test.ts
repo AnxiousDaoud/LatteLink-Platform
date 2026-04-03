@@ -9,6 +9,7 @@ describe("gateway", () => {
   let previousIdentityBaseUrl: string | undefined;
   let previousOrdersBaseUrl: string | undefined;
   let previousCatalogBaseUrl: string | undefined;
+  let previousPaymentsBaseUrl: string | undefined;
   let previousLoyaltyBaseUrl: string | undefined;
   let previousNotificationsBaseUrl: string | undefined;
   let previousGatewayInternalToken: string | undefined;
@@ -74,6 +75,7 @@ describe("gateway", () => {
     previousIdentityBaseUrl = process.env.IDENTITY_SERVICE_BASE_URL;
     previousOrdersBaseUrl = process.env.ORDERS_SERVICE_BASE_URL;
     previousCatalogBaseUrl = process.env.CATALOG_SERVICE_BASE_URL;
+    previousPaymentsBaseUrl = process.env.PAYMENTS_SERVICE_BASE_URL;
     previousLoyaltyBaseUrl = process.env.LOYALTY_SERVICE_BASE_URL;
     previousNotificationsBaseUrl = process.env.NOTIFICATIONS_SERVICE_BASE_URL;
     previousGatewayInternalToken = process.env.GATEWAY_INTERNAL_API_TOKEN;
@@ -84,6 +86,7 @@ describe("gateway", () => {
     process.env.IDENTITY_SERVICE_BASE_URL = "http://identity.internal";
     process.env.ORDERS_SERVICE_BASE_URL = "http://orders.internal";
     process.env.CATALOG_SERVICE_BASE_URL = "http://catalog.internal";
+    process.env.PAYMENTS_SERVICE_BASE_URL = "http://payments.internal";
     process.env.LOYALTY_SERVICE_BASE_URL = "http://loyalty.internal";
     process.env.NOTIFICATIONS_SERVICE_BASE_URL = "http://notifications.internal";
     process.env.GATEWAY_INTERNAL_API_TOKEN = "gateway-test-token";
@@ -1031,6 +1034,101 @@ describe("gateway", () => {
         );
       }
 
+      if (url.endsWith("/v1/payments/clover/oauth/status") && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            providerMode: "live",
+            oauthConfigured: true,
+            connected: true,
+            credentialSource: "oauth",
+            merchantId: "test-merchant-123",
+            connectedMerchantId: "test-merchant-123",
+            accessTokenExpiresAt: "2026-04-03T12:00:00.000Z",
+            apiAccessKeyConfigured: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url.endsWith("/v1/payments/clover/oauth/connect") && method === "GET") {
+        return new Response(
+          JSON.stringify({
+            authorizeUrl: "https://www.clover.com/oauth/v2/authorize?client_id=clover-app-id",
+            redirectUri: "https://api.da0ud.me/v1/payments/clover/oauth/callback",
+            stateExpiresAt: "2026-04-03T12:10:00.000Z"
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url.includes("/v1/payments/clover/oauth/callback") && method === "GET") {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.searchParams.get("merchant_id")) {
+          return new Response("", {
+            status: 302,
+            headers: {
+              location: "https://www.clover.com/oauth/v2/authorize?client_id=clover-app-id"
+            }
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            providerMode: "live",
+            oauthConfigured: true,
+            connected: true,
+            credentialSource: "oauth",
+            merchantId: "test-merchant-123",
+            connectedMerchantId: "test-merchant-123",
+            accessTokenExpiresAt: "2026-04-03T12:00:00.000Z",
+            apiAccessKeyConfigured: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url.endsWith("/v1/payments/clover/oauth/refresh") && method === "POST") {
+        return new Response(
+          JSON.stringify({
+            providerMode: "live",
+            oauthConfigured: true,
+            connected: true,
+            credentialSource: "oauth",
+            merchantId: "test-merchant-123",
+            connectedMerchantId: "test-merchant-123",
+            accessTokenExpiresAt: "2026-04-03T13:00:00.000Z",
+            apiAccessKeyConfigured: true
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      if (url.endsWith("/v1/payments/webhooks/clover") && method === "POST") {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          verificationCode?: string;
+          orderId?: string;
+          paymentId?: string;
+        };
+        return new Response(
+          JSON.stringify(
+            body.verificationCode
+              ? {
+                  accepted: true,
+                  verificationCode: body.verificationCode
+                }
+              : {
+                  accepted: true,
+                  kind: "CHARGE",
+                  orderId: body.orderId ?? "123e4567-e89b-12d3-a456-426614174099",
+                  paymentId: body.paymentId ?? "123e4567-e89b-12d3-a456-426614174098",
+                  status: "SUCCEEDED",
+                  orderApplied: true
+                }
+          ),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       if (url.endsWith("/v1/loyalty/balance") && method === "GET") {
         return new Response(
           JSON.stringify({
@@ -1094,6 +1192,12 @@ describe("gateway", () => {
       delete process.env.CATALOG_SERVICE_BASE_URL;
     } else {
       process.env.CATALOG_SERVICE_BASE_URL = previousCatalogBaseUrl;
+    }
+
+    if (previousPaymentsBaseUrl === undefined) {
+      delete process.env.PAYMENTS_SERVICE_BASE_URL;
+    } else {
+      process.env.PAYMENTS_SERVICE_BASE_URL = previousPaymentsBaseUrl;
     }
 
     if (previousLoyaltyBaseUrl === undefined) {
@@ -2012,6 +2116,156 @@ describe("gateway", () => {
     }
 
     await app.close();
+  });
+
+  it("forwards public Clover OAuth status through the gateway", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/payments/clover/oauth/status"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      providerMode: "live",
+      connected: true,
+      credentialSource: "oauth",
+      connectedMerchantId: "test-merchant-123"
+    });
+
+    const statusCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).endsWith("/v1/payments/clover/oauth/status")
+    );
+    expect(statusCall).toBeDefined();
+    if (statusCall) {
+      expect(typeof statusCall[0] === "string" ? statusCall[0] : statusCall[0].url).toBe(
+        "http://payments.internal/v1/payments/clover/oauth/status"
+      );
+    }
+
+    await app.close();
+  });
+
+  it("preserves Clover OAuth callback redirects through the gateway", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/payments/clover/oauth/callback?merchant_id=test-merchant-123"
+    });
+
+    expect(response.statusCode).toBe(302);
+    expect(response.headers.location).toBe("https://www.clover.com/oauth/v2/authorize?client_id=clover-app-id");
+
+    const callbackCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).includes("/v1/payments/clover/oauth/callback?merchant_id=test-merchant-123")
+    );
+    expect(callbackCall).toBeDefined();
+
+    await app.close();
+  });
+
+  it("forwards Clover webhook verification requests through the gateway", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhooks/clover",
+      payload: {
+        verificationCode: "verify-me-123"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      verificationCode: "verify-me-123"
+    });
+
+    const webhookCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).endsWith("/v1/payments/webhooks/clover")
+    );
+    expect(webhookCall).toBeDefined();
+    if (webhookCall) {
+      expect(typeof webhookCall[0] === "string" ? webhookCall[0] : webhookCall[0].url).toBe(
+        "http://payments.internal/v1/payments/webhooks/clover"
+      );
+    }
+
+    await app.close();
+  });
+
+  it("rate limits public Clover OAuth read routes when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_READ_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "GET",
+        url: "/v1/payments/clover/oauth/status"
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "GET",
+        url: "/v1/payments/clover/oauth/status"
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
+  it("rate limits Clover OAuth refresh writes when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_WRITE_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/clover/oauth/refresh"
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/clover/oauth/refresh"
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
+  });
+
+  it("rate limits Clover webhook ingress at the gateway when configured threshold is reached", async () => {
+    vi.stubEnv("GATEWAY_RATE_LIMIT_PAYMENTS_WEBHOOK_MAX", "1");
+    vi.stubEnv("GATEWAY_RATE_LIMIT_WINDOW_MS", "60000");
+    const app = await buildApp();
+
+    try {
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/webhooks/clover",
+        payload: {
+          verificationCode: "verify-me-123"
+        }
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      const secondResponse = await app.inject({
+        method: "POST",
+        url: "/v1/payments/webhooks/clover",
+        payload: {
+          verificationCode: "verify-me-123"
+        }
+      });
+      expect(secondResponse.statusCode).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      await app.close();
+    }
   });
 
   it("propagates x-request-id upstream and exposes metrics counters", async () => {
