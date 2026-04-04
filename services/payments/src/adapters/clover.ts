@@ -503,15 +503,27 @@ export class CloverAdapter implements PosAdapter {
         }
       }
 
-      await this.postClover({
-        url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/print_event`,
-        bearerToken,
-        body: {
-          orderRef: {
-            id: cloverOrderId
+      try {
+        await this.postClover({
+          url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/print_event`,
+          bearerToken,
+          body: {
+            orderRef: {
+              id: cloverOrderId
+            }
           }
-        }
-      });
+        });
+      } catch (error) {
+        this.logger.warn(
+          {
+            error,
+            orderId: order.id,
+            cloverOrderId,
+            merchantId: this.credentials.merchantId
+          },
+          "Clover print event failed after order submission; leaving created order in place"
+        );
+      }
     } catch (error) {
       throw new CloverOrderSubmissionError(
         error instanceof Error ? error.message : "Clover order submission failed",
