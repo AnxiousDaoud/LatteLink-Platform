@@ -34,8 +34,8 @@ import {
   adminMenuItemSchema,
   adminMenuItemUpdateSchema,
   adminMenuItemVisibilityUpdateSchema,
+  menuItemCustomizationGroupSchema,
   adminMutationSuccessSchema,
-  adminMenuResponseSchema,
   adminStoreConfigSchema,
   adminStoreConfigUpdateSchema,
   appConfigSchema,
@@ -86,6 +86,21 @@ const jwtAccessTokenClaimsSchema = z.object({
 });
 const orderIdParamsSchema = z.object({ orderId: z.string().uuid() });
 const menuItemParamsSchema = z.object({ itemId: z.string().min(1) });
+const adminMenuItemWithCustomizationsSchema = adminMenuItemSchema.extend({
+  customizationGroups: z.array(menuItemCustomizationGroupSchema).default([])
+});
+const adminMenuCategoryWithCustomizationsSchema = z.object({
+  categoryId: z.string().min(1),
+  title: z.string().min(1),
+  items: z.array(adminMenuItemWithCustomizationsSchema)
+});
+const adminMenuResponseWithCustomizationsSchema = z.object({
+  locationId: z.string().min(1),
+  categories: z.array(adminMenuCategoryWithCustomizationsSchema)
+});
+const adminMenuItemUpdateWithCustomizationsSchema = adminMenuItemUpdateSchema.extend({
+  customizationGroups: z.array(menuItemCustomizationGroupSchema).optional()
+});
 const cancelOrderRequestSchema = z.object({ reason: z.string().min(1) });
 const adminOrderStatusUpdateSchema = z.object({
   status: z.enum(["IN_PREP", "READY", "COMPLETED", "CANCELED"]),
@@ -2023,7 +2038,7 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: adminMenuResponseSchema
+        responseSchema: adminMenuResponseWithCustomizationsSchema
       })
   );
 
@@ -2034,7 +2049,7 @@ export async function registerRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { itemId } = menuItemParamsSchema.parse(request.params);
-      const input = adminMenuItemUpdateSchema.parse(request.body);
+      const input = adminMenuItemUpdateWithCustomizationsSchema.parse(request.body);
 
       return proxyUpstream({
         request,
@@ -2047,7 +2062,7 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: adminMenuItemSchema
+        responseSchema: adminMenuItemWithCustomizationsSchema
       });
     }
   );
@@ -2071,7 +2086,7 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: adminMenuItemSchema
+        responseSchema: adminMenuItemWithCustomizationsSchema
       });
     }
   );
@@ -2096,7 +2111,7 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: adminMenuItemSchema
+        responseSchema: adminMenuItemWithCustomizationsSchema
       });
     }
   );
