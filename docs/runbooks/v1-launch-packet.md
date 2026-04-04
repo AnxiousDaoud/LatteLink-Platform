@@ -1,6 +1,6 @@
 # V1 Launch Packet
 
-Last reviewed: `2026-04-03`
+Last reviewed: `2026-04-04`
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Use it to answer three questions without jumping between roadmap docs:
 The repo is ready when:
 
 - the required V1 tickets are merged on `main`
-- the release path from `dev` to `main` is ready to execute exactly as defined in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md)
+- the direct-push `main` delivery path in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md) is ready to execute
 - the deploy, dashboard, marketing-site, and mobile runbooks already exist in the repo
 - the launch packet below is the working source of truth
 
@@ -66,7 +66,7 @@ These are already in the repo and do not require new credentials to prepare:
 - owner provisioning command and Google SSO rollout guidance
 - mobile env preflight, EAS build matrix, and TestFlight/QA runbooks
 - LatteLink web deployment preflight and production-check runbook
-- the canonical `dev` to `main` release process in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md)
+- the canonical direct-to-`main` delivery process in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md)
 
 ### External Setup Work
 
@@ -99,7 +99,7 @@ These happen only after deployable environments exist:
 Execute these steps in order to move from repo-ready to live-ready. This is the exact release sequence for the current V1 lane.
 
 1. Confirm the release candidate on `main`.
-   Merge `dev` into `main` using the release flow in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md), then create the release tag on `main`.
+   Validate the release candidate locally, push it directly to `main` using the flow in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md), then create the release tag on `main` after live verification.
 
 2. Prepare backend hosting inputs.
    Complete the `DigitalOcean`, DNS, GitHub var, and GitHub secret setup in [free-first-deployment.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/free-first-deployment.md).

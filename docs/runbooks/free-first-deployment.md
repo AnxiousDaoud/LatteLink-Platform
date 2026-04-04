@@ -1,6 +1,6 @@
 # Free-First Deployment (GitHub Student + DigitalOcean)
 
-Last reviewed: `2026-04-03`
+Last reviewed: `2026-04-04`
 
 ## Goal
 
@@ -58,7 +58,7 @@ su - deploy -c 'docker version'
 
 The normal production path is:
 
-1. Merge the approved release from `dev` to `main`
+1. Push the intended backend change directly to `main`
 2. Let `publish-free-images` run automatically on that `main` push
 3. Let `deploy-free` run automatically after the publish succeeds
 4. Use manual `deploy-free` `image_tag` input overrides only when you want to redeploy or roll back to a specific immutable build
@@ -180,7 +180,7 @@ If `FREE_DATABASE_URL` is set, the workflow writes that exact value into `DATABA
 
 Normal release path:
 
-1. Merge the intended backend change to `main`.
+1. Push the intended backend change to `main`.
 2. Let `publish-free-images` finish successfully.
 3. `deploy-free` triggers automatically from that workflow and deploys the matching immutable full git SHA tag.
 

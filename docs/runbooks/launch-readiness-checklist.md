@@ -1,13 +1,13 @@
 # Launch Readiness Checklist
 
-Last reviewed: `2026-04-03`
+Last reviewed: `2026-04-04`
 
 Use [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md) for the release and rollback rules. This checklist only covers launch go/no-go validation.
 
 ## Required Inputs
 
 - Green required checks on `main`
-- Successful automatic deploy from the merged `main` commit
+- Successful automatic deploy from the latest `main` commit
 - Smoke checks passing against the live environment
 - Product sign-off on critical flows:
   - auth sign-in + refresh + sign-out
@@ -29,7 +29,7 @@ Record in launch notes:
 
 ## Launch Steps
 
-1. Merge the approved release PR from `dev` to `main`.
+1. Push the approved release commit directly to `main`.
 2. Wait for image publish and automatic deploy to complete.
 3. Execute post-deploy smoke checks.
 4. Run production API sanity checks.

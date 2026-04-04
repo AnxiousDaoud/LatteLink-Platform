@@ -1,457 +1,124 @@
-# LatteLink Dev Workflow
+# LatteLink Development Flow
 
-This document is the single source of truth for all development workflow decisions at LatteLink. It is written to be followed by both human developers and AI agents. Any repo rules, branch protection settings, commit hooks, or CI/CD configuration must align with this document. If there is a conflict between this document and any other file, this document wins.
+Last reviewed: `2026-04-04`
 
----
-
-## 1. Branches
-
-There are exactly two persistent branches:
-
-### `dev`
-
-- This is the local working branch.
-- All feature and fix branches are created from `dev`.
-- `dev` does not deploy anywhere.
-- `dev` should always be in a buildable state but is not required to be production-ready.
-
-### `main`
-
-- This is the production branch.
-- Every push to `main` triggers an automatic deployment to the live environment.
-- `main` must always be deployable.
-- Direct commits to `main` are forbidden. The only way to update `main` is via a merge from `dev`.
+This document is the single source of truth for how code moves through this repo. GitHub settings, branch protections, templates, and automation should stay aligned with this document. If another file disagrees with this one, this document wins.
 
 ---
 
-## 2. Feature and Fix Branches
+## 1. Working Model
 
-All work happens on short-lived branches created from `dev`.
+LatteLink uses a direct-to-`main` workflow.
 
-### Naming convention
+- `main` is the only branch that matters remotely.
+- Development happens locally on your machine.
+- Optional local branches are allowed for convenience, but they are not required by policy and they do not need to exist on GitHub.
+- The default shipping path is: make the change locally, validate it locally, commit it locally, then push directly to `origin/main`.
 
-```text
-<type>/<issue-number>-<short-description>
-```
-
-Types:
-
-- `feat` - new feature or capability
-- `fix` - bug fix
-- `chore` - non-functional work such as dependency updates, config changes, cleanup
-- `docs` - documentation only changes
-- `refactor` - code restructuring with no behavior change
-- `security` - security-related fixes or hardening
-
-Examples:
-
-```text
-feat/42-clover-itemized-orders
-fix/43-receipt-print-trigger
-chore/44-remove-stale-env-vars
-security/45-audit-exposed-secrets
-```
-
-### Rules
-
-- Always branch from `dev`, never from `main`.
-- Branch names must include the GitHub Issue number.
-- Delete the branch after it is merged.
-- Never leave a branch open longer than necessary. If work is paused, commit a `wip:` prefixed commit and push.
+There is no required `dev` branch, no required feature branch naming convention, and no required pull request step.
 
 ---
 
-## 3. GitHub Issues
+## 2. Daily Flow
 
-Every piece of work must have a GitHub Issue before any code is written. Issues are the single source of truth for what needs to be done and why.
+Use this as the normal path for routine work:
 
-### When to create an issue
+1. Sync your local checkout with `origin/main`.
+2. Make the change locally.
+3. Run the relevant local validation for the area you changed.
+4. Commit with a clear message.
+5. Push directly to `origin/main`.
+6. Watch the `main` GitHub Actions runs and verify the live environment.
 
-Create an issue for:
+If a change is risky or you want review before deployment, you can still use a temporary branch and open a PR, but that is optional and no longer the default workflow.
 
-- Every bug discovered during testing
-- Every UI improvement or fix
-- Every infrastructure or configuration task
-- Every security concern
-- Every architectural decision that requires implementation work
-- Any "I don't know if this is a problem" item - create the issue, label it `investigate`
+---
 
-Do not start a branch without an issue. Do not fix something and then create the issue retroactively.
+## 3. Issues
 
-### Issue structure
+GitHub issues are optional.
 
-Every issue must follow this template:
+- Create an issue when it helps track larger work, bugs, follow-up items, or launch risks.
+- Do not block code changes on issue creation.
+- There is no required issue template, label set, or issue-before-code rule.
 
-```markdown
-## What
-
-A single clear sentence describing what this issue is about.
-
-## Why
-
-Why this needs to be fixed or built. What breaks or degrades without it.
-
-## Acceptance criteria
-
-- [ ] Specific, testable condition that must be true for this issue to be closed
-- [ ] Another condition
-- [ ] Another condition
-
-## Notes
-
-Any relevant context, links, error messages, screenshots, or technical details.
-Type: feat | fix | chore | docs | refactor | security | investigate
-```
-
-### Labels
-
-Every issue must have exactly one type label:
-
-- `feat`
-- `fix`
-- `chore`
-- `docs`
-- `refactor`
-- `security`
-- `investigate` - used when the problem is not yet understood
-
-And exactly one priority label:
-
-- `p0` - pilot blocker, must be resolved before Gazelle goes live
-- `p1` - important but not blocking launch
-- `p2` - post-launch or nice to have
-
-### When to close an issue
-
-An issue is closed when and only when all acceptance criteria are checked off and the fix has been merged to `main` and verified on the live environment. Closing an issue before deployment is forbidden. Closing an issue because "it seems fixed" without verification is forbidden.
+If you do use an issue, close it after the change is verified in the live environment or when the tracking work is otherwise complete.
 
 ---
 
 ## 4. Commits
 
-All commits must follow the Conventional Commits specification.
+There is no enforced commit-message format.
 
-### Format
+Preferred guidance:
 
-```text
-<type>(<scope>): <short description> #<issue-number>
-```
+- keep commit messages clear and specific
+- make it obvious what changed and why
+- avoid vague subjects such as `update`, `changes`, or `fix stuff`
 
-- Type must be one of: `feat`, `fix`, `chore`, `docs`, `refactor`, `security`, `wip`
-- Scope is the service or area affected: `orders`, `payments`, `catalog`, `auth`, `ui`, `db`, `infra`, `deps`
-- Short description is lowercase, present tense, no period at the end
-- Issue number must always be included
-
-### Examples
-
-```text
-feat(orders): send itemized line items to clover #42
-fix(payments): handle declined card state in checkout flow #43
-chore(infra): remove unused env vars from docker compose #44
-security(auth): remove hardcoded service credentials #45
-docs(runbooks): update clover sandbox setup steps #46
-refactor(catalog): extract menu sync logic into dedicated service #47
-wip(orders): partial receipt print integration #42
-```
-
-### Rules
-
-- Never commit directly to `dev` or `main`.
-- Every commit must reference an issue number.
-- `wip:` commits are allowed but must be squashed or followed by a clean commit before merging.
-- Commit messages must be meaningful. "fix bug", "update", "changes" are not acceptable.
-- One logical change per commit. Do not bundle unrelated changes in a single commit.
+Conventional commits are fine if they help, but they are optional.
 
 ---
 
 ## 5. Pull Requests
 
-Every merge requires a pull request, even when working solo. The PR is the record of what changed and why.
+Pull requests are optional.
 
-### PR types
-
-There are two types of PRs:
-
-**Feature PR** - merges a feature or fix branch into `dev`
-**Release PR** - merges `dev` into `main`
-
-### Feature PR template
-
-```markdown
-<!-- Before requesting review, add the same type and priority labels from the linked issue to this PR. -->
-
-## Summary
-
-What this PR does in one or two sentences.
-
-## Issue
-
-Closes #<issue-number>
-
-## Changes
-
-- List of specific changes made
-
-## Testing
-
-How this was tested. What was verified on the live environment.
-
-## Notes
-
-Anything the reviewer (future you or an AI agent) should know.
-```
-
-### Release PR template
-
-```markdown
-## Release summary
-
-What is included in this release.
-
-## Issues closed
-
-- Closes #42
-- Closes #43
-
-## Changes included
-
-- feat(orders): send itemized line items to clover
-- fix(payments): handle declined card state in checkout flow
-
-## Pre-merge checklist
-
-- [ ] All included issues have acceptance criteria met
-- [ ] Tested on live environment
-- [ ] No dev info or secrets exposed in UI or logs
-- [ ] No console errors in critical flows
-```
-
-### Merge rules
-
-- Feature branches merge into `dev` using squash merge to keep history clean.
-- `dev` merges into `main` using a regular merge commit so the release is clearly marked in history.
-- Feature PRs into `dev` must include a `Closes #<issue-number>` reference and carry exactly one type label plus exactly one priority label.
-- Never force push to `dev` or `main`.
-- Never merge a PR with failing CI checks.
+- Direct pushes to `main` are the normal path.
+- Use a PR only when you want review, discussion, or a safer staging step for a larger change.
+- The repo should not enforce PR-only delivery, PR templates, or PR metadata rules.
 
 ---
 
 ## 6. Deployment
 
-Deployment is automatic and triggered only by pushes to `main`.
+Deployment is automatic from `main`.
 
-### Flow
+Flow:
 
-1. Push or merge to `main`
-2. GitHub Actions builds and publishes Docker images to GHCR tagged with the full git SHA
-3. GitHub Actions deploys to the DigitalOcean droplet using the SHA tag
-4. Services restart via PM2 or Docker on the droplet
+1. Push to `main`
+2. GitHub Actions builds and publishes Docker images tagged with the full git SHA
+3. GitHub Actions deploys that SHA to the live environment
+4. Verify the deployed system
 
-### Image tagging
-
-Images must always be tagged with the full git SHA. Never use `latest` as the only tag. The deploy step must reference `${{ github.sha }}` directly - never read from a stored environment variable.
-
-```yaml
-env:
-  IMAGE_TAG: ${{ github.sha }}
-```
-
-### Manual redeploy
-
-The deployment action must include a `workflow_dispatch` trigger so any previous release can be redeployed manually from the GitHub UI without a code change.
-
-```yaml
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Git SHA to deploy (leave empty for latest main)"
-        required: false
-```
-
-### Path filtering
-
-Path-based filtering that skips image publishing is allowed only for files that cannot affect runtime behavior, such as markdown files, non-service config, and documentation. Any change to source code, environment config, Dockerfiles, or dependency files must trigger a full build and publish.
+Manual redeploy and rollback should continue to use the deployment workflow `workflow_dispatch` path with a known git SHA.
 
 ---
 
 ## 7. Versioning
 
-Versioning is applied only at release time on `main`. Individual commits, pushes to `dev`, and feature branch merges are not versioned.
+Versioning happens from `main`.
 
-### Scheme
+- Tag releases from verified `main` commits
+- Update [CHANGELOG.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/CHANGELOG.md) when you want a formal release record
+- Use semantic versioning when cutting tags
 
-LatteLink uses semantic versioning: `vMAJOR.MINOR.PATCH`
-
-- `PATCH` - bug fixes with no new functionality: `v0.1.1`
-- `MINOR` - new features or meaningful changes: `v0.2.0`
-- `MAJOR` - the first stable production launch: `v1.0.0`
-
-### Current state
-
-Everything before Gazelle goes live is `v0.x.x`. The day Gazelle goes live is `v1.0.0`.
-
-### How to tag a release
-
-After merging `dev` into `main`:
+Typical release steps:
 
 ```bash
 git checkout main
 git pull
-git tag v1.0.0
-git push origin v1.0.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
-
-### Changelog
-
-A `CHANGELOG.md` file lives at the root of the repo. It is updated at every release with the following format:
-
-```markdown
-## v1.0.0 - 2026-04-15
-
-### Added
-
-- Itemized order line items sent to Clover on order creation
-
-### Fixed
-
-- Receipt print trigger on incoming orders
-- Declined card state handled correctly in checkout
-
-### Security
-
-- Removed hardcoded service credentials
-- Audited and reduced env var surface area
-```
-
-Only `main` version tags get changelog entries. Pre-release `v0.x.x` entries are optional but recommended.
 
 ---
 
 ## 8. Rollback
 
-To roll back to a previous release:
+If a push to `main` is bad:
 
-1. Go to GitHub Actions
-2. Select the deployment workflow
-3. Click "Run workflow"
-4. Enter the git SHA of the last known good release
-5. Run
-
-The deployment action will pull and deploy that specific image tag. No code changes or reverts required.
-
-To find the SHA of a previous release:
-
-```bash
-git log --oneline main
-```
-
-Or check the release tags:
-
-```bash
-git tag --sort=-creatordate
-```
+1. redeploy the previous known-good SHA with the deployment workflow
+2. or revert the bad commit on `main` and push again
+3. verify the live environment after rollback
 
 ---
 
-## 9. Docs
+## 9. AI Agent Rules
 
-### What to document
+AI agents working in this repo should follow this operational guidance:
 
-Only document things that currently exist and are stable. Do not document planned features, future architecture, or aspirational states.
-
-### Folder structure
-
-```text
-docs/
-  adr/               # Architecture decision records
-  architecture/      # Current system architecture only
-  runbooks/          # Operational how-tos that are accurate today
-  api-contracts.md   # Current API surface
-CHANGELOG.md         # Release history
-```
-
-### Rules
-
-- If a doc describes something that has changed, update it immediately or delete it.
-- Stale documentation is worse than no documentation.
-- Architecture docs must not be written until the architecture is stable. The multi-tenant redesign docs are written after the pilot, not before.
-- ADRs are append-only. Never edit a past ADR. Add a new one that supersedes it.
-
-### ADR format
-
-```markdown
-# ADR-XXXX: Title
-
-## Date
-
-YYYY-MM-DD
-
-## Status
-
-Accepted | Superseded by ADR-XXXX
-
-## Context
-
-What situation or problem led to this decision.
-
-## Decision
-
-What was decided.
-
-## Consequences
-
-What becomes easier or harder as a result of this decision.
-```
-
----
-
-## 10. AI Agent Instructions
-
-This section is written specifically for AI agents operating on this repository.
-
-### Branch rules
-
-- Never commit directly to `main` or `dev`.
-- Always create a branch from `dev` using the naming convention in section 2.
-- Always include the GitHub Issue number in the branch name and every commit message.
-
-### Before writing any code
-
-- Check if a GitHub Issue exists for the task. If not, create one following the template in section 3.
-- Read the acceptance criteria before starting. Do not do work that is not covered by the acceptance criteria without creating a new issue.
-
-### Commits
-
-- Follow the commit format in section 4 exactly.
-- Never produce a commit without an issue reference.
-- Never bundle unrelated changes in a single commit.
-
-### Pull requests
-
-- Always open a PR using the appropriate template in section 5.
-- For feature PRs into `dev`, always link the issue with `Closes #<issue-number>` and add the same type and priority labels to the PR before requesting review.
-- Never merge your own PR without explicit instruction.
-- Never merge to `main` directly. Only merge feature branches to `dev`.
-
-### Secrets and environment variables
-
-- Never hardcode secrets, API keys, or credentials in source code.
-- Never log secrets or sensitive values.
-- If a secret is found hardcoded in the codebase, create a `security` issue immediately before touching anything else.
-
-### When something is unclear
-
-- Do not guess. Create an `investigate` issue documenting what is unclear and stop.
-- Do not make architectural decisions without explicit instruction. Flag the decision needed and wait.
-
-### What never to touch without explicit instruction
-
-- Docker and deployment configuration
-- GitHub Actions workflows
-- Database migrations
-- Any file in `docs/adr/`
-- `CHANGELOG.md`
-- Branch protection rules
+- start from the current `main` checkout unless there is a specific reason to use a temporary local branch
+- do not require an issue or PR before making code changes
+- push validated changes directly to `origin/main`
+- if GitHub protection or repo automation blocks direct pushes to `main`, update or remove that enforcement so it matches this document

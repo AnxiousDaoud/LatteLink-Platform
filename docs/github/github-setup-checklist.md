@@ -1,6 +1,6 @@
 # GitHub Setup Checklist
 
-Last reviewed: `2026-04-03`
+Last reviewed: `2026-04-04`
 
 The authoritative workflow policy for this repo lives in [development-flow.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/development-flow.md). Use this checklist only to configure GitHub so it matches that policy.
 
@@ -12,73 +12,24 @@ The authoritative workflow policy for this repo lives in [development-flow.md](/
 - [x] disable rebase merges
 - [x] delete head branches on merge
 
-GitHub applies merge-method availability repo-wide, not per target branch. To match the workflow policy, enable both merge commits and squash merges, then follow the policy operationally:
-
-- feature PRs into `dev` use squash merge
-- release PRs from `dev` into `main` use a regular merge commit
-
-## Labels
-
-Required type labels:
-
-- [x] `feat`
-- [x] `fix`
-- [x] `chore`
-- [x] `docs`
-- [x] `refactor`
-- [x] `security`
-- [x] `investigate`
-
-Required priority labels:
-
-- [x] `p0`
-- [x] `p1`
-- [x] `p2`
+Merge methods may stay enabled, but they are no longer part of the required shipping path because direct pushes to `main` are allowed.
 
 ## Branch Protection
 
 ### `main`
 
-- [x] require pull requests
-- [x] block direct pushes
-- [x] block force pushes
-- [x] block branch deletion
-- [x] require conversation resolution
-- [x] do not require linear history
-- [x] require these checks:
-  - `validate-pr`
-  - `validate-commits`
-  - `lint`
-  - `typecheck`
-  - `unit-tests`
-  - `contract-tests`
-  - `build`
-  - `terraform-validate`
-  - `codeql`
-  - `dependency-review`
-  - `secret-scan`
-- [x] only allow `dev -> main` release PRs
-      GitHub branch protection cannot express this directly, so this is enforced by `validate-dev-workflow`.
+- [ ] require pull requests
+- [ ] block direct pushes
+- [ ] require conversation resolution
+- [ ] require status checks before pushing
+
+`main` should allow direct pushes.
 
 ### `dev`
 
-- [x] require pull requests
-- [x] block direct pushes
-- [x] block force pushes
-- [x] block branch deletion
-- [x] require conversation resolution
-- [x] require these checks:
-  - `validate-pr`
-  - `validate-commits`
-  - `lint`
-  - `typecheck`
-  - `unit-tests`
-  - `contract-tests`
-  - `build`
-  - `terraform-validate`
-  - `codeql`
-  - `dependency-review`
-  - `secret-scan`
+- [ ] no required protection
+
+`dev` is no longer part of the required release flow and does not need special GitHub enforcement.
 
 ## Actions Workflows
 
@@ -86,7 +37,15 @@ Required priority labels:
 - [x] `deploy-free` runs after successful image publish on `main`
 - [x] `deploy-free` supports manual `workflow_dispatch` redeploys using a full git SHA
 - [x] there is no workflow that deploys `dev`
-- [x] there is no workflow that promotes `staging` or `prod` outside the `main` deploy flow
+- [x] there is no workflow that requires PR metadata, branch naming, or issue labels before shipping to `main`
+
+## Issues And PRs
+
+- [x] blank issues are allowed
+- [x] issue labels are optional
+- [x] there is no workflow that syncs labels from issue bodies
+- [x] PR templates are not required for normal delivery
+- [x] direct pushes to `main` are the default workflow
 
 ## Variables
 
