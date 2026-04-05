@@ -16,10 +16,6 @@ import {
   adminStoreConfigSchema,
   adminStoreConfigUpdateSchema,
   appConfigSchema,
-  homeNewsCardCreateSchema,
-  homeNewsCardSchema,
-  homeNewsCardUpdateSchema,
-  homeNewsCardVisibilityUpdateSchema,
   homeNewsCardsResponseSchema
 } from "@gazelle/contracts-catalog";
 import { orderSchema } from "@gazelle/contracts-orders";
@@ -28,7 +24,6 @@ import {
   normalizeMenuItemForm,
   operatorMenuItemSchema,
   operatorMenuResponseSchema,
-  operatorNewsCardSchema,
   normalizeOperatorUserCreateForm,
   normalizeOperatorUserUpdateForm,
   normalizeStoreConfigForm,
@@ -86,39 +81,21 @@ function parseJsonSafely(rawValue: string): unknown {
   }
 }
 
-function normalizeNewsCardCreateForm(input: {
-  label?: unknown;
-  title?: unknown;
-  body?: unknown;
-  note?: unknown;
-  visible?: unknown;
-  sortOrder?: unknown;
+function normalizeNewsCardsPayload(input: {
+  locationId: string;
+  cards: Array<{
+    cardId: string;
+    label: string;
+    title: string;
+    body: string;
+    note?: string | null;
+    sortOrder: number;
+    visible: boolean;
+  }>;
 }) {
-  const sortOrder = typeof input.sortOrder === "number" ? input.sortOrder : Number(input.sortOrder ?? 0);
-  return {
-    label: String(input.label ?? "").trim(),
-    title: String(input.title ?? "").trim(),
-    body: String(input.body ?? "").trim(),
-    note: typeof input.note === "string" ? input.note.trim() || undefined : undefined,
-    visible: input.visible === true || input.visible === "true" || input.visible === "on" || input.visible === "yes",
-    sortOrder: Number.isFinite(sortOrder) ? Math.max(0, Math.trunc(sortOrder)) : 0
-  };
-}
-
-function normalizeNewsCardUpdateForm(input: {
-  label?: unknown;
-  title?: unknown;
-  body?: unknown;
-  note?: unknown;
-  visible?: unknown;
-  sortOrder?: unknown;
-}) {
-  return homeNewsCardUpdateSchema.parse(normalizeNewsCardCreateForm(input));
-}
-
-function normalizeNewsCardVisibilityForm(input: { visible: unknown }) {
-  return homeNewsCardVisibilityUpdateSchema.parse({
-    visible: input.visible === true || input.visible === "true" || input.visible === "on" || input.visible === "yes"
+  return homeNewsCardsResponseSchema.parse({
+    locationId: input.locationId,
+    cards: input.cards
   });
 }
 
@@ -350,7 +327,9 @@ export async function fetchOperatorSnapshot(session: OperatorSession): Promise<O
     appConfig,
     orders: orders as OperatorOrder[],
     menu,
-    cards: cards.cards.map((card) => operatorNewsCardSchema.parse(card)),
+    cards: cards.cards.map((card) => ({
+      ...card
+    })),
     storeConfig,
     staff: staffResponse.users
   };
@@ -427,50 +406,17 @@ export function deleteOperatorMenuItem(session: OperatorSession, itemId: string)
   });
 }
 
-export function createOperatorNewsCard(session: OperatorSession, input: Parameters<typeof normalizeNewsCardCreateForm>[0]) {
+export function replaceOperatorNewsCards(session: OperatorSession, cards: OperatorNewsCard[]) {
   return requestJson({
     apiBaseUrl: session.apiBaseUrl,
     accessToken: session.accessToken,
     path: "/admin/cards",
-    method: "POST",
-    body: homeNewsCardCreateSchema.parse(normalizeNewsCardCreateForm(input)),
-    schema: operatorNewsCardSchema
-  });
-}
-
-export function updateOperatorNewsCard(
-  session: OperatorSession,
-  cardId: string,
-  input: Parameters<typeof normalizeNewsCardUpdateForm>[0]
-) {
-  return requestJson({
-    apiBaseUrl: session.apiBaseUrl,
-    accessToken: session.accessToken,
-    path: `/admin/cards/${cardId}`,
     method: "PUT",
-    body: normalizeNewsCardUpdateForm(input),
-    schema: operatorNewsCardSchema
-  });
-}
-
-export function updateOperatorNewsCardVisibility(session: OperatorSession, cardId: string, visible: boolean | string) {
-  return requestJson({
-    apiBaseUrl: session.apiBaseUrl,
-    accessToken: session.accessToken,
-    path: `/admin/cards/${cardId}/visibility`,
-    method: "PATCH",
-    body: normalizeNewsCardVisibilityForm({ visible }),
-    schema: operatorNewsCardSchema
-  });
-}
-
-export function deleteOperatorNewsCard(session: OperatorSession, cardId: string) {
-  return requestJson({
-    apiBaseUrl: session.apiBaseUrl,
-    accessToken: session.accessToken,
-    path: `/admin/cards/${cardId}`,
-    method: "DELETE",
-    schema: adminMutationSuccessSchema
+    body: normalizeNewsCardsPayload({
+      locationId: session.operator.locationId,
+      cards
+    }),
+    schema: homeNewsCardsResponseSchema
   });
 }
 

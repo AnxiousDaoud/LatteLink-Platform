@@ -10,10 +10,8 @@ import {
 } from "@gazelle/contracts-catalog";
 import {
   createOperatorMenuItem,
-  createOperatorNewsCard,
   createOperatorStaffUser,
   deleteOperatorMenuItem,
-  deleteOperatorNewsCard,
   exchangeOperatorGoogleCode,
   fetchOperatorAuthProviders,
   fetchOperatorSnapshot,
@@ -23,11 +21,10 @@ import {
   resolveDefaultApiBaseUrl,
   signInOperatorWithPassword,
   startOperatorGoogleSignIn,
+  replaceOperatorNewsCards,
   updateOperatorMenuItem,
   updateOperatorMenuItemVisibility,
   updateOperatorOrderStatus,
-  updateOperatorNewsCard,
-  updateOperatorNewsCardVisibility,
   updateOperatorStaffUser,
   updateOperatorStoreConfig,
   type OperatorAuthProviders,
@@ -1348,6 +1345,16 @@ function renderOrdersSection() {
   `;
 }
 
+function createNewsCardId(title: string) {
+  const slug = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return `${slug.length > 0 ? slug : "card"}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function renderNewsCard(card: OperatorNewsCard, canWrite: boolean, canToggleVisibility: boolean) {
   const visibilityButton = canToggleVisibility
     ? `
@@ -2571,22 +2578,29 @@ async function handleNewsCardCreateSubmit(form: HTMLFormElement) {
 
   const formData = new FormData(form);
   const visibleField = form.elements.namedItem("visible");
+  const title = String(formData.get("title") ?? "").trim();
+  const sortOrderInput = Number(formData.get("sortOrder") ?? 0);
+  const nextCard = {
+    cardId: createNewsCardId(title || "card"),
+    label: String(formData.get("label") ?? "").trim(),
+    title,
+    body: String(formData.get("body") ?? "").trim(),
+    note: (() => {
+      const next = String(formData.get("note") ?? "").trim();
+      return next.length > 0 ? next : undefined;
+    })(),
+    sortOrder: Number.isFinite(sortOrderInput) ? Math.max(0, Math.trunc(sortOrderInput)) : 0,
+    visible: visibleField instanceof HTMLInputElement ? visibleField.checked : true
+  };
 
   try {
     state.creatingNewsCard = true;
     setError(null);
     render();
-    await createOperatorNewsCard(state.session, {
-      label: formData.get("label"),
-      title: formData.get("title"),
-      body: formData.get("body"),
-      note: formData.get("note"),
-      sortOrder: formData.get("sortOrder"),
-      visible: visibleField instanceof HTMLInputElement ? visibleField.checked : true
-    });
+    const response = await replaceOperatorNewsCards(state.session, [...state.newsCards, nextCard]);
+    state.newsCards = response.cards;
     setNotice("Created home card.");
     form.reset();
-    await loadDashboard();
   } catch (error) {
     await handleOperatorActionError(error, "Unable to create home card.");
   } finally {
@@ -2614,21 +2628,30 @@ async function handleNewsCardSubmit(form: HTMLFormElement) {
   const formData = new FormData(form);
   const visibleField = form.elements.namedItem("visible");
   const visible = visibleField instanceof HTMLInputElement ? visibleField.checked : false;
+  const sortOrder = Math.max(0, Math.trunc(Number(formData.get("sortOrder") ?? 0) || 0));
+  const updatedCard = {
+    cardId,
+    label: String(formData.get("label") ?? "").trim(),
+    title: String(formData.get("title") ?? "").trim(),
+    body: String(formData.get("body") ?? "").trim(),
+    note: (() => {
+      const next = String(formData.get("note") ?? "").trim();
+      return next.length > 0 ? next : undefined;
+    })(),
+    sortOrder,
+    visible
+  };
 
   try {
     state.busyNewsCardId = cardId;
     setError(null);
     render();
-    await updateOperatorNewsCard(state.session, cardId, {
-      label: formData.get("label"),
-      title: formData.get("title"),
-      body: formData.get("body"),
-      note: formData.get("note"),
-      sortOrder: formData.get("sortOrder"),
-      visible
-    });
+    const nextCards = state.newsCards
+      .map((card) => (card.cardId === cardId ? updatedCard : card))
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.cardId.localeCompare(right.cardId));
+    const response = await replaceOperatorNewsCards(state.session, nextCards);
+    state.newsCards = response.cards;
     setNotice(`Saved ${cardId}.`);
-    await loadDashboard();
   } catch (error) {
     await handleOperatorActionError(error, "Unable to save home card.");
   } finally {
@@ -2652,9 +2675,12 @@ async function handleNewsCardVisibilityToggle(cardId: string, visible: boolean) 
     state.busyNewsCardVisibilityId = cardId;
     setError(null);
     render();
-    await updateOperatorNewsCardVisibility(state.session, cardId, visible);
+    const nextCards = state.newsCards
+      .map((card) => (card.cardId === cardId ? { ...card, visible } : card))
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.cardId.localeCompare(right.cardId));
+    const response = await replaceOperatorNewsCards(state.session, nextCards);
+    state.newsCards = response.cards;
     setNotice(visible ? "Home card is visible in the app." : "Home card was hidden from the app.");
-    await loadDashboard();
   } catch (error) {
     await handleOperatorActionError(error, "Unable to change home card visibility.");
   } finally {
@@ -2682,9 +2708,10 @@ async function handleNewsCardDelete(cardId: string) {
     state.busyDeleteNewsCardId = cardId;
     setError(null);
     render();
-    await deleteOperatorNewsCard(state.session, cardId);
+    const nextCards = state.newsCards.filter((card) => card.cardId !== cardId);
+    const response = await replaceOperatorNewsCards(state.session, nextCards);
+    state.newsCards = response.cards;
     setNotice("Home card removed.");
-    await loadDashboard();
   } catch (error) {
     await handleOperatorActionError(error, "Unable to remove the home card.");
   } finally {

@@ -1650,6 +1650,18 @@ export async function registerRoutes(app: FastifyInstance) {
     })
   );
 
+  app.get("/v1/store/cards", { preHandler: app.rateLimit(catalogReadRateLimit) }, async (request, reply) =>
+    proxyUpstream({
+      request,
+      reply,
+      baseUrl: catalogBaseUrl,
+      serviceLabel: "Catalog",
+      method: "GET",
+      path: "/v1/store/cards",
+      responseSchema: homeNewsCardsResponseSchema
+    })
+  );
+
   app.post(
     "/v1/orders/quote",
     { preHandler: [app.rateLimit(ordersWriteRateLimit), requireCustomerAuth] },
@@ -2092,6 +2104,30 @@ export async function registerRoutes(app: FastifyInstance) {
         path: "/v1/cards",
         responseSchema: homeNewsCardsResponseSchema
       })
+  );
+
+  app.put(
+    "/v1/admin/cards",
+    {
+      preHandler: [app.rateLimit(staffWriteRateLimit), requireOperatorCapability("menu:write")]
+    },
+    async (request, reply) => {
+      const input = homeNewsCardsResponseSchema.parse(request.body);
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: catalogBaseUrl,
+        serviceLabel: "Catalog",
+        method: "PUT",
+        path: "/v1/catalog/admin/cards",
+        body: input,
+        additionalHeaders: {
+          "x-gateway-token": gatewayInternalApiToken
+        },
+        responseSchema: homeNewsCardsResponseSchema
+      });
+    }
   );
 
   app.post(

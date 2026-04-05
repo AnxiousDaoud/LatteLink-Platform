@@ -150,6 +150,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/v1/app-config", async () => repository.getAppConfig());
   app.get("/v1/menu", async () => repository.getMenu());
   app.get("/v1/cards", async () => homeNewsCardsResponseSchema.parse(await repository.getHomeNewsCards()));
+  app.get("/v1/store/cards", async () => homeNewsCardsResponseSchema.parse(await repository.getHomeNewsCards()));
 
   app.get("/v1/store/config", async () => repository.getStoreConfig());
 
@@ -167,6 +168,17 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(gatewayReadRateLimit), requireGatewayAccess]
     },
     async () => repository.getAdminHomeNewsCards()
+  );
+
+  app.put(
+    "/v1/catalog/admin/cards",
+    {
+      preHandler: [app.rateLimit(gatewayWriteRateLimit), requireGatewayAccess]
+    },
+    async (request) => {
+      const input = homeNewsCardsResponseSchema.parse(request.body);
+      return homeNewsCardsResponseSchema.parse(await repository.replaceAdminHomeNewsCards(input));
+    }
   );
 
   app.post(

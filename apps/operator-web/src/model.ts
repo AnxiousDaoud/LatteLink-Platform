@@ -13,7 +13,6 @@ import {
   adminMenuItemUpdateSchema,
   adminStoreConfigUpdateSchema,
   appConfigSchema,
-  homeNewsCardCreateSchema,
   homeNewsCardSchema,
   isLoyaltyVisible,
   isOrderTrackingEnabled,
@@ -55,12 +54,10 @@ export const operatorMenuItemUpdateSchema = adminMenuItemUpdateSchema.extend({
   customizationGroups: z.array(menuItemCustomizationGroupSchema).optional()
 });
 export const operatorNewsCardSchema = homeNewsCardSchema;
-export const operatorNewsCardCreateSchema = homeNewsCardCreateSchema;
 export type OperatorMenuItem = z.output<typeof operatorMenuItemSchema>;
 export type OperatorMenuCategory = z.output<typeof operatorMenuCategorySchema>;
 export type OperatorMenuResponse = z.output<typeof operatorMenuResponseSchema>;
 export type OperatorNewsCard = z.output<typeof operatorNewsCardSchema>;
-export type OperatorNewsCardCreate = z.output<typeof operatorNewsCardCreateSchema>;
 
 export type OperatorOrderAction = {
   status: "IN_PREP" | "READY" | "COMPLETED";
