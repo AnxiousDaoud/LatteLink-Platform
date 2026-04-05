@@ -4,7 +4,7 @@ import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Animated as RNAnimated, Image, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated as RNAnimated, Image, Platform, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import Animated, {
   Easing,
   interpolateColor,
@@ -28,13 +28,15 @@ import {
 import { apiClient } from "../../src/api/client";
 import { formatUsd, resolveMenuData, useMenuQuery, type MenuItem } from "../../src/menu/catalog";
 import { getTabBarBottomOffset, TAB_BAR_HEIGHT } from "../../src/navigation/tabBarMetrics";
+import { OrderDetailSheet } from "../../src/orders/OrderDetailSheet";
 import { useCheckoutFlow } from "../../src/orders/flow";
 import {
   findLatestOrderTime,
+  findRefundEntriesForOrder,
   formatOrderDateTime,
   formatOrderReference,
   formatOrderStatus,
-  hasRefundActivity
+  getLatestOrderTimelineNote
 } from "../../src/orders/history";
 import { OrdersLoadingState } from "../../src/orders/OrdersLoadingState";
 import { Button, ScreenScroll, ScreenStatic, SectionLabel, uiPalette, uiTypography } from "../../src/ui/system";
@@ -128,25 +130,6 @@ function getActiveOrderBody(status: OrderHistoryEntry["status"]) {
       return "Bring the pickup code to the counter and our team will hand it over.";
     default:
       return "Status changes and pickup details update here automatically.";
-  }
-}
-
-function getLatestTimelineNote(order: OrderHistoryEntry) {
-  switch (order.status) {
-    case "PENDING_PAYMENT":
-      return "Payment still needs to be completed for this order.";
-    case "PAID":
-      return "Your order was confirmed successfully.";
-    case "IN_PREP":
-      return "Your order is being prepared.";
-    case "READY":
-      return "Your order was ready for pickup.";
-    case "COMPLETED":
-      return "Picked up successfully.";
-    case "CANCELED":
-      return "This order was canceled.";
-    default:
-      return formatOrderStatus(order.status);
   }
 }
 
@@ -389,14 +372,17 @@ function OrderProgressStep({
     };
   });
 
-  const checkAnimatedStyle = useAnimatedStyle(() => {
-    const completion = clampUnit(progressValue.value - index);
+  const checkAnimatedStyle = useAnimatedStyle(
+    (): ViewStyle => {
+      const completion = clampUnit(progressValue.value - index);
 
-    return {
-      opacity: completion,
-      transform: [{ translateY: (1 - completion) * 3 }, { scale: 0.72 + completion * 0.28 }]
-    };
-  });
+      return {
+        opacity: completion,
+        transform: [{ translateY: (1 - completion) * 3 }, { scale: 0.72 + completion * 0.28 }]
+      };
+    },
+    [index]
+  );
 
   const leftLineAnimatedStyle = useAnimatedStyle(() => {
     const fill = clampUnit(progressValue.value - (index - 1));
@@ -470,18 +456,20 @@ function OrderProgress({ status }: { status: OrderHistoryEntry["status"] }) {
 function HistoryRow({
   order,
   menuItemsById,
-  canOpenRefund,
-  onOpenRefund
+  onPress
 }: {
   order: OrderHistoryEntry;
   menuItemsById: Map<string, MenuItem>;
-  canOpenRefund: boolean;
-  onOpenRefund: () => void;
+  onPress: () => void;
 }) {
   return (
-    <View style={styles.historyRow}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open details for order ${formatOrderReference(order.id)}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.historyRow, pressed ? styles.historyRowPressed : null]}
+    >
       <View style={styles.historyTopRow}>
-        <StatusPill status={order.status} />
         <Text style={styles.historyAmount}>{formatUsd(order.total.amountCents)}</Text>
       </View>
 
@@ -489,19 +477,12 @@ function HistoryRow({
 
       <View style={styles.historyMetaRow}>
         <Text style={styles.historyMeta}>{formatOrderDateTime(findLatestOrderTime(order))}</Text>
-        <Text style={styles.historyMeta}>{`Pickup ${order.pickupCode}`}</Text>
+        <View style={styles.historyMetaAction}>
+          <Text style={styles.historyMetaActionText}>Details</Text>
+          <Ionicons name="chevron-forward" size={14} color={uiPalette.textMuted} />
+        </View>
       </View>
-      <Text style={styles.historyBody}>{getLatestTimelineNote(order)}</Text>
-
-      {canOpenRefund ? (
-        <Pressable style={({ pressed }) => [styles.inlineAction, pressed ? styles.inlineActionPressed : null]} onPress={onOpenRefund}>
-          <View style={styles.inlineActionRow}>
-            <Text style={styles.inlineActionText}>Refund details</Text>
-            <Ionicons name="arrow-forward" size={14} color={uiPalette.text} style={styles.inlineActionIcon} />
-          </View>
-        </Pressable>
-      ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -538,6 +519,7 @@ export default function OrdersScreen() {
   const [didFinishInitialReveal, setDidFinishInitialReveal] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [pendingCancelError, setPendingCancelError] = useState<string | null>(null);
+  const [selectedHistoryOrderId, setSelectedHistoryOrderId] = useState<string | null>(null);
 
   const orders = ordersQuery.data ?? [];
   const loyaltyLedger = loyaltyLedgerQuery.data ?? [];
@@ -545,6 +527,14 @@ export default function OrdersScreen() {
   const menuItemsById = useMemo(
     () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item])),
     [menu.categories]
+  );
+  const selectedHistoryOrder = useMemo(
+    () => (selectedHistoryOrderId ? orders.find((order) => order.id === selectedHistoryOrderId) ?? null : null),
+    [orders, selectedHistoryOrderId]
+  );
+  const selectedOrderRefundEntries = useMemo(
+    () => (selectedHistoryOrder ? findRefundEntriesForOrder(selectedHistoryOrder.id, loyaltyLedger) : []),
+    [loyaltyLedger, selectedHistoryOrder]
   );
   const realActiveOrder = findActiveOrder(orders);
   const activeOrder = realActiveOrder;
@@ -717,7 +707,7 @@ export default function OrdersScreen() {
                 </View>
               </View>
 
-              <Text style={styles.activeStatusNote}>{getLatestTimelineNote(activeOrder)}</Text>
+              <Text style={styles.activeStatusNote}>{getLatestOrderTimelineNote(activeOrder)}</Text>
               <Button label="Refresh Status" variant="secondary" onPress={refreshOrders} style={styles.activeRefreshButton} />
 
               {(activeOrderStatus ?? activeOrder.status) === "PENDING_PAYMENT" ? (
@@ -764,12 +754,7 @@ export default function OrdersScreen() {
             <View style={styles.historyList}>
               {orderHistory.map((order, index) => (
                 <View key={order.id}>
-                  <HistoryRow
-                    order={order}
-                    menuItemsById={menuItemsById}
-                    canOpenRefund={hasRefundActivity(order, loyaltyLedger)}
-                    onOpenRefund={() => router.push(`/refunds/${order.id}`)}
-                  />
+                  <HistoryRow order={order} menuItemsById={menuItemsById} onPress={() => setSelectedHistoryOrderId(order.id)} />
                   {index < orderHistory.length - 1 ? <View style={styles.historyDivider} /> : null}
                 </View>
               ))}
@@ -777,6 +762,15 @@ export default function OrdersScreen() {
           ) : null}
         </View>
       </ScreenScroll>
+
+      {selectedHistoryOrder ? (
+        <OrderDetailSheet
+          order={selectedHistoryOrder}
+          refundEntries={selectedOrderRefundEntries}
+          bottomInset={Math.max(insets.bottom, 12)}
+          onClose={() => setSelectedHistoryOrderId(null)}
+        />
+      ) : null}
 
       <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT }]}>
         <OrdersHeader title={activeOrder ? "Track your order" : "Past Orders"} />
@@ -1149,12 +1143,17 @@ const styles = StyleSheet.create({
     marginTop: 8
   },
   historyRow: {
-    paddingVertical: 18
+    paddingVertical: 18,
+    paddingHorizontal: 2,
+    borderRadius: 20
+  },
+  historyRowPressed: {
+    opacity: 0.78
   },
   historyTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: 12
   },
   historyAmount: {
@@ -1227,32 +1226,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12
   },
-  historyBody: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 22,
-    color: uiPalette.text
-  },
-  inlineAction: {
-    marginTop: 18,
-    alignSelf: "flex-start"
-  },
-  inlineActionPressed: {
-    opacity: 0.72
-  },
-  inlineActionRow: {
+  historyMetaAction: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6
   },
-  inlineActionText: {
+  historyMetaActionText: {
     fontSize: 13,
     lineHeight: 16,
-    color: uiPalette.text,
+    color: uiPalette.textMuted,
     fontWeight: "600"
-  },
-  inlineActionIcon: {
-    marginTop: 1
   },
   historyDivider: {
     height: 1,
