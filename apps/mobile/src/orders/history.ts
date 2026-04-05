@@ -36,6 +36,30 @@ export function formatOrderTimelineNote(note: string) {
   return normalized.length > 0 ? normalized : note;
 }
 
+export function getLatestOrderTimelineNote(order: OrderHistoryEntry) {
+  const latestNote = order.timeline[order.timeline.length - 1]?.note;
+  if (latestNote) {
+    return formatOrderTimelineNote(latestNote);
+  }
+
+  switch (order.status) {
+    case "PENDING_PAYMENT":
+      return "Payment still needs to be completed for this order.";
+    case "PAID":
+      return "Your order was confirmed successfully.";
+    case "IN_PREP":
+      return "Your order is being prepared.";
+    case "READY":
+      return "Your order was ready for pickup.";
+    case "COMPLETED":
+      return "Picked up successfully.";
+    case "CANCELED":
+      return "This order was canceled.";
+    default:
+      return formatOrderStatus(order.status);
+  }
+}
+
 export function findLatestOrderTime(order: OrderHistoryEntry) {
   return order.timeline[order.timeline.length - 1]?.occurredAt ?? "";
 }
