@@ -33,8 +33,8 @@ const features = [
   },
   {
     icon: "💳",
-    title: "Integrated payments",
-    desc: "Card and wallet checkout can be configured without sending customers through a separate marketplace-style payment flow.",
+    title: "Clover + Apple Pay",
+    desc: "During pilot, keep your existing Clover merchant account for in‑store processing and offer Apple Pay on mobile — no marketplace detour.",
   },
 ];
 
