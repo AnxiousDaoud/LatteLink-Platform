@@ -10,6 +10,11 @@ import {
   storeConfigResponseSchema
 } from "@gazelle/contracts-catalog";
 import { buildApp } from "../src/app.js";
+import {
+  DEFAULT_BRAND_NAME,
+  DEFAULT_LOCATION_ID,
+  DEFAULT_LOCATION_NAME
+} from "../src/tenant.js";
 
 describe("catalog service", () => {
   const previousGatewayToken = process.env.GATEWAY_INTERNAL_API_TOKEN;
@@ -55,7 +60,7 @@ describe("catalog service", () => {
 
     expect(response.statusCode).toBe(200);
     const parsed = appConfigSchema.parse(response.json());
-    expect(parsed.brand.brandName).toBe("Gazelle Coffee");
+    expect(parsed.brand.brandName).toBe(DEFAULT_BRAND_NAME);
     expect(parsed.enabledTabs).toEqual(["home", "menu", "orders", "account"]);
     expect(parsed.storeCapabilities.menu.source).toBe("platform_managed");
     expect(parsed.storeCapabilities.operations.dashboardEnabled).toBe(true);
@@ -177,7 +182,7 @@ describe("catalog service", () => {
     });
     expect(adminStoreConfigResponse.statusCode).toBe(200);
     const adminStoreConfig = adminStoreConfigSchema.parse(adminStoreConfigResponse.json());
-    expect(adminStoreConfig.storeName).toContain("Gazelle");
+    expect(adminStoreConfig.storeName).toBe(DEFAULT_LOCATION_NAME);
     expect(adminStoreConfig.capabilities.menu.source).toBe("platform_managed");
 
     const storeUpdateResponse = await app.inject({
@@ -513,8 +518,8 @@ describe("catalog service", () => {
     expect(locationList.locations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          locationId: "flagship-01",
-          brandName: "Gazelle Coffee"
+          locationId: DEFAULT_LOCATION_ID,
+          brandName: DEFAULT_BRAND_NAME
         }),
         expect.objectContaining({
           locationId: "northside-01",
