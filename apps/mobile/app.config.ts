@@ -53,6 +53,12 @@ const config: ExpoConfig = {
   scheme: process.env.EXPO_SCHEME ?? "lattelink",
   version: process.env.APP_VERSION ?? "1.0.0",
   orientation: "portrait",
+  icon: "./assets/icon.png",
+  splash: {
+    image: "./assets/splash.png",
+    resizeMode: "contain",
+    backgroundColor: "#ffffff"
+  },
   userInterfaceStyle: "light",
   updates: {
     url: "https://u.expo.dev/18320a67-0f15-4860-9f84-845eb0f4c31c"
