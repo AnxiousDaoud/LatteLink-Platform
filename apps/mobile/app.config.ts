@@ -55,6 +55,12 @@ const config: ExpoConfig = {
   scheme: process.env.EXPO_SCHEME ?? "lattelink",
   version: process.env.APP_VERSION ?? "1.0.0",
   orientation: "portrait",
+  icon: "./assets/icon.png",
+  splash: {
+    image: "./assets/splash.png",
+    resizeMode: "contain",
+    backgroundColor: "#ffffff"
+  },
   userInterfaceStyle: "light",
   ios: {
     supportsTablet: false,

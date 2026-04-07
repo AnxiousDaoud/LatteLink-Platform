@@ -4,10 +4,12 @@
   <dict>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Gazelle</string>
+    <string>LatteLink Beta</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -27,8 +29,8 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>gazelle</string>
-          <string>com.gazellecoffee.mobile</string>
+          <string>lattelink</string>
+          <string>com.lattelink.mobile.beta</string>
         </array>
       </dict>
     </array>
