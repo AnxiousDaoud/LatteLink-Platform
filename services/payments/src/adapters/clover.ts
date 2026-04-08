@@ -114,13 +114,15 @@ export class CloverAdapter implements PosAdapter {
 
       const tokenizeBody = parseJsonSafely(await tokenizeResponse.text());
       const tokenizeSummary = summarizeCloverResponseForLogs(tokenizeBody);
+      const tokenizeBodyForLogs = sanitizeCloverResponseBodyForLogs(tokenizeBody);
       if (!tokenizeResponse.ok) {
         this.logger.error(
           {
             orderId: request.orderId,
             internalPaymentId,
             tokenizeStatus: tokenizeResponse.status,
-            tokenizeSummary
+            tokenizeSummary,
+            tokenizeBody: tokenizeBodyForLogs
           },
           "Clover Apple Pay wallet tokenization failed"
         );
@@ -144,7 +146,8 @@ export class CloverAdapter implements PosAdapter {
             orderId: request.orderId,
             internalPaymentId,
             tokenizeStatus: tokenizeResponse.status,
-            tokenizeSummary
+            tokenizeSummary,
+            tokenizeBody: tokenizeBodyForLogs
           },
           "Clover Apple Pay wallet tokenization failed"
         );
@@ -684,6 +687,51 @@ function summarizeCloverResponseForLogs(value: unknown): Record<string, string> 
 
   const entries = Object.entries(summary).filter((entry): entry is [string, string] => entry[1] !== undefined);
   return Object.fromEntries(entries);
+}
+
+const cloverSensitiveLogKeys = new Set([
+  "access_token",
+  "refresh_token",
+  "token",
+  "source",
+  "sourcetoken",
+  "apikey",
+  "apiaccesskey",
+  "authorization",
+  "bearer"
+]);
+
+function sanitizeCloverResponseBodyForLogs(value: unknown, depth = 0): unknown {
+  if (value === null || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return value.length > 500 ? `${value.slice(0, 500)}…` : value;
+  }
+
+  if (depth >= 4) {
+    return "[truncated]";
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((entry) => sanitizeCloverResponseBodyForLogs(entry, depth + 1));
+  }
+
+  if (!isRecord(value)) {
+    return String(value);
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, 25)
+      .map(([key, entryValue]) => [
+        key,
+        cloverSensitiveLogKeys.has(key.toLowerCase())
+          ? "[redacted]"
+          : sanitizeCloverResponseBodyForLogs(entryValue, depth + 1)
+      ])
+  );
 }
 
 function toTemplatedUrl(template: string, variables: Record<string, string>) {
