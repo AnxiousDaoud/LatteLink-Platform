@@ -1,33 +1,54 @@
-import { Platform } from "react-native";
-import { z } from "zod";
+import { NativeModules, Platform } from "react-native";
 import { extractApplePayWalletPayload, type ApplePayWalletPayload } from "./applePayPayload";
 
 export type { ApplePayWalletPayload } from "./applePayPayload";
 
-type PaymentRequestCtor = new (
-  methodData: Array<Record<string, unknown>>,
-  details: Record<string, unknown>,
-  options?: Record<string, unknown>
-) => {
-  canMakePayment?: () => Promise<boolean>;
-  show: () => Promise<unknown>;
+type NativeApplePayModule = {
+  canMakePayments: (merchantIdentifier: string, supportedNetworks: string[]) => Promise<boolean>;
+  requestPayment: (request: {
+    amountCents: number;
+    currencyCode: string;
+    countryCode: string;
+    label: string;
+    merchantIdentifier: string;
+    supportedNetworks: string[];
+  }) => Promise<unknown>;
 };
 
-const paymentResponseCompleteSchema = z.object({
-  complete: z.function().args(z.string()).returns(z.void()).optional()
-});
+const supportedNetworks = ["visa", "masterCard", "amex", "discover"];
 
-function resolvePaymentRequestCtor(): PaymentRequestCtor | undefined {
-  const candidate = (globalThis as { PaymentRequest?: unknown }).PaymentRequest;
-  if (!candidate || typeof candidate !== "function") {
-    return undefined;
-  }
-
-  return candidate as PaymentRequestCtor;
+function resolveNativeApplePayModule() {
+  return (NativeModules as { ApplePayModule?: NativeApplePayModule }).ApplePayModule;
 }
 
-export function canAttemptNativeApplePay() {
-  return Platform.OS === "ios" && Boolean(resolvePaymentRequestCtor());
+function resolveMerchantIdentifier(value?: string) {
+  const merchantIdentifier =
+    value?.trim() ?? process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim() ?? "";
+  return merchantIdentifier.length > 0 ? merchantIdentifier : undefined;
+}
+
+export function hasNativeApplePayModule() {
+  const nativeApplePayModule = resolveNativeApplePayModule();
+  return (
+    Platform.OS === "ios" &&
+    typeof nativeApplePayModule?.canMakePayments === "function" &&
+    typeof nativeApplePayModule?.requestPayment === "function"
+  );
+}
+
+export async function canAttemptNativeApplePay(input: { merchantIdentifier?: string } = {}) {
+  const nativeApplePayModule = resolveNativeApplePayModule();
+  const merchantIdentifier = resolveMerchantIdentifier(input.merchantIdentifier);
+
+  if (Platform.OS !== "ios" || !nativeApplePayModule || !merchantIdentifier) {
+    return false;
+  }
+
+  try {
+    return await nativeApplePayModule.canMakePayments(merchantIdentifier, supportedNetworks);
+  } catch {
+    return false;
+  }
 }
 
 export async function requestNativeApplePayWallet(input: {
@@ -37,9 +58,9 @@ export async function requestNativeApplePayWallet(input: {
   label?: string;
   merchantIdentifier?: string;
 }): Promise<ApplePayWalletPayload> {
-  const PaymentRequest = resolvePaymentRequestCtor();
-  if (Platform.OS !== "ios" || !PaymentRequest) {
-    throw new Error("Native Apple Pay is unavailable in this build.");
+  const nativeApplePayModule = resolveNativeApplePayModule();
+  if (Platform.OS !== "ios" || !nativeApplePayModule) {
+    throw new Error("Native Apple Pay module is unavailable in this build.");
   }
 
   if (!Number.isFinite(input.amountCents) || input.amountCents <= 0) {
@@ -48,44 +69,25 @@ export async function requestNativeApplePayWallet(input: {
 
   const currencyCode = (input.currencyCode ?? "USD").toUpperCase();
   const countryCode = (input.countryCode ?? "US").toUpperCase();
-  const merchantIdentifier =
-    input.merchantIdentifier ?? process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID ?? "merchant.com.gazelle.dev";
-
-  const paymentRequest = new PaymentRequest(
-    [
-      {
-        supportedMethods: "apple-pay",
-        data: {
-          merchantIdentifier,
-          supportedNetworks: ["visa", "masterCard", "amex", "discover"],
-          countryCode,
-          currencyCode,
-          merchantCapabilities: ["supports3DS"]
-        }
-      }
-    ],
-    {
-      total: {
-        label: input.label ?? process.env.EXPO_PUBLIC_BRAND_NAME ?? "Gazelle Coffee",
-        amount: (input.amountCents / 100).toFixed(2)
-      }
-    }
-  );
-
-  if (typeof paymentRequest.canMakePayment === "function") {
-    const canMakePayment = await paymentRequest.canMakePayment();
-    if (!canMakePayment) {
-      throw new Error("Apple Pay is not available on this device/account.");
-    }
+  const merchantIdentifier = resolveMerchantIdentifier(input.merchantIdentifier);
+  if (!merchantIdentifier) {
+    throw new Error("Apple Pay merchant configuration is missing.");
   }
 
-  const paymentResponse = await paymentRequest.show();
+  const canMakePayments = await nativeApplePayModule.canMakePayments(merchantIdentifier, supportedNetworks);
+  if (!canMakePayments) {
+    throw new Error("Apple Pay is not available on this device/account.");
+  }
+
+  const paymentResponse = await nativeApplePayModule.requestPayment({
+    amountCents: input.amountCents,
+    currencyCode,
+    countryCode,
+    label: input.label ?? process.env.EXPO_PUBLIC_BRAND_NAME ?? "Gazelle Coffee",
+    merchantIdentifier,
+    supportedNetworks
+  });
   const walletPayload = extractApplePayWalletPayload(paymentResponse);
-
-  const completion = paymentResponseCompleteSchema.safeParse(paymentResponse);
-  if (completion.success && completion.data.complete) {
-    completion.data.complete(walletPayload ? "success" : "fail");
-  }
 
   if (!walletPayload) {
     throw new Error("Unable to extract Apple Pay wallet payload from native response.");

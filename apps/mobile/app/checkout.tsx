@@ -3,7 +3,7 @@ import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { buildPricingSummary } from "../src/cart/model";
@@ -16,6 +16,12 @@ import {
   useStoreConfigQuery
 } from "../src/menu/catalog";
 import { tokenizeCloverCard, useCloverCardEntryConfigQuery } from "../src/orders/card";
+import {
+  canAttemptNativeApplePay,
+  hasNativeApplePayModule,
+  requestNativeApplePayWallet,
+  type ApplePayWalletPayload
+} from "../src/orders/applePay";
 import {
   CheckoutSubmissionError,
   createDemoApplePayToken,
@@ -107,6 +113,7 @@ export default function CheckoutScreen() {
       ? "Checkout configuration is temporarily unavailable. Retry loading checkout before paying."
       : storeClosedMessage;
   const checkoutReady = checkoutUnavailableMessage === null;
+  const applePayCapabilityEnabled = Boolean(appConfig?.paymentCapabilities.applePay);
   const cardCapabilityEnabled = Boolean(appConfig?.paymentCapabilities.card);
   const cardEntryConfigQuery = useCloverCardEntryConfigQuery(checkoutReady && cardCapabilityEnabled);
   const cardEntryVisible = Boolean(checkoutReady && cardCapabilityEnabled);
@@ -115,15 +122,56 @@ export default function CheckoutScreen() {
   const showDevFallback = __DEV__ && checkoutReady;
   const quoteItems = useMemo(() => toQuoteItems(items), [items]);
   const retryableOrder = retryOrder && quoteItemsEqual(quoteItems, retryOrder.quoteItems) ? retryOrder : undefined;
+  const applePayMerchantIdentifier = process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim() ?? "";
+  const nativeApplePayModuleAvailable = hasNativeApplePayModule();
+  const applePayVisible = Platform.OS === "ios" && applePayCapabilityEnabled;
+  const applePayConfigured = applePayMerchantIdentifier.length > 0;
 
   const [applePayToken, setApplePayToken] = useState("");
   const [cardNumber, setCardNumber] = useState("");
   const [cardExpMonth, setCardExpMonth] = useState("");
   const [cardExpYear, setCardExpYear] = useState("");
   const [cardCvv, setCardCvv] = useState("");
+  const [nativeApplePayAvailable, setNativeApplePayAvailable] = useState(false);
+  const [applePayAvailabilityPending, setApplePayAvailabilityPending] = useState(false);
+  const [applePayPending, setApplePayPending] = useState(false);
   const [cardCheckoutPending, setCardCheckoutPending] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState<"info" | "warning">("info");
+
+  useEffect(() => {
+    let active = true;
+
+    if (!applePayVisible || !applePayConfigured || !nativeApplePayModuleAvailable) {
+      setNativeApplePayAvailable(false);
+      setApplePayAvailabilityPending(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setApplePayAvailabilityPending(true);
+    void canAttemptNativeApplePay({ merchantIdentifier: applePayMerchantIdentifier })
+      .then((available) => {
+        if (active) {
+          setNativeApplePayAvailable(available);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setNativeApplePayAvailable(false);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setApplePayAvailabilityPending(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applePayConfigured, applePayMerchantIdentifier, applePayVisible, nativeApplePayModuleAvailable]);
 
   async function invalidateAccountQueries() {
     await queryClient.invalidateQueries({ queryKey: ["account"] });
@@ -150,6 +198,7 @@ export default function CheckoutScreen() {
     paymentInput:
       | { paymentSourceToken: string }
       | { applePayToken: string }
+      | { applePayWallet: ApplePayWalletPayload }
   ) {
     if (!storeConfig || !appConfig) {
       setStatusMessage(checkoutUnavailableMessage ?? "Checkout is temporarily unavailable.");
@@ -175,6 +224,7 @@ export default function CheckoutScreen() {
       },
       {
         onSuccess: (paidOrder) => {
+          setApplePayPending(false);
           setCardCheckoutPending(false);
           setConfirmation({
             orderId: paidOrder.id,
@@ -191,6 +241,7 @@ export default function CheckoutScreen() {
           dismissCheckoutToCart();
         },
         onError: (error) => {
+          setApplePayPending(false);
           setCardCheckoutPending(false);
           const message = error instanceof Error ? error.message : "Checkout failed.";
 
@@ -234,6 +285,69 @@ export default function CheckoutScreen() {
 
     setApplePayToken("");
     submitCheckout({ applePayToken: token });
+  }
+
+  async function handleApplePayCheckout() {
+    if (!storeConfig || !appConfig) {
+      setStatusMessage(checkoutUnavailableMessage ?? "Checkout is temporarily unavailable.");
+      setStatusTone("warning");
+      return;
+    }
+
+    if (!storeConfig.isOpen) {
+      setStatusMessage(storeClosedMessage ?? "The store is currently closed.");
+      setStatusTone("warning");
+      return;
+    }
+
+    if (!applePayCapabilityEnabled) {
+      setStatusMessage("Apple Pay is not enabled for this store.");
+      setStatusTone("warning");
+      return;
+    }
+
+    if (!applePayConfigured) {
+      setStatusMessage("Apple Pay merchant configuration is missing for this build.");
+      setStatusTone("warning");
+      return;
+    }
+
+    if (!nativeApplePayModuleAvailable) {
+      setStatusMessage("Apple Pay requires a build that includes the native wallet module.");
+      setStatusTone("warning");
+      return;
+    }
+
+    if (!nativeApplePayAvailable) {
+      setStatusMessage("Apple Pay is not available on this device or build.");
+      setStatusTone("warning");
+      return;
+    }
+
+    setApplePayPending(true);
+    setStatusMessage("Waiting for Apple Pay…");
+    setStatusTone("info");
+
+    try {
+      const walletPayload = await requestNativeApplePayWallet({
+        amountCents: pricingSummary.totalCents,
+        label: appConfig.brand.brandName,
+        merchantIdentifier: applePayMerchantIdentifier
+      });
+
+      submitCheckout({ applePayWallet: walletPayload });
+    } catch (error) {
+      setApplePayPending(false);
+
+      if (error instanceof Error && /cancel/i.test(error.message)) {
+        setStatusMessage("");
+        setStatusTone("info");
+        return;
+      }
+
+      setStatusMessage(error instanceof Error ? error.message : "Apple Pay failed.");
+      setStatusTone("warning");
+    }
   }
 
   async function handleCardCheckout() {
@@ -326,6 +440,59 @@ export default function CheckoutScreen() {
               <StatusBanner message={statusMessage} tone={statusTone === "warning" ? "warning" : "info"} />
             ) : null}
 
+            {applePayVisible ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Apple Pay</Text>
+                <Text style={styles.sectionBody}>Use Apple Pay for the fastest checkout on this iPhone.</Text>
+
+                {!applePayConfigured ? (
+                  <StatusBanner message="Apple Pay merchant setup is missing for this build." tone="warning" />
+                ) : null}
+
+                {applePayConfigured && !nativeApplePayModuleAvailable ? (
+                  <StatusBanner
+                    message="Apple Pay requires a fresh build that includes the native wallet module."
+                    tone="warning"
+                  />
+                ) : null}
+
+                {applePayConfigured && nativeApplePayModuleAvailable && !applePayAvailabilityPending && !nativeApplePayAvailable ? (
+                  <StatusBanner
+                    message="Apple Pay is not available on this device or in the current build configuration."
+                    tone="warning"
+                  />
+                ) : null}
+
+                <View style={styles.actions}>
+                  <Button
+                    label={
+                      applePayAvailabilityPending
+                        ? "Checking Apple Pay…"
+                        : applePayPending || checkoutMutation.isPending
+                          ? "Processing…"
+                          : `Pay ${formatUsd(pricingSummary.totalCents)} with Apple Pay`
+                    }
+                    variant="primary"
+                    disabled={
+                      !checkoutReady ||
+                      !applePayConfigured ||
+                      !nativeApplePayModuleAvailable ||
+                      !nativeApplePayAvailable ||
+                      applePayAvailabilityPending ||
+                      applePayPending ||
+                      cardCheckoutPending ||
+                      checkoutMutation.isPending
+                    }
+                    onPress={() => {
+                      void handleApplePayCheckout();
+                    }}
+                    left={<Ionicons name="logo-apple" size={18} color={uiPalette.primaryText} />}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Card checkout</Text>
               <Text style={styles.sectionBody}>
@@ -389,6 +556,7 @@ export default function CheckoutScreen() {
                   disabled={
                     !checkoutReady ||
                     !cardEntryVisible ||
+                    applePayPending ||
                     cardCheckoutPending ||
                     checkoutMutation.isPending ||
                     cardEntryConfigPending

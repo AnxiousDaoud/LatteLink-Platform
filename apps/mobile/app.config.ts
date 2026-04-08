@@ -45,7 +45,13 @@ function resolveAssociatedDomains() {
     .filter(Boolean);
 }
 
+function resolveApplePayMerchantIdentifiers() {
+  const merchantIdentifier = process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim();
+  return merchantIdentifier ? [merchantIdentifier] : [];
+}
+
 const variant = resolveAppVariant();
+const applePayMerchantIdentifiers = resolveApplePayMerchantIdentifiers();
 
 const config: ExpoConfig = {
   name: resolveDisplayName(variant),
@@ -68,6 +74,12 @@ const config: ExpoConfig = {
     bundleIdentifier: resolveBundleIdentifier(variant),
     usesAppleSignIn: true,
     associatedDomains: resolveAssociatedDomains(),
+    entitlements:
+      applePayMerchantIdentifiers.length > 0
+        ? {
+            "com.apple.developer.in-app-payments": applePayMerchantIdentifiers
+          }
+        : undefined,
     runtimeVersion: "1.0.0"
   },
   android: {

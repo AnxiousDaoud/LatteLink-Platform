@@ -11,6 +11,8 @@
 		275BB2B3AC384AD934860D7E /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAA3B191163C941471600D5F /* ExpoModulesProvider.swift */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		6B76A1A138372CAAE15E9635 /* libPods-LatteLinkBeta.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A3BAA56F3F943B28014CAF5 /* libPods-LatteLinkBeta.a */; };
+		6C81E3A84F7A1B2C3D4E5F60 /* ApplePayModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C81E3A64F7A1B2C3D4E5F60 /* ApplePayModule.swift */; };
+		6C81E3A94F7A1B2C3D4E5F60 /* ApplePayModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 6C81E3A74F7A1B2C3D4E5F60 /* ApplePayModuleBridge.m */; };
 		90B1B9ADC7CC838F09A48C6E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C3B8085A31DDF5EBAD6A9267 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
@@ -22,6 +24,8 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = LatteLinkBeta/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = LatteLinkBeta/Info.plist; sourceTree = "<group>"; };
 		1A3BAA56F3F943B28014CAF5 /* libPods-LatteLinkBeta.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-LatteLinkBeta.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C81E3A64F7A1B2C3D4E5F60 /* ApplePayModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ApplePayModule.swift; path = LatteLinkBeta/ApplePayModule.swift; sourceTree = "<group>"; };
+		6C81E3A74F7A1B2C3D4E5F60 /* ApplePayModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = ApplePayModuleBridge.m; path = LatteLinkBeta/ApplePayModuleBridge.m; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = LatteLinkBeta/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BAA3B191163C941471600D5F /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-LatteLinkBeta/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -47,6 +51,8 @@
 		13B07FAE1A68108700A75B9A /* LatteLinkBeta */ = {
 			isa = PBXGroup;
 			children = (
+				6C81E3A64F7A1B2C3D4E5F60 /* ApplePayModule.swift */,
+				6C81E3A74F7A1B2C3D4E5F60 /* ApplePayModuleBridge.m */,
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
 				F11748442D0722820044C1D9 /* LatteLinkBeta-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
@@ -325,6 +331,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6C81E3A94F7A1B2C3D4E5F60 /* ApplePayModuleBridge.m in Sources */,
+				6C81E3A84F7A1B2C3D4E5F60 /* ApplePayModule.swift in Sources */,
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				275BB2B3AC384AD934860D7E /* ExpoModulesProvider.swift in Sources */,
 			);
