@@ -21,6 +21,7 @@ import * as migration0013 from "../src/migrations/0013_operator_google_sso.js";
 import * as migration0014 from "../src/migrations/0014_identity_customer_profile_fields.js";
 import * as migration0015 from "../src/migrations/0015_identity_customer_birthday.js";
 import * as migration0016 from "../src/migrations/0016_identity_customer_profile_completion.js";
+import * as migration0017 from "../src/migrations/0017_identity_apple_refresh_tokens.js";
 import { resolveMigrationFolderPath } from "../src/migrate.js";
 
 describe("persistence", () => {
@@ -71,7 +72,8 @@ describe("persistence", () => {
       "0013_operator_google_sso": migration0013,
       "0014_identity_customer_profile_fields": migration0014,
       "0015_identity_customer_birthday": migration0015,
-      "0016_identity_customer_profile_completion": migration0016
+      "0016_identity_customer_profile_completion": migration0016,
+      "0017_identity_apple_refresh_tokens": migration0017
     };
 
     expect(basename(resolveMigrationFolderPath())).toBe("migrations");
@@ -91,7 +93,8 @@ describe("persistence", () => {
       "0013_operator_google_sso",
       "0014_identity_customer_profile_fields",
       "0015_identity_customer_birthday",
-      "0016_identity_customer_profile_completion"
+      "0016_identity_customer_profile_completion",
+      "0017_identity_apple_refresh_tokens"
     ]);
 
     for (const migration of Object.values(migrations)) {

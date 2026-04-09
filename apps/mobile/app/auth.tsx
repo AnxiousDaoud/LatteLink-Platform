@@ -43,7 +43,39 @@ function getReturnLabel(returnTo: ReturnToPath | null) {
   }
 }
 
+function extractApiErrorDetails(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message : "";
+  if (!rawMessage) {
+    return null;
+  }
+
+  const jsonStart = rawMessage.indexOf("{");
+  if (jsonStart < 0) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(rawMessage.slice(jsonStart)) as {
+      code?: string;
+      message?: string;
+      requestId?: string;
+    };
+    if (!parsed.code && !parsed.message) {
+      return null;
+    }
+
+    return {
+      code: parsed.code?.trim(),
+      message: parsed.message?.trim(),
+      requestId: parsed.requestId?.trim()
+    };
+  } catch {
+    return null;
+  }
+}
+
 function resolveAppleSignInErrorMessage(error: unknown) {
+  const apiError = extractApiErrorDetails(error);
   const message = error instanceof Error ? error.message : "";
 
   if (message.includes("APPLE_SIGN_IN_NOT_CONFIGURED")) {
@@ -58,14 +90,27 @@ function resolveAppleSignInErrorMessage(error: unknown) {
     return "Apple Sign In could not finish exchanging credentials. Use a development build or TestFlight instead of Expo Go.";
   }
 
+  if (apiError?.code || apiError?.message) {
+    const segments = [apiError.code, apiError.message].filter(Boolean);
+    const details = segments.join(": ");
+    return apiError.requestId ? `${details} (request ${apiError.requestId})` : details;
+  }
+
   return "Apple Sign In could not complete right now. Try again in a moment.";
 }
 
 function resolveDevAccessErrorMessage(error: unknown) {
+  const apiError = extractApiErrorDetails(error);
   const message = error instanceof Error ? error.message : "";
 
   if (message.includes("DEV_CUSTOMER_ACCESS_DISABLED")) {
     return "Dev sign in is disabled on the backend for this environment.";
+  }
+
+  if (apiError?.code || apiError?.message) {
+    const segments = [apiError.code, apiError.message].filter(Boolean);
+    const details = segments.join(": ");
+    return apiError.requestId ? `${details} (request ${apiError.requestId})` : details;
   }
 
   return "Dev sign in could not complete right now. Try again in a moment.";
