@@ -66,7 +66,7 @@ export default function CheckoutFailureScreen() {
 
   function returnToCart() {
     clearFailure();
-    router.replace("/cart");
+    router.dismissTo("/cart");
   }
 
   function goToOrders() {

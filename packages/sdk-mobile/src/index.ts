@@ -22,6 +22,10 @@ import {
 } from "@gazelle/contracts-orders";
 import { z } from "zod";
 
+const authSuccessSchema = z.object({
+  success: z.literal(true)
+});
+
 export type ApiClientOptions = {
   baseUrl: string;
   accessToken?: string;
@@ -54,6 +58,10 @@ export class GazelleApiClient {
 
   async put<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>("PUT", path, body);
+  }
+
+  async delete<T>(path: string): Promise<T> {
+    return this.request<T>("DELETE", path);
   }
 
   async appleExchange(
@@ -116,6 +124,11 @@ export class GazelleApiClient {
   async logout(input: z.input<typeof logoutRequestSchema>): Promise<{ success: true }> {
     logoutRequestSchema.parse(input);
     return this.post<{ success: true }>("/auth/logout", input);
+  }
+
+  async deleteAccount(): Promise<z.output<typeof authSuccessSchema>> {
+    const data = await this.delete<unknown>("/auth/account");
+    return authSuccessSchema.parse(data);
   }
 
   async me(): Promise<z.output<typeof meResponseSchema>> {
@@ -208,7 +221,7 @@ export class GazelleApiClient {
   }
 
   private async request<T>(
-    method: "GET" | "POST" | "PUT",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     path: string,
     body?: unknown,
     hasRetriedUnauthorized = false

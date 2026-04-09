@@ -1,12 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
-import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type StyleProp,
+  type TextInputProps,
+  type ViewStyle
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { buildPricingSummary } from "../src/cart/model";
+import { buildPricingSummary, describeCustomization, type CartItem } from "../src/cart/model";
 import { useCart } from "../src/cart/store";
 import {
   formatUsd,
@@ -16,10 +25,12 @@ import {
   useStoreConfigQuery
 } from "../src/menu/catalog";
 import { tokenizeCloverCard, useCloverCardEntryConfigQuery } from "../src/orders/card";
+import { hasNativeApplePayButtonView, NativeApplePayButton } from "../src/orders/NativeApplePayButton";
 import {
   canAttemptNativeApplePay,
   hasNativeApplePayModule,
   requestNativeApplePayWallet,
+  resolveConfiguredApplePayMerchantIdentifier,
   type ApplePayWalletPayload
 } from "../src/orders/applePay";
 import {
@@ -32,7 +43,7 @@ import {
   useApplePayCheckoutMutation
 } from "../src/orders/checkout";
 import { useCheckoutFlow } from "../src/orders/flow";
-import { Button, uiPalette, uiTypography } from "../src/ui/system";
+import { Button, Card, SectionLabel, uiPalette, uiTypography } from "../src/ui/system";
 
 function StatusBanner({
   message,
@@ -48,46 +59,59 @@ function StatusBanner({
   );
 }
 
-function canUseLiquidGlassSheets() {
-  if (Platform.OS !== "ios") return false;
-
-  try {
-    return isLiquidGlassAvailable();
-  } catch {
-    return false;
-  }
-}
-
-function HeaderActionChip({
+function CheckoutField({
   label,
-  icon,
-  onPress
+  containerStyle,
+  style,
+  ...inputProps
 }: {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-}) {
-  const useLiquidGlass = canUseLiquidGlassSheets();
-
-  const content = (
-    <View style={[styles.headerActionChipInner, useLiquidGlass ? styles.headerActionChipInnerGlass : styles.headerActionChipInnerFallback]}>
-      <Ionicons name={icon} size={13} color={uiPalette.textSecondary} />
-      <Text style={styles.headerActionChipText}>{label}</Text>
+  containerStyle?: StyleProp<ViewStyle>;
+} & TextInputProps) {
+  return (
+    <View style={containerStyle}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        {...inputProps}
+        placeholderTextColor={uiPalette.textMuted}
+        style={[styles.fieldInput, style]}
+      />
     </View>
   );
+}
+
+function SummaryRow({
+  label,
+  value,
+  emphasized = false
+}: {
+  label: string;
+  value: string;
+  emphasized?: boolean;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <Text style={[styles.summaryLabel, emphasized ? styles.summaryLabelEmphasized : null]}>{label}</Text>
+      <Text style={[styles.summaryValue, emphasized ? styles.summaryValueEmphasized : null]}>{value}</Text>
+    </View>
+  );
+}
+
+function BagLineItem({ item }: { item: CartItem }) {
+  const customization = describeCustomization(item, {
+    includeNotes: true,
+    fallback: "Standard preparation"
+  });
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.headerActionChipShell, pressed ? styles.headerActionChipPressed : null]}>
-      {useLiquidGlass ? (
-        <GlassView glassEffectStyle="regular" colorScheme="auto" isInteractive style={styles.headerActionChipFrame}>
-          {content}
-        </GlassView>
-      ) : (
-        <BlurView tint="light" intensity={Platform.OS === "ios" ? 24 : 20} style={styles.headerActionChipFrame}>
-          {content}
-        </BlurView>
-      )}
-    </Pressable>
+    <View style={styles.bagItem}>
+      <Text style={styles.bagQuantity}>{item.quantity}x</Text>
+      <View style={styles.bagCopy}>
+        <Text style={styles.bagItemTitle}>{item.itemName}</Text>
+        <Text style={styles.bagItemMeta}>{customization}</Text>
+      </View>
+      <Text style={styles.bagItemPrice}>{formatUsd(item.lineTotalCents)}</Text>
+    </View>
   );
 }
 
@@ -122,10 +146,15 @@ export default function CheckoutScreen() {
   const showDevFallback = __DEV__ && checkoutReady;
   const quoteItems = useMemo(() => toQuoteItems(items), [items]);
   const retryableOrder = retryOrder && quoteItemsEqual(quoteItems, retryOrder.quoteItems) ? retryOrder : undefined;
-  const applePayMerchantIdentifier = process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim() ?? "";
+  const itemCount = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
+  const applePayMerchantIdentifier = resolveConfiguredApplePayMerchantIdentifier() ?? "";
   const nativeApplePayModuleAvailable = hasNativeApplePayModule();
+  const nativeApplePayButtonAvailable = hasNativeApplePayButtonView();
   const applePayVisible = Platform.OS === "ios" && applePayCapabilityEnabled;
   const applePayConfigured = applePayMerchantIdentifier.length > 0;
+  const brandName = appConfig?.brand.brandName ?? "Your order";
+  const storeStatusLabel = storeConfig ? (storeConfig.isOpen ? "Open now" : "Closed right now") : "Store unavailable";
+  const etaLabel = storeConfig ? `${storeConfig.prepEtaMinutes} min pickup` : "ETA unavailable";
 
   const [applePayToken, setApplePayToken] = useState("");
   const [cardNumber, setCardNumber] = useState("");
@@ -247,6 +276,19 @@ export default function CheckoutScreen() {
 
           if (error instanceof CheckoutSubmissionError) {
             void invalidateAccountQueries();
+
+            if (error.stage === "pay") {
+              setStatusMessage("");
+              setStatusTone("info");
+              setFailure({
+                message,
+                stage: error.stage,
+                occurredAt: new Date().toISOString(),
+                order: error.order
+              });
+              router.replace("/checkout-failure");
+              return;
+            }
 
             if (!shouldShowCheckoutFailureScreen(error)) {
               clearFailure();
@@ -389,6 +431,30 @@ export default function CheckoutScreen() {
     }
   }
 
+  const applePayDisabledReason = !applePayConfigured
+    ? "Apple Pay merchant setup is missing for this build."
+    : !nativeApplePayButtonAvailable
+      ? "Apple Pay requires the native system payment button in this build."
+    : !nativeApplePayModuleAvailable
+      ? "Apple Pay requires a build that includes the native wallet module."
+      : !applePayAvailabilityPending && !nativeApplePayAvailable
+        ? "Apple Pay is not available on this device or in the current build configuration."
+        : null;
+
+  const applePayButtonDisabled =
+    !checkoutReady ||
+    !applePayConfigured ||
+    !nativeApplePayButtonAvailable ||
+    !nativeApplePayModuleAvailable ||
+    !nativeApplePayAvailable ||
+    applePayAvailabilityPending ||
+    applePayPending ||
+    cardCheckoutPending ||
+    checkoutMutation.isPending;
+
+  const applePayFooterVisible = items.length > 0 && applePayVisible && nativeApplePayButtonAvailable;
+  const scrollBottomPadding = applePayFooterVisible ? insets.bottom + 118 : Math.max(insets.bottom, 16) + 24;
+
   return (
     <View style={styles.screen}>
       <View style={styles.handleWrap}>
@@ -396,35 +462,38 @@ export default function CheckoutScreen() {
       </View>
 
       <View style={styles.headerArea}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.headerTitle}>Checkout</Text>
-            <Text style={styles.headerSubtitle}>
-              {storeConfig
-                ? storeConfig.isOpen
-                  ? `Estimated wait is ${storeConfig.prepEtaMinutes} min`
-                  : "Store closed"
-                : "Checkout details unavailable"}
-            </Text>
+        {checkoutUnavailableMessage ? (
+          <View style={styles.headerUtilityRow}>
+            <Pressable onPress={refreshCheckoutContext} style={({ pressed }) => [styles.inlineAction, pressed ? styles.inlineActionPressed : null]}>
+              <Ionicons name="refresh-outline" size={15} color={uiPalette.textSecondary} />
+              <Text style={styles.inlineActionText}>Retry</Text>
+            </Pressable>
           </View>
-          {checkoutUnavailableMessage ? (
-            <HeaderActionChip label="Retry" icon="refresh-outline" onPress={refreshCheckoutContext} />
-          ) : null}
-        </View>
+        ) : null}
+
+        <SectionLabel label="Checkout" />
+        <Text style={styles.headerTitle}>Review your order</Text>
+        <Text style={styles.headerSubtitle}>
+          {storeConfig
+            ? storeConfig.isOpen
+              ? `${brandName} • ${etaLabel}`
+              : "Store closed"
+            : "Checkout details unavailable"}
+        </Text>
       </View>
 
       <ScrollView
         bounces
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="never"
-        contentContainerStyle={[styles.content, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: scrollBottomPadding }]}
       >
         {items.length === 0 ? (
-          <View style={styles.emptyState}>
+          <Card style={styles.emptyState}>
             <Text style={styles.emptyTitle}>Your cart is empty.</Text>
             <Text style={styles.emptyBody}>Add items from the menu before opening checkout.</Text>
             <Button label="Back to cart" variant="secondary" onPress={dismissCheckout} />
-          </View>
+          </Card>
         ) : (
           <>
             {retryableOrder ? (
@@ -434,70 +503,36 @@ export default function CheckoutScreen() {
               />
             ) : null}
 
-            {checkoutUnavailableMessage ? <StatusBanner message={checkoutUnavailableMessage} tone="warning" /> : null}
-
-            {statusMessage ? (
-              <StatusBanner message={statusMessage} tone={statusTone === "warning" ? "warning" : "info"} />
-            ) : null}
-
-            {applePayVisible ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Apple Pay</Text>
-                <Text style={styles.sectionBody}>Use Apple Pay for the fastest checkout on this iPhone.</Text>
-
-                {!applePayConfigured ? (
-                  <StatusBanner message="Apple Pay merchant setup is missing for this build." tone="warning" />
-                ) : null}
-
-                {applePayConfigured && !nativeApplePayModuleAvailable ? (
-                  <StatusBanner
-                    message="Apple Pay requires a fresh build that includes the native wallet module."
-                    tone="warning"
-                  />
-                ) : null}
-
-                {applePayConfigured && nativeApplePayModuleAvailable && !applePayAvailabilityPending && !nativeApplePayAvailable ? (
-                  <StatusBanner
-                    message="Apple Pay is not available on this device or in the current build configuration."
-                    tone="warning"
-                  />
-                ) : null}
-
-                <View style={styles.actions}>
-                  <Button
-                    label={
-                      applePayAvailabilityPending
-                        ? "Checking Apple Pay…"
-                        : applePayPending || checkoutMutation.isPending
-                          ? "Processing…"
-                          : `Pay ${formatUsd(pricingSummary.totalCents)} with Apple Pay`
-                    }
-                    variant="primary"
-                    disabled={
-                      !checkoutReady ||
-                      !applePayConfigured ||
-                      !nativeApplePayModuleAvailable ||
-                      !nativeApplePayAvailable ||
-                      applePayAvailabilityPending ||
-                      applePayPending ||
-                      cardCheckoutPending ||
-                      checkoutMutation.isPending
-                    }
-                    onPress={() => {
-                      void handleApplePayCheckout();
-                    }}
-                    left={<Ionicons name="logo-apple" size={18} color={uiPalette.primaryText} />}
-                    style={{ flex: 1 }}
-                  />
-                </View>
+            <Card style={styles.sectionCard}>
+              <SectionLabel label="Order" />
+              <Text style={styles.sectionTitle}>Summary</Text>
+              <View style={styles.summaryMetaRow}>
+                <Text style={styles.summaryMetaText}>
+                  {itemCount} {itemCount === 1 ? "item" : "items"}
+                </Text>
+                <Text style={styles.summaryMetaDot}>•</Text>
+                <Text style={styles.summaryMetaText}>{storeStatusLabel}</Text>
               </View>
-            ) : null}
+              {storeConfig?.pickupInstructions ? (
+                <Text style={styles.sectionBody}>{storeConfig.pickupInstructions}</Text>
+              ) : null}
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Card checkout</Text>
-              <Text style={styles.sectionBody}>
-                Card details are sent directly to Clover for tokenization before your order is paid.
-              </Text>
+              <View style={styles.bagList}>
+                {items.map((item) => (
+                  <BagLineItem key={item.lineId} item={item} />
+                ))}
+              </View>
+
+              <View style={styles.sectionDivider} />
+
+              <SummaryRow label="Subtotal" value={formatUsd(pricingSummary.subtotalCents)} />
+              <SummaryRow label="Tax" value={formatUsd(pricingSummary.taxCents)} />
+              <SummaryRow label="Total" value={formatUsd(pricingSummary.totalCents)} emphasized />
+            </Card>
+
+            <Card style={styles.sectionCard}>
+              <SectionLabel label={applePayVisible ? "Fallback" : "Payment"} />
+              <Text style={styles.sectionTitle}>{applePayVisible ? "Pay with card instead" : "Card payment"}</Text>
 
               {!cardEntryConfigured && !cardEntryConfigPending && cardEntryVisible ? (
                 <StatusBanner
@@ -506,38 +541,40 @@ export default function CheckoutScreen() {
                 />
               ) : null}
 
-              <TextInput
+              <CheckoutField
+                label="Card number"
                 value={cardNumber}
                 onChangeText={setCardNumber}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="number-pad"
-                placeholder="Card number"
-                placeholderTextColor={uiPalette.textMuted}
-                style={styles.tokenInput}
+                placeholder="4242 4242 4242 4242"
+                containerStyle={styles.primaryField}
               />
-              <View style={styles.cardRow}>
-                <TextInput
+
+              <View style={styles.fieldGrid}>
+                <CheckoutField
+                  label="Expiry month"
                   value={cardExpMonth}
                   onChangeText={setCardExpMonth}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="number-pad"
                   placeholder="MM"
-                  placeholderTextColor={uiPalette.textMuted}
-                  style={[styles.tokenInput, styles.cardFieldSmall]}
+                  containerStyle={styles.fieldGridItem}
                 />
-                <TextInput
+                <CheckoutField
+                  label="Expiry year"
                   value={cardExpYear}
                   onChangeText={setCardExpYear}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="number-pad"
                   placeholder="YYYY"
-                  placeholderTextColor={uiPalette.textMuted}
-                  style={[styles.tokenInput, styles.cardFieldMedium]}
+                  containerStyle={styles.fieldGridItem}
                 />
-                <TextInput
+                <CheckoutField
+                  label="Security code"
                   value={cardCvv}
                   onChangeText={setCardCvv}
                   autoCapitalize="none"
@@ -545,63 +582,93 @@ export default function CheckoutScreen() {
                   keyboardType="number-pad"
                   secureTextEntry
                   placeholder="CVV"
-                  placeholderTextColor={uiPalette.textMuted}
-                  style={[styles.tokenInput, styles.cardFieldSmall]}
+                  containerStyle={styles.fieldGridItem}
                 />
               </View>
-              <View style={styles.actions}>
-                <Button
-                  label={cardCheckoutPending || checkoutMutation.isPending ? "Processing…" : `Pay ${formatUsd(pricingSummary.totalCents)}`}
-                  variant="primary"
-                  disabled={
-                    !checkoutReady ||
-                    !cardEntryVisible ||
-                    applePayPending ||
-                    cardCheckoutPending ||
-                    checkoutMutation.isPending ||
-                    cardEntryConfigPending
-                  }
-                  onPress={() => {
-                    void handleCardCheckout();
-                  }}
-                  style={{ flex: 1 }}
-                />
-              </View>
-            </View>
+
+              <Button
+                label={cardCheckoutPending || checkoutMutation.isPending ? "Processing…" : `Pay ${formatUsd(pricingSummary.totalCents)}`}
+                variant="secondary"
+                disabled={
+                  !checkoutReady ||
+                  !cardEntryVisible ||
+                  applePayPending ||
+                  cardCheckoutPending ||
+                  checkoutMutation.isPending ||
+                  cardEntryConfigPending
+                }
+                onPress={() => {
+                  void handleCardCheckout();
+                }}
+                style={styles.fullWidthButton}
+              />
+            </Card>
 
             {showDevFallback ? (
-              <View style={styles.devSection}>
-                <Text style={styles.devEyebrow}>Development fallback</Text>
-                <TextInput
+              <Card style={styles.sectionCard} muted>
+                <SectionLabel label="Development fallback" />
+                <CheckoutField
+                  label="Test Apple Pay token"
                   value={applePayToken}
                   onChangeText={setApplePayToken}
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
-                  placeholder="Test Apple Pay token"
-                  placeholderTextColor={uiPalette.textMuted}
-                  style={styles.tokenInput}
+                  placeholder="Enter a test token"
+                  containerStyle={styles.primaryField}
                 />
                 <View style={styles.actions}>
                   <Button
                     label="Use Demo Token"
                     variant="secondary"
                     onPress={() => setApplePayToken(createDemoApplePayToken())}
-                    style={{ flex: 1 }}
+                    style={styles.actionButton}
                   />
                   <Button
                     label={checkoutMutation.isPending ? "Processing…" : "Run Test"}
                     variant="ghost"
                     disabled={checkoutMutation.isPending}
                     onPress={handleApplePayTokenCheckout}
-                    style={{ flex: 1 }}
+                    style={styles.actionButton}
                   />
                 </View>
+              </Card>
+            ) : null}
+
+            {checkoutUnavailableMessage || statusMessage || (applePayVisible && applePayDisabledReason) ? (
+              <View style={styles.bottomStatusStack}>
+                {checkoutUnavailableMessage ? <StatusBanner message={checkoutUnavailableMessage} tone="warning" /> : null}
+
+                {statusMessage ? (
+                  <StatusBanner message={statusMessage} tone={statusTone === "warning" ? "warning" : "info"} />
+                ) : null}
+
+                {applePayVisible && applePayDisabledReason ? (
+                  <StatusBanner message={applePayDisabledReason} tone="warning" />
+                ) : null}
               </View>
             ) : null}
           </>
         )}
       </ScrollView>
+
+      {applePayFooterVisible ? (
+        <View style={[styles.bottomDock, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Pressable
+            disabled={applePayButtonDisabled}
+            onPress={() => {
+              void handleApplePayCheckout();
+            }}
+            style={({ pressed }) => [
+              styles.applePayPressable,
+              applePayButtonDisabled ? styles.applePayPressableDisabled : null,
+              pressed && !applePayButtonDisabled ? styles.applePayPressablePressed : null
+            ]}
+          >
+            <NativeApplePayButton disabled={applePayButtonDisabled} style={styles.applePayNativeButton} />
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -609,7 +676,7 @@ export default function CheckoutScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "rgba(247, 244, 237, 0.985)"
+    backgroundColor: uiPalette.background
   },
   handleWrap: {
     position: "absolute",
@@ -627,46 +694,56 @@ const styles = StyleSheet.create({
   },
   headerArea: {
     paddingHorizontal: 20,
-    paddingTop: 28,
-    paddingBottom: 4
+    paddingTop: 30,
+    paddingBottom: 8
   },
-  headerRow: {
+  headerUtilityRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 12
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginBottom: 12
   },
-  headerCopy: {
-    flex: 1
+  inlineAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingTop: 14
+  inlineActionPressed: {
+    opacity: 0.72
   },
-  headerTitle: {
-    marginTop: 15,
-    fontSize: 19,
-    lineHeight: 24,
-    letterSpacing: 2,
-    textTransform: "uppercase",
-    color: uiPalette.text,
-    fontFamily: uiTypography.displayFamily,
-    fontWeight: "600"
-  },
-  headerSubtitle: {
-    marginTop: 6,
-    marginBottom: 6,
-    fontSize: 13,
+  inlineActionText: {
+    fontSize: 14,
     lineHeight: 18,
     color: uiPalette.textSecondary
   },
+  headerTitle: {
+    marginTop: 10,
+    fontSize: 32,
+    lineHeight: 36,
+    fontWeight: "700",
+    letterSpacing: -0.8,
+    color: uiPalette.text,
+    fontFamily: uiTypography.displayFamily
+  },
+  headerSubtitle: {
+    marginTop: 8,
+    maxWidth: 320,
+    fontSize: 14,
+    lineHeight: 20,
+    color: uiPalette.textSecondary
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    gap: 12
+  },
   emptyState: {
-    gap: 14,
-    paddingVertical: 32
+    marginTop: 6,
+    gap: 14
   },
   emptyTitle: {
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 30,
+    lineHeight: 34,
     color: uiPalette.text,
     fontFamily: uiTypography.displayFamily
   },
@@ -676,7 +753,6 @@ const styles = StyleSheet.create({
     color: uiPalette.textSecondary
   },
   banner: {
-    marginTop: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 18,
@@ -696,96 +772,173 @@ const styles = StyleSheet.create({
   bannerTextWarning: {
     color: uiPalette.text
   },
-  section: {
-    marginTop: 16
+  sectionCard: {
+    gap: 0
   },
   sectionTitle: {
-    fontSize: 16,
-    lineHeight: 20,
+    marginTop: 8,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: "700",
     color: uiPalette.text,
     fontFamily: uiTypography.displayFamily
   },
   sectionBody: {
-    marginTop: 6,
+    marginTop: 10,
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
     color: uiPalette.textSecondary
   },
-  tokenInput: {
-    minHeight: 52,
+  summaryMetaRow: {
     marginTop: 10,
-    borderRadius: 16,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8
+  },
+  summaryMetaText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: uiPalette.textSecondary
+  },
+  summaryMetaDot: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: uiPalette.textMuted
+  },
+  bagList: {
+    marginTop: 16,
+    gap: 14
+  },
+  bagItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12
+  },
+  bagQuantity: {
+    width: 28,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+    color: uiPalette.textSecondary
+  },
+  bagCopy: {
+    flex: 1,
+    gap: 4
+  },
+  bagItemTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: uiPalette.text,
+    fontWeight: "700"
+  },
+  bagItemMeta: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: uiPalette.textSecondary
+  },
+  bagItemPrice: {
+    fontSize: 15,
+    lineHeight: 19,
+    color: uiPalette.text,
+    fontWeight: "700"
+  },
+  sectionDivider: {
+    marginVertical: 18,
+    height: 1,
+    backgroundColor: uiPalette.border
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 4
+  },
+  summaryLabel: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: uiPalette.textSecondary
+  },
+  summaryLabelEmphasized: {
+    color: uiPalette.text,
+    fontWeight: "700"
+  },
+  summaryValue: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: uiPalette.text
+  },
+  summaryValueEmphasized: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700"
+  },
+  primaryField: {
+    marginTop: 16
+  },
+  fieldLabel: {
+    marginBottom: 8,
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: uiPalette.textSecondary,
+    fontWeight: "700"
+  },
+  fieldInput: {
+    minHeight: 56,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: uiPalette.border,
     backgroundColor: uiPalette.surfaceStrong,
     paddingHorizontal: 14,
-    color: uiPalette.text
+    color: uiPalette.text,
+    fontSize: 16,
+    lineHeight: 20
   },
-  cardRow: {
-    marginTop: 10,
+  fieldGrid: {
+    marginTop: 14,
     flexDirection: "row",
     gap: 10
   },
-  cardFieldSmall: {
+  fieldGridItem: {
     flex: 1
   },
-  cardFieldMedium: {
-    flex: 1.35
+  fullWidthButton: {
+    marginTop: 16
   },
   actions: {
-    marginTop: 10,
+    marginTop: 16,
     flexDirection: "row",
     gap: 10
   },
-  devSection: {
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.44)",
-    borderWidth: 1,
-    borderColor: uiPalette.border
+  actionButton: {
+    flex: 1
   },
-  devEyebrow: {
-    marginBottom: 10,
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    color: uiPalette.textSecondary
+  bottomStatusStack: {
+    marginTop: 4,
+    gap: 12
   },
-  headerActionChipShell: {
-    borderRadius: 999
+  bottomDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 16
   },
-  headerActionChipPressed: {
-    opacity: 0.8
+  applePayPressable: {
+    width: "100%"
   },
-  headerActionChipFrame: {
-    borderRadius: 999,
-    overflow: "hidden"
+  applePayPressableDisabled: {
+    opacity: 1
   },
-  headerActionChipInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999
+  applePayPressablePressed: {
+    opacity: 0.88
   },
-  headerActionChipInnerGlass: {
-    backgroundColor: "rgba(255,255,255,0.025)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)"
-  },
-  headerActionChipInnerFallback: {
-    backgroundColor: "rgba(255,255,255,0.46)",
-    borderWidth: 1,
-    borderColor: uiPalette.border
-  },
-  headerActionChipText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "600",
-    color: uiPalette.textSecondary
+  applePayNativeButton: {
+    height: 54,
+    width: "100%",
+    borderRadius: 18
   }
 });

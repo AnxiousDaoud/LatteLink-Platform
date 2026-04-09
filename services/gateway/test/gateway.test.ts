@@ -291,6 +291,24 @@ describe("gateway", () => {
         );
       }
 
+      if (url.endsWith("/v1/auth/account") && method === "DELETE") {
+        if (!authHeader) {
+          return new Response(
+            JSON.stringify({
+              code: "UNAUTHORIZED",
+              message: "Missing or invalid auth token",
+              requestId: "identity-stub"
+            }),
+            { status: 401, headers: { "content-type": "application/json" } }
+          );
+        }
+
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
       if (url.endsWith("/v1/operator/auth/me") && method === "GET") {
         if (!authHeader) {
           return new Response(
@@ -1547,6 +1565,21 @@ describe("gateway", () => {
       birthday: "1992-04-12",
       profileCompleted: true
     });
+    await app.close();
+  });
+
+  it("forwards customer account deletion through /v1/auth/account", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/v1/auth/account",
+      headers: {
+        authorization: "Bearer access-token"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ success: true });
     await app.close();
   });
 

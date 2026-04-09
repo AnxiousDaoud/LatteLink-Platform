@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appleExchangeRequestSchema,
+  authSuccessSchema,
   customerProfileRequestSchema,
   googleOAuthStartRequestSchema,
   internalOwnerProvisionRequestSchema,
@@ -149,6 +150,14 @@ describe("contracts-auth", () => {
       phoneNumber: "+13135550123",
       birthday: "1992-04-12"
     });
+  });
+
+  it("accepts generic auth success responses", () => {
+    const payload = authSuccessSchema.parse({
+      success: true
+    });
+
+    expect(payload.success).toBe(true);
   });
 
   it("requires passwords when creating operator users", () => {

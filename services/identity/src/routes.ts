@@ -1068,6 +1068,35 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     }
   );
 
+  app.delete(
+    "/v1/auth/account",
+    {
+      preHandler: [app.rateLimit(authWriteRateLimit), requireCustomerAuth]
+    },
+    async (request, reply) => {
+      const session = request.customerSession;
+      if (!session) {
+        return;
+      }
+
+      const deleted = await repository.deleteCustomerAccount(session.userId);
+      if (!deleted) {
+        return reply.status(404).send(
+          apiErrorSchema.parse({
+            code: "USER_NOT_FOUND",
+            message: "Customer account was not found",
+            requestId: request.id
+          })
+        );
+      }
+
+      logIdentityMutation(request, "customer account deleted", {
+        userId: session.userId
+      });
+      return { success: true as const };
+    }
+  );
+
   app.get(
     "/v1/auth/me",
     {

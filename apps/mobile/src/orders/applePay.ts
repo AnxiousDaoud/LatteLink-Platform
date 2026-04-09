@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { NativeModules, Platform } from "react-native";
 import { extractApplePayWalletPayload, type ApplePayWalletPayload } from "./applePayPayload";
 
@@ -21,10 +22,22 @@ function resolveNativeApplePayModule() {
   return (NativeModules as { ApplePayModule?: NativeApplePayModule }).ApplePayModule;
 }
 
+function resolveExpoConfiguredMerchantIdentifier() {
+  const extra = Constants.expoConfig?.extra as { applePayMerchantIdentifier?: unknown } | undefined;
+  const merchantIdentifier =
+    typeof extra?.applePayMerchantIdentifier === "string" ? extra.applePayMerchantIdentifier.trim() : "";
+
+  return merchantIdentifier.length > 0 ? merchantIdentifier : undefined;
+}
+
 function resolveMerchantIdentifier(value?: string) {
   const merchantIdentifier =
-    value?.trim() ?? process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim() ?? "";
+    value?.trim() ?? process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim() ?? resolveExpoConfiguredMerchantIdentifier() ?? "";
   return merchantIdentifier.length > 0 ? merchantIdentifier : undefined;
+}
+
+export function resolveConfiguredApplePayMerchantIdentifier() {
+  return resolveMerchantIdentifier();
 }
 
 export function hasNativeApplePayModule() {

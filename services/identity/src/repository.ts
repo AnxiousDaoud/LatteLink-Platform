@@ -174,6 +174,7 @@ export type IdentityRepository = {
   findOrCreateUserByAppleSub(appleSub: string, email?: string): Promise<string>;
   findOrCreateUserByEmail(email: string): Promise<string>;
   getUserById(userId: string): Promise<IdentityUserRecord | undefined>;
+  deleteCustomerAccount(userId: string): Promise<boolean>;
   updateCustomerProfile(
     userId: string,
     input: { name: string; phoneNumber?: string; birthday?: string }
@@ -581,6 +582,52 @@ export function createInMemoryIdentityRepository(): IdentityRepository {
     },
     async getUserById(userId) {
       return usersById.get(userId);
+    },
+    async deleteCustomerAccount(userId) {
+      const existing = usersById.get(userId);
+      if (!existing) {
+        return false;
+      }
+
+      usersById.delete(userId);
+      customerAuthMethodsByUserId.delete(userId);
+
+      if (existing.appleSub) {
+        userIdByAppleSub.delete(existing.appleSub);
+      }
+      if (existing.email) {
+        userIdByEmail.delete(existing.email);
+      }
+
+      for (const [accessToken, entry] of sessionsByAccessToken.entries()) {
+        if (entry.session.userId !== userId) {
+          continue;
+        }
+
+        accessTokenByRefreshToken.delete(entry.session.refreshToken);
+        sessionsByAccessToken.delete(accessToken);
+      }
+
+      for (const [flow, entries] of passkeyChallengesByFlow.entries()) {
+        passkeyChallengesByFlow.set(
+          flow,
+          entries.filter((entry) => entry.userId !== userId)
+        );
+      }
+
+      for (const [credentialId, credential] of passkeyCredentialsById.entries()) {
+        if (credential.userId === userId) {
+          passkeyCredentialsById.delete(credentialId);
+        }
+      }
+
+      for (const [token, record] of magicLinksByToken.entries()) {
+        if (record.userId === userId || (existing.email && record.email === existing.email)) {
+          magicLinksByToken.delete(token);
+        }
+      }
+
+      return true;
     },
     async updateCustomerProfile(userId, input) {
       const existing = usersById.get(userId);
@@ -1290,6 +1337,66 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
       }
 
       return toIdentityUserRecord(row as PersistedIdentityUserRow);
+    },
+    async deleteCustomerAccount(userId) {
+      return db.transaction().execute(async (trx) => {
+        const user = await trx
+          .selectFrom("identity_users")
+          .select(["user_id", "email"])
+          .where("user_id", "=", userId)
+          .forUpdate()
+          .executeTakeFirst();
+
+        if (!user) {
+          return false;
+        }
+
+        const orders = await trx
+          .selectFrom("orders")
+          .select(["order_id", "quote_id"])
+          .where("user_id", "=", userId)
+          .execute();
+
+        const orderIds = orders.map((row) => row.order_id);
+        const quoteIds = orders.map((row) => row.quote_id);
+
+        await trx.deleteFrom("notifications_outbox").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("notifications_order_state_dispatches").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("notifications_push_tokens").where("user_id", "=", userId).execute();
+
+        await trx.deleteFrom("loyalty_idempotency_keys").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("loyalty_ledger_entries").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("loyalty_balances").where("user_id", "=", userId).execute();
+
+        if (orderIds.length > 0) {
+          await trx.deleteFrom("payments_webhook_deduplication").where("order_id", "in", orderIds).execute();
+          await trx.deleteFrom("payments_refunds").where("order_id", "in", orderIds).execute();
+          await trx.deleteFrom("payments_charges").where("order_id", "in", orderIds).execute();
+          await trx.deleteFrom("orders_payment_idempotency").where("order_id", "in", orderIds).execute();
+        }
+
+        if (quoteIds.length > 0) {
+          await trx.deleteFrom("orders_create_idempotency").where("quote_id", "in", quoteIds).execute();
+        }
+
+        await trx.deleteFrom("orders").where("user_id", "=", userId).execute();
+
+        if (quoteIds.length > 0) {
+          await trx.deleteFrom("orders_quotes").where("quote_id", "in", quoteIds).execute();
+        }
+
+        await trx.deleteFrom("identity_passkey_credentials").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("identity_passkey_challenges").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("identity_sessions").where("user_id", "=", userId).execute();
+        await trx.deleteFrom("identity_magic_links").where("user_id", "=", userId).execute();
+
+        if (user.email) {
+          await trx.deleteFrom("identity_magic_links").where("email", "=", normalizeEmail(user.email)).execute();
+        }
+
+        await trx.deleteFrom("identity_users").where("user_id", "=", userId).execute();
+        return true;
+      });
     },
     async updateCustomerProfile(userId, input) {
       const existing = await db

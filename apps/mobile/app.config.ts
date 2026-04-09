@@ -1,13 +1,16 @@
 import type { ExpoConfig } from "expo/config";
 
 type AppVariant = "internal" | "beta" | "production";
+const DEFAULT_APP_VARIANT: AppVariant = "beta";
+const DEFAULT_BETA_BUNDLE_IDENTIFIER = "com.lattelink.rawaq.beta";
+const DEFAULT_BETA_APPLE_PAY_MERCHANT_IDENTIFIER = "merchant.com.lattelink.rawaq.beta";
 
 function resolveAppVariant(): AppVariant {
   const rawVariant = process.env.APP_VARIANT;
   if (rawVariant === "internal" || rawVariant === "beta" || rawVariant === "production") {
     return rawVariant;
   }
-  return "internal";
+  return DEFAULT_APP_VARIANT;
 }
 
 function resolveDisplayName(variant: AppVariant) {
@@ -31,7 +34,7 @@ function resolveBundleIdentifier(variant: AppVariant) {
     case "production":
       return "com.lattelink.mobile";
     case "beta":
-      return "com.lattelink.rawaq.beta";
+      return DEFAULT_BETA_BUNDLE_IDENTIFIER;
     case "internal":
     default:
       return "com.lattelink.mobile.internal";
@@ -45,13 +48,23 @@ function resolveAssociatedDomains() {
     .filter(Boolean);
 }
 
-function resolveApplePayMerchantIdentifiers() {
+function resolveApplePayMerchantIdentifier(variant: AppVariant, bundleIdentifier: string) {
   const merchantIdentifier = process.env.EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID?.trim();
-  return merchantIdentifier ? [merchantIdentifier] : [];
+  if (merchantIdentifier) {
+    return merchantIdentifier;
+  }
+
+  if (variant === "beta" && bundleIdentifier === DEFAULT_BETA_BUNDLE_IDENTIFIER) {
+    return DEFAULT_BETA_APPLE_PAY_MERCHANT_IDENTIFIER;
+  }
+
+  return undefined;
 }
 
 const variant = resolveAppVariant();
-const applePayMerchantIdentifiers = resolveApplePayMerchantIdentifiers();
+const bundleIdentifier = resolveBundleIdentifier(variant);
+const applePayMerchantIdentifier = resolveApplePayMerchantIdentifier(variant, bundleIdentifier);
+const applePayMerchantIdentifiers = applePayMerchantIdentifier ? [applePayMerchantIdentifier] : [];
 
 const config: ExpoConfig = {
   name: resolveDisplayName(variant),
@@ -71,7 +84,7 @@ const config: ExpoConfig = {
   },
   ios: {
     supportsTablet: false,
-    bundleIdentifier: resolveBundleIdentifier(variant),
+    bundleIdentifier,
     usesAppleSignIn: true,
     associatedDomains: resolveAssociatedDomains(),
     entitlements:
@@ -94,6 +107,7 @@ const config: ExpoConfig = {
     appVariant: variant,
     easBuildProfile: process.env.EAS_BUILD_PROFILE ?? null,
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? null,
+    applePayMerchantIdentifier,
     eas: {
       projectId: "18320a67-0f15-4860-9f84-845eb0f4c31c"
     }

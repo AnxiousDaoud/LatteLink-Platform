@@ -279,6 +279,64 @@ describe("identity service", () => {
     await app.close();
   });
 
+  it("deletes the authenticated customer account and invalidates the session", async () => {
+    const app = await buildApp();
+    const exchange = await app.inject({
+      method: "POST",
+      url: "/v1/auth/apple/exchange",
+      payload: {
+        identityToken: createFakeAppleIdentityToken({
+          sub: "apple-user-delete-account",
+          email: "member@example.com"
+        }),
+        authorizationCode: "auth-code",
+        nonce: "delete-account"
+      }
+    });
+
+    expect(exchange.statusCode).toBe(200);
+    const session = exchange.json();
+
+    const remove = await app.inject({
+      method: "DELETE",
+      url: "/v1/auth/account",
+      headers: {
+        authorization: `Bearer ${session.accessToken}`
+      }
+    });
+
+    expect(remove.statusCode).toBe(200);
+    expect(remove.json()).toEqual({ success: true });
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/v1/auth/me",
+      headers: {
+        authorization: `Bearer ${session.accessToken}`
+      }
+    });
+
+    expect(me.statusCode).toBe(401);
+
+    const reExchange = await app.inject({
+      method: "POST",
+      url: "/v1/auth/apple/exchange",
+      payload: {
+        identityToken: createFakeAppleIdentityToken({
+          sub: "apple-user-delete-account",
+          email: "member@example.com"
+        }),
+        authorizationCode: "auth-code",
+        nonce: "delete-account-again"
+      }
+    });
+
+    expect(reExchange.statusCode).toBe(200);
+    expect(reExchange.json().userId).not.toBe(session.userId);
+
+    await app.close();
+  });
+
   it("allows only one concurrent refresh rotation for the same token", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));

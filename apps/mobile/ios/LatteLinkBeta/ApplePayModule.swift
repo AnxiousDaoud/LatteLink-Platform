@@ -197,3 +197,128 @@ final class ApplePayModule: NSObject, PKPaymentAuthorizationViewControllerDelega
     return rootViewController
   }
 }
+
+@objc(ApplePayButtonViewManager)
+final class ApplePayButtonViewManager: RCTViewManager {
+  override static func requiresMainQueueSetup() -> Bool {
+    true
+  }
+
+  override func view() -> UIView! {
+    ApplePayButtonView()
+  }
+}
+
+@objc(ApplePayButtonView)
+final class ApplePayButtonView: UIView {
+  @objc var buttonType: NSString = "buy" {
+    didSet {
+      updateButton()
+    }
+  }
+
+  @objc var buttonStyle: NSString = "black" {
+    didSet {
+      updateButton()
+    }
+  }
+
+  @objc var isDisabled: Bool = false {
+    didSet {
+      updateDisabledState()
+    }
+  }
+
+  private var button: PKPaymentButton?
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    commonInit()
+  }
+
+  required init?(coder: NSCoder) {
+    super.init(coder: coder)
+    commonInit()
+  }
+
+  private func commonInit() {
+    backgroundColor = .clear
+    clipsToBounds = true
+    updateButton()
+  }
+
+  private func updateButton() {
+    button?.removeFromSuperview()
+
+    let paymentButton = PKPaymentButton(
+      paymentButtonType: resolveButtonType(buttonType as String),
+      paymentButtonStyle: resolveButtonStyle(buttonStyle as String)
+    )
+    paymentButton.translatesAutoresizingMaskIntoConstraints = false
+    paymentButton.isUserInteractionEnabled = false
+
+    addSubview(paymentButton)
+    NSLayoutConstraint.activate([
+      paymentButton.leadingAnchor.constraint(equalTo: leadingAnchor),
+      paymentButton.trailingAnchor.constraint(equalTo: trailingAnchor),
+      paymentButton.topAnchor.constraint(equalTo: topAnchor),
+      paymentButton.bottomAnchor.constraint(equalTo: bottomAnchor)
+    ])
+
+    button = paymentButton
+    updateDisabledState()
+  }
+
+  private func updateDisabledState() {
+    alpha = isDisabled ? 0.45 : 1
+    button?.isEnabled = !isDisabled
+  }
+
+  private func resolveButtonType(_ rawValue: String) -> PKPaymentButtonType {
+    switch rawValue.lowercased() {
+    case "plain":
+      return .plain
+    case "set-up", "setup":
+      return .setUp
+    case "donate":
+      return .donate
+    case "check-out", "checkout":
+      return .checkout
+    case "book":
+      return .book
+    case "subscribe":
+      return .subscribe
+    case "reload":
+      return .reload
+    case "add-money", "addmoney":
+      return .addMoney
+    case "top-up", "topup":
+      return .topUp
+    case "order":
+      return .order
+    case "rent":
+      return .rent
+    case "support":
+      return .support
+    case "contribute":
+      return .contribute
+    case "tip":
+      return .tip
+    default:
+      return .buy
+    }
+  }
+
+  private func resolveButtonStyle(_ rawValue: String) -> PKPaymentButtonStyle {
+    switch rawValue.lowercased() {
+    case "white":
+      return .white
+    case "white-outline", "whiteoutline":
+      return .whiteOutline
+    case "automatic":
+      return .automatic
+    default:
+      return .black
+    }
+  }
+}

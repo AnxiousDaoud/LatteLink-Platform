@@ -1374,6 +1374,24 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  app.delete(
+    "/v1/auth/account",
+    {
+      preHandler: [app.rateLimit(authWriteRateLimit), requireBearerAuth]
+    },
+    async (request, reply) => {
+    return proxyUpstream({
+      request,
+      reply,
+      baseUrl: identityBaseUrl,
+      serviceLabel: "Identity",
+      method: "DELETE",
+      path: "/v1/auth/account",
+      responseSchema: authSuccessSchema
+    });
+    }
+  );
+
   app.get(
     "/v1/auth/me",
     {

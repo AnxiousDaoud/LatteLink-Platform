@@ -2,8 +2,10 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DeleteAccountSheet } from "../../src/account/DeleteAccountSheet";
 import { getSettingsRecoveryCopy } from "../../src/auth/recovery";
 import { useAuthSession } from "../../src/auth/session";
+import { useCart } from "../../src/cart/store";
 import { AccountFloatingHeader, ACCOUNT_HEADER_HEIGHT } from "../../src/account/AccountFloatingHeader";
 import { isMobileLoyaltyVisible, resolveAppConfigData, useAppConfigQuery } from "../../src/menu/catalog";
 import { Button, Card, Chip, GlassCard, ScreenScroll, SectionLabel, uiPalette, uiTypography } from "../../src/ui/system";
@@ -28,13 +30,17 @@ function DetailRow({
 export default function SettingsPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isAuthenticated, signOut, authRecoveryState } = useAuthSession();
+  const { isAuthenticated, signOut, deleteAccount, authRecoveryState } = useAuthSession();
+  const { clear } = useCart();
   const appConfigQuery = useAppConfigQuery();
   const appConfig = resolveAppConfigData(appConfigQuery.data);
   const loyaltyEnabled = isMobileLoyaltyVisible(appConfigQuery.data);
   const pushEnabled = appConfig.featureFlags.pushNotifications;
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
   const [signOutPending, setSignOutPending] = useState(false);
+  const [deleteAccountPending, setDeleteAccountPending] = useState(false);
+  const [deleteAccountSheetOpen, setDeleteAccountSheetOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const recoveryCopy = getSettingsRecoveryCopy(authRecoveryState);
 
   function goBack() {
@@ -47,12 +53,30 @@ export default function SettingsPage() {
   }
 
   async function handleSignOut() {
+    setActionError(null);
     setSignOutPending(true);
     try {
       await signOut();
+      clear();
       router.dismissTo("/(tabs)/home");
     } finally {
       setSignOutPending(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setActionError(null);
+    setDeleteAccountPending(true);
+    try {
+      await deleteAccount();
+      clear();
+      setDeleteAccountSheetOpen(false);
+      router.dismissTo("/(tabs)/home");
+    } catch {
+      setActionError("We couldn't delete this account right now. Try again in a moment.");
+      setDeleteAccountSheetOpen(false);
+    } finally {
+      setDeleteAccountPending(false);
     }
   }
 
@@ -101,6 +125,29 @@ export default function SettingsPage() {
           </View>
         </Card>
 
+        {actionError ? (
+          <Card style={styles.feedbackCard}>
+            <Text style={styles.feedbackText}>{actionError}</Text>
+          </Card>
+        ) : null}
+
+        <Card style={styles.deleteAccountCard}>
+          <SectionLabel label="Account" />
+          <Text style={styles.deleteAccountBody}>
+            Permanently remove this account and everything attached to it from the app.
+          </Text>
+          <Button
+            label={deleteAccountPending ? "Deleting Account…" : "Delete Account"}
+            variant="ghost"
+            onPress={() => {
+              setDeleteAccountSheetOpen(true);
+            }}
+            disabled={deleteAccountPending || signOutPending}
+            style={styles.deleteAccountButton}
+            labelStyle={styles.deleteAccountButtonLabel}
+          />
+        </Card>
+
         <Card style={styles.signOutCard}>
           <Button
             label={signOutPending ? "Signing Out…" : "Sign Out"}
@@ -108,13 +155,23 @@ export default function SettingsPage() {
             onPress={() => {
               void handleSignOut();
             }}
-            disabled={signOutPending}
+            disabled={signOutPending || deleteAccountPending}
             style={styles.signOutButton}
           />
         </Card>
       </ScreenScroll>
 
       <AccountFloatingHeader title="Settings" insetTop={insets.top} onBack={goBack} />
+      <DeleteAccountSheet
+        open={deleteAccountSheetOpen}
+        bottomInset={insets.bottom}
+        pending={deleteAccountPending}
+        onClose={() => setDeleteAccountSheetOpen(false)}
+        onCancel={() => setDeleteAccountSheetOpen(false)}
+        onConfirm={() => {
+          void handleDeleteAccount();
+        }}
+      />
     </View>
   );
 }
@@ -160,6 +217,14 @@ const styles = StyleSheet.create({
   sectionCard: {
     marginTop: 14
   },
+  feedbackCard: {
+    marginTop: 14
+  },
+  feedbackText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: uiPalette.danger
+  },
   detailGroup: {
     marginTop: 14
   },
@@ -187,6 +252,24 @@ const styles = StyleSheet.create({
     color: uiPalette.text,
     fontFamily: uiTypography.displayFamily,
     fontWeight: "600"
+  },
+  deleteAccountCard: {
+    marginTop: 14
+  },
+  deleteAccountBody: {
+    marginTop: 10,
+    fontSize: 14,
+    lineHeight: 21,
+    color: uiPalette.textSecondary
+  },
+  deleteAccountButton: {
+    marginTop: 18,
+    alignSelf: "stretch",
+    borderColor: "rgba(180, 91, 79, 0.2)",
+    backgroundColor: "rgba(180, 91, 79, 0.08)"
+  },
+  deleteAccountButtonLabel: {
+    color: uiPalette.danger
   },
   signOutCard: {
     marginTop: 14,

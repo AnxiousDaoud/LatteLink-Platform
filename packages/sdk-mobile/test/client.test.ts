@@ -227,6 +227,26 @@ describe("sdk-mobile", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("supports customer account deletion", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new GazelleApiClient({ baseUrl: "https://api.gazellecoffee.com/v1" });
+    const response = await client.deleteAccount();
+
+    expect(response.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.gazellecoffee.com/v1/auth/account",
+      expect.objectContaining({
+        method: "DELETE"
+      })
+    );
+  });
+
   it("supports structured Apple Pay wallet payload for payOrder", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(

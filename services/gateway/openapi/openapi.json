@@ -188,6 +188,15 @@
         }
       }
     },
+    "/auth/account": {
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/auth/me": {
       "get": {
         "responses": {

@@ -85,6 +85,10 @@ export const logoutRequestSchema = z.object({
   refreshToken: z.string().min(1)
 });
 
+export const authSuccessSchema = z.object({
+  success: z.literal(true)
+});
+
 export const customerProfileRequestSchema = z.object({
   name: z.string().trim().min(1),
   phoneNumber: z.string().trim().min(1).optional(),
@@ -264,7 +268,7 @@ export const authContract = {
       method: "POST",
       path: "/magic-link/request",
       request: magicLinkRequestSchema,
-      response: z.object({ success: z.literal(true) })
+      response: authSuccessSchema
     },
     magicLinkVerify: {
       method: "POST",
@@ -282,7 +286,13 @@ export const authContract = {
       method: "POST",
       path: "/logout",
       request: logoutRequestSchema,
-      response: z.object({ success: z.literal(true) })
+      response: authSuccessSchema
+    },
+    deleteAccount: {
+      method: "DELETE",
+      path: "/account",
+      request: z.undefined(),
+      response: authSuccessSchema
     },
     me: {
       method: "GET",

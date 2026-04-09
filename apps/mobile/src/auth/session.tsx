@@ -26,6 +26,7 @@ type SessionContextValue = {
   completeProfileSetup: () => void;
   signIn: (nextSession: AuthSession) => Promise<void>;
   signOut: (options?: SignOutOptions) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refreshSession: () => Promise<AuthSession | null>;
 };
 
@@ -89,6 +90,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     },
     [clearLocalSession, session?.refreshToken]
   );
+
+  const deleteAccount = useCallback(async () => {
+    await apiClient.deleteAccount();
+    await clearLocalSession("idle");
+  }, [clearLocalSession]);
 
   const deferProfileSetup = useCallback(() => {
     setProfileSetupDeferred(true);
@@ -226,11 +232,13 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       completeProfileSetup,
       signIn,
       signOut,
+      deleteAccount,
       refreshSession
     }),
     [
       authRecoveryState,
       completeProfileSetup,
+      deleteAccount,
       deferProfileSetup,
       isHydrating,
       profileSetupDeferred,
