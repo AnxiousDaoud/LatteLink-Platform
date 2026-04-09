@@ -9,10 +9,19 @@ if [ ! -f "${ENV_FILE}" ]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-source "${ENV_FILE}"
-set +a
+while IFS= read -r line || [ -n "${line}" ]; do
+  case "${line}" in
+    "" | \#*) continue ;;
+  esac
+
+  key="${line%%=*}"
+  if [ "${key}" = "${line}" ]; then
+    continue
+  fi
+
+  value="${line#*=}"
+  export "${key}=${value}"
+done < "${ENV_FILE}"
 
 MODE="${PAYMENTS_PROVIDER_MODE:-simulated}"
 
