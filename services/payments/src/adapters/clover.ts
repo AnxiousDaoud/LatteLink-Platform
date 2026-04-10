@@ -169,6 +169,19 @@ export class CloverAdapter implements PosAdapter {
       throw new Error("Unable to resolve Clover payment source token");
     }
 
+    if (!request.order) {
+      throw new Error("Clover live charge requests must include the full order payload");
+    }
+    if (request.order.id !== request.orderId) {
+      throw new Error("Clover live charge request order payload does not match the requested orderId");
+    }
+    if (
+      request.order.total.amountCents !== request.amountCents ||
+      request.order.total.currency !== request.currency
+    ) {
+      throw new Error("Clover live charge request order total does not match the payment amount");
+    }
+
     let bearerToken = this.credentials.bearerToken;
     if (this.credentials.source === "oauth") {
       try {
@@ -194,132 +207,28 @@ export class CloverAdapter implements PosAdapter {
       }
     }
 
-    const chargeUrl = toTemplatedUrl(this.config.chargeEndpoint, { merchantId: this.credentials.merchantId });
-    let chargeResponse: Response;
-    const chargeController = new AbortController();
-    const chargeTimeout = setTimeout(() => chargeController.abort(), 10_000);
-    try {
-      chargeResponse = await fetch(chargeUrl, {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          authorization: `Bearer ${bearerToken}`,
-          "x-request-id": this.requestId,
-          "idempotency-key": request.idempotencyKey
-        },
-        body: JSON.stringify({
-          merchantId: this.credentials.merchantId,
-          amount: request.amountCents,
-          amountCents: request.amountCents,
-          currency: request.currency,
-          currencyCode: request.currency,
-          source: sourceToken,
-          sourceToken,
-          externalReference: request.orderId,
-          metadata: {
-            orderId: request.orderId,
-            internalPaymentId,
-            idempotencyKey: request.idempotencyKey,
-            origin: "gazelle-payments-service"
-          }
-        }),
-        signal: chargeController.signal
+    const cloverOrderId = await this.createCloverOrder({
+      order: request.order,
+      bearerToken
+    });
+
+    const paidOrder = await this.payForCloverOrder({
+      request,
+      bearerToken,
+      cloverOrderId,
+      sourceToken,
+      internalPaymentId
+    });
+
+    if (paidOrder.response.status === "SUCCEEDED") {
+      await this.triggerPrintEvent({
+        orderId: request.order.id,
+        cloverOrderId,
+        bearerToken
       });
-    } catch (error) {
-      this.logger.warn(
-        {
-          error,
-          requestId: this.requestId,
-          orderId: request.orderId,
-          internalPaymentId
-        },
-        "Clover charge request failed before response"
-      );
-      return {
-        response: {
-          paymentId: randomUUID(),
-          provider: "CLOVER",
-          orderId: request.orderId,
-          status: "TIMEOUT",
-          approved: false,
-          amountCents: request.amountCents,
-          currency: request.currency,
-          occurredAt: new Date().toISOString(),
-          message: "Clover network request failed"
-        }
-      };
-    } finally {
-      clearTimeout(chargeTimeout);
     }
 
-    const body = parseJsonSafely(await chargeResponse.text());
-    const providerStatus = firstStringAtPaths(body, [
-      ["status"],
-      ["charge", "status"],
-      ["payment", "status"],
-      ["result", "status"],
-      ["data", "status"]
-    ]);
-    const providerMessage =
-      firstStringAtPaths(body, [
-        ["message"],
-        ["description"],
-        ["reason"],
-        ["error"],
-        ["result", "message"],
-        ["data", "message"]
-      ]) ?? `Clover responded with status ${chargeResponse.status}`;
-    const approved = firstBooleanAtPaths(body, [
-      ["approved"],
-      ["charge", "approved"],
-      ["payment", "approved"],
-      ["result", "approved"],
-      ["data", "approved"]
-    ]);
-    const status = resolveChargeStatus({
-      providerStatus,
-      approved,
-      httpStatus: chargeResponse.status
-    });
-    const providerPaymentId = firstStringAtPaths(body, [
-      ["id"],
-      ["paymentId"],
-      ["payment_id"],
-      ["chargeId"],
-      ["charge_id"],
-      ["result", "id"],
-      ["data", "id"],
-      ["payment", "id"],
-      ["charge", "id"]
-    ]);
-
-    return {
-      response: {
-        paymentId: internalPaymentId,
-        provider: "CLOVER",
-        orderId: request.orderId,
-        status,
-        approved: status === "SUCCEEDED",
-        amountCents: request.amountCents,
-        currency: request.currency,
-        occurredAt: new Date().toISOString(),
-        declineCode:
-          status === "DECLINED"
-            ? firstStringAtPaths(body, [
-                ["declineCode"],
-                ["decline_code"],
-                ["reasonCode"],
-                ["reason_code"],
-                ["errorCode"],
-                ["error_code"],
-                ["code"]
-              ])
-            : undefined,
-        message: providerMessage
-      },
-      providerPaymentId: providerPaymentId ?? internalPaymentId
-    };
+    return paidOrder;
   }
 
   async processRefund(request: RefundRequest, providerPaymentId?: string): Promise<RefundResponse> {
@@ -414,159 +323,15 @@ export class CloverAdapter implements PosAdapter {
   async submitOrder(order: Order): Promise<void> {
     try {
       const bearerToken = await this.resolveBearerToken(order.id);
-      const baseUrl =
-        this.oauthConfig.environment === "production"
-          ? "https://api.clover.com"
-          : "https://apisandbox.dev.clover.com";
-      const orderTypeId = trimToUndefined(process.env.CLOVER_ORDER_TYPE_ID);
-      const createOrderBody: Record<string, unknown> = {
-        taxRemoved: false,
-        currency: "USD",
-        total: order.total.amountCents,
-        state: "Open",
-        groupLineItems: false,
-        manualTransaction: false,
-        testMode: false,
-        note: `LatteLink order ${order.id}`
-      };
-      if (orderTypeId) {
-        createOrderBody.orderType = { id: orderTypeId };
-      }
-
-      this.logger.info(
-        {
-          orderId: order.id,
-          merchantId: this.credentials.merchantId,
-          createOrderRequest: sanitizeCloverResponseBodyForLogs(createOrderBody)
-        },
-        "Submitting Clover order create request"
-      );
-
-      const createdOrder = await this.postClover({
-        url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders`,
-        bearerToken,
-        body: createOrderBody
+      const cloverOrderId = await this.createCloverOrder({
+        order,
+        bearerToken
       });
-      const cloverOrderId = firstStringAtPaths(createdOrder, [["id"], ["orderId"], ["order", "id"], ["data", "id"]]);
-      if (!cloverOrderId) {
-        throw new Error("Clover order creation did not return an order id");
-      }
-
-      this.logger.info(
-        {
-          orderId: order.id,
-          merchantId: this.credentials.merchantId,
-          cloverOrderId,
-          createOrderRequest: sanitizeCloverResponseBodyForLogs(createOrderBody),
-          createdOrderSummary: summarizeCloverOrderForLogs(createdOrder),
-          createdOrderResponse: sanitizeCloverResponseBodyForLogs(createdOrder)
-        },
-        "Clover order create response received"
-      );
-
-      for (const item of order.items) {
-        const quantity = Math.max(1, Math.floor(item.quantity));
-        const lineItemNote = buildCloverLineItemNote(item);
-        const mappedModifierIds = (item.customization?.selectedOptions ?? [])
-          .map((selection) => ({
-            selection,
-            modifierId: resolveCloverModifierId(selection.optionId)
-          }))
-          .filter((entry) => Boolean(entry.modifierId));
-        const unmappedSelections = (item.customization?.selectedOptions ?? []).filter(
-          (selection) => !resolveCloverModifierId(selection.optionId)
-        );
-        for (const selection of unmappedSelections) {
-          this.logger.info(
-            {
-              orderId: order.id,
-              merchantId: this.credentials.merchantId,
-              groupId: selection.groupId,
-              optionId: selection.optionId,
-              optionLabel: selection.optionLabel
-            },
-            "Clover modifier mapping missing; preserving customization in line-item note"
-          );
-        }
-
-        for (let count = 0; count < quantity; count += 1) {
-          const lineItemRequestBody = {
-            name: item.itemName ?? item.itemId,
-            alternateName: trimToUndefined(item.itemId),
-            price: item.unitPriceCents,
-            ...(lineItemNote ? { note: lineItemNote } : {}),
-            taxRates: []
-          };
-          this.logger.info(
-            {
-              orderId: order.id,
-              merchantId: this.credentials.merchantId,
-              cloverOrderId,
-              lineItemIndex: count + 1,
-              lineItemQuantity: quantity,
-              lineItemRequest: sanitizeCloverResponseBodyForLogs(lineItemRequestBody)
-            },
-            "Submitting Clover line item create request"
-          );
-          const lineItemResponse = await this.postClover({
-            url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders/${encodeURIComponent(cloverOrderId)}/line_items`,
-            bearerToken,
-            body: lineItemRequestBody
-          });
-          const lineItemId = firstStringAtPaths(lineItemResponse, [["id"], ["lineItemId"], ["lineItem", "id"], ["data", "id"]]);
-          if (!lineItemId) {
-            throw new Error(`Clover line item creation did not return a line item id for order ${order.id}`);
-          }
-
-          this.logger.info(
-            {
-              orderId: order.id,
-              merchantId: this.credentials.merchantId,
-              cloverOrderId,
-              lineItemId,
-              lineItemIndex: count + 1,
-              lineItemRequest: sanitizeCloverResponseBodyForLogs(lineItemRequestBody),
-              lineItemResponseSummary: summarizeCloverLineItemForLogs(lineItemResponse),
-              lineItemResponse: sanitizeCloverResponseBodyForLogs(lineItemResponse)
-            },
-            "Clover line item create response received"
-          );
-
-          for (const entry of mappedModifierIds) {
-            await this.postClover({
-              url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders/${encodeURIComponent(cloverOrderId)}/line_items/${encodeURIComponent(lineItemId)}/modifications`,
-              bearerToken,
-              body: {
-                modifier: {
-                  id: entry.modifierId
-                }
-              }
-            });
-          }
-        }
-      }
-
-      try {
-        await this.postClover({
-          url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/print_event`,
-          bearerToken,
-          body: {
-            orderRef: {
-              id: cloverOrderId
-            }
-          }
-        });
-      } catch (error) {
-        this.logger.warn(
-          {
-            error,
-            orderId: order.id,
-            cloverOrderId,
-            merchantId: this.credentials.merchantId
-          },
-          "Clover print event failed after order submission; leaving created order in place"
-        );
-      }
+      await this.triggerPrintEvent({
+        orderId: order.id,
+        cloverOrderId,
+        bearerToken
+      });
     } catch (error) {
       throw new CloverOrderSubmissionError(
         error instanceof Error ? error.message : "Clover order submission failed",
@@ -602,6 +367,326 @@ export class CloverAdapter implements PosAdapter {
         "Token refresh attempted but failed; proceeding with existing token"
       );
       return this.credentials.bearerToken;
+    }
+  }
+
+  private async createCloverOrder(params: { order: Order; bearerToken: string }): Promise<string> {
+    const baseUrl = resolveCloverApiBaseUrl(this.oauthConfig.environment);
+    const orderTypeId = trimToUndefined(process.env.CLOVER_ORDER_TYPE_ID);
+    const createOrderBody: Record<string, unknown> = {
+      taxRemoved: false,
+      currency: "USD",
+      total: params.order.total.amountCents,
+      state: "Open",
+      groupLineItems: false,
+      manualTransaction: false,
+      testMode: false,
+      note: `LatteLink order ${params.order.id}`
+    };
+    if (orderTypeId) {
+      createOrderBody.orderType = { id: orderTypeId };
+    }
+
+    this.logger.info(
+      {
+        orderId: params.order.id,
+        merchantId: this.credentials.merchantId,
+        createOrderRequest: sanitizeCloverResponseBodyForLogs(createOrderBody)
+      },
+      "Submitting Clover order create request"
+    );
+
+    const createdOrder = await this.postClover({
+      url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders`,
+      bearerToken: params.bearerToken,
+      body: createOrderBody
+    });
+    const cloverOrderId = firstStringAtPaths(createdOrder, [["id"], ["orderId"], ["order", "id"], ["data", "id"]]);
+    if (!cloverOrderId) {
+      throw new Error("Clover order creation did not return an order id");
+    }
+
+    this.logger.info(
+      {
+        orderId: params.order.id,
+        merchantId: this.credentials.merchantId,
+        cloverOrderId,
+        createOrderRequest: sanitizeCloverResponseBodyForLogs(createOrderBody),
+        createdOrderSummary: summarizeCloverOrderForLogs(createdOrder),
+        createdOrderResponse: sanitizeCloverResponseBodyForLogs(createdOrder)
+      },
+      "Clover order create response received"
+    );
+
+    for (const item of params.order.items) {
+      const quantity = Math.max(1, Math.floor(item.quantity));
+      const lineItemNote = buildCloverLineItemNote(item);
+      const mappedModifierIds = (item.customization?.selectedOptions ?? [])
+        .map((selection) => ({
+          selection,
+          modifierId: resolveCloverModifierId(selection.optionId)
+        }))
+        .filter((entry) => Boolean(entry.modifierId));
+      const unmappedSelections = (item.customization?.selectedOptions ?? []).filter(
+        (selection) => !resolveCloverModifierId(selection.optionId)
+      );
+      for (const selection of unmappedSelections) {
+        this.logger.info(
+          {
+            orderId: params.order.id,
+            merchantId: this.credentials.merchantId,
+            groupId: selection.groupId,
+            optionId: selection.optionId,
+            optionLabel: selection.optionLabel
+          },
+          "Clover modifier mapping missing; preserving customization in line-item note"
+        );
+      }
+
+      for (let count = 0; count < quantity; count += 1) {
+        const lineItemRequestBody = {
+          name: item.itemName ?? item.itemId,
+          alternateName: trimToUndefined(item.itemId),
+          price: item.unitPriceCents,
+          ...(lineItemNote ? { note: lineItemNote } : {}),
+          taxRates: []
+        };
+        this.logger.info(
+          {
+            orderId: params.order.id,
+            merchantId: this.credentials.merchantId,
+            cloverOrderId,
+            lineItemIndex: count + 1,
+            lineItemQuantity: quantity,
+            lineItemRequest: sanitizeCloverResponseBodyForLogs(lineItemRequestBody)
+          },
+          "Submitting Clover line item create request"
+        );
+        const lineItemResponse = await this.postClover({
+          url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders/${encodeURIComponent(cloverOrderId)}/line_items`,
+          bearerToken: params.bearerToken,
+          body: lineItemRequestBody
+        });
+        const lineItemId = firstStringAtPaths(lineItemResponse, [["id"], ["lineItemId"], ["lineItem", "id"], ["data", "id"]]);
+        if (!lineItemId) {
+          throw new Error(`Clover line item creation did not return a line item id for order ${params.order.id}`);
+        }
+
+        this.logger.info(
+          {
+            orderId: params.order.id,
+            merchantId: this.credentials.merchantId,
+            cloverOrderId,
+            lineItemId,
+            lineItemIndex: count + 1,
+            lineItemRequest: sanitizeCloverResponseBodyForLogs(lineItemRequestBody),
+            lineItemResponseSummary: summarizeCloverLineItemForLogs(lineItemResponse),
+            lineItemResponse: sanitizeCloverResponseBodyForLogs(lineItemResponse)
+          },
+          "Clover line item create response received"
+        );
+
+        for (const entry of mappedModifierIds) {
+          await this.postClover({
+            url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/orders/${encodeURIComponent(cloverOrderId)}/line_items/${encodeURIComponent(lineItemId)}/modifications`,
+            bearerToken: params.bearerToken,
+            body: {
+              modifier: {
+                id: entry.modifierId
+              }
+            }
+          });
+        }
+      }
+    }
+
+    return cloverOrderId;
+  }
+
+  private async payForCloverOrder(params: {
+    request: ChargeRequest;
+    bearerToken: string;
+    cloverOrderId: string;
+    sourceToken: string;
+    internalPaymentId: string;
+  }): Promise<{ response: ChargeResponse; providerPaymentId?: string }> {
+    const payUrl = `${resolveCloverEcommerceBaseUrl(this.oauthConfig.environment)}/v1/orders/${encodeURIComponent(params.cloverOrderId)}/pay`;
+    const payRequestBody = {
+      amount: params.request.amountCents,
+      currency: params.request.currency.toLowerCase(),
+      source: params.sourceToken,
+      ecomind: "ecom",
+      external_customer_reference: params.request.orderId,
+      metadata: {
+        orderId: params.request.orderId,
+        internalPaymentId: params.internalPaymentId,
+        idempotencyKey: params.request.idempotencyKey,
+        origin: "gazelle-payments-service",
+        cloverOrderId: params.cloverOrderId
+      }
+    };
+    const payHeaders: Record<string, string> = {
+      accept: "application/json",
+      "content-type": "application/json",
+      authorization: `Bearer ${params.bearerToken}`,
+      "x-request-id": this.requestId,
+      "idempotency-key": params.request.idempotencyKey,
+      "user-agent": `GazellePayments/${process.env.npm_package_version ?? "0.1.0"} (${this.oauthConfig.environment})`
+    };
+    const forwardedFor = trimToUndefined(process.env.CLOVER_X_FORWARDED_FOR);
+    if (forwardedFor) {
+      payHeaders["x-forwarded-for"] = forwardedFor;
+    }
+
+    let payResponse: Response;
+    const payController = new AbortController();
+    const payTimeout = setTimeout(() => payController.abort(), 10_000);
+    try {
+      this.logger.info(
+        {
+          orderId: params.request.orderId,
+          merchantId: this.credentials.merchantId,
+          cloverOrderId: params.cloverOrderId,
+          payOrderRequest: sanitizeCloverResponseBodyForLogs(payRequestBody)
+        },
+        "Submitting Clover order payment request"
+      );
+      payResponse = await fetch(payUrl, {
+        method: "POST",
+        headers: payHeaders,
+        body: JSON.stringify(payRequestBody),
+        signal: payController.signal
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          requestId: this.requestId,
+          orderId: params.request.orderId,
+          cloverOrderId: params.cloverOrderId,
+          internalPaymentId: params.internalPaymentId
+        },
+        "Clover order payment request failed before response"
+      );
+      return {
+        response: {
+          paymentId: randomUUID(),
+          provider: "CLOVER",
+          orderId: params.request.orderId,
+          status: "TIMEOUT",
+          approved: false,
+          amountCents: params.request.amountCents,
+          currency: params.request.currency,
+          occurredAt: new Date().toISOString(),
+          message: "Clover network request failed"
+        }
+      };
+    } finally {
+      clearTimeout(payTimeout);
+    }
+
+    const body = parseJsonSafely(await payResponse.text());
+    this.logger.info(
+      {
+        orderId: params.request.orderId,
+        merchantId: this.credentials.merchantId,
+        cloverOrderId: params.cloverOrderId,
+        payOrderRequest: sanitizeCloverResponseBodyForLogs(payRequestBody),
+        payOrderResponseSummary: summarizeCloverResponseForLogs(body),
+        payOrderResponse: sanitizeCloverResponseBodyForLogs(body)
+      },
+      "Clover order payment response received"
+    );
+    const providerStatus = firstStringAtPaths(body, [
+      ["status"],
+      ["charge", "status"],
+      ["payment", "status"],
+      ["result", "status"],
+      ["data", "status"]
+    ]);
+    const providerMessage =
+      firstStringAtPaths(body, [
+        ["message"],
+        ["description"],
+        ["reason"],
+        ["error"],
+        ["result", "message"],
+        ["data", "message"]
+      ]) ?? `Clover responded with status ${payResponse.status}`;
+    const approved = firstBooleanAtPaths(body, [
+      ["approved"],
+      ["charge", "approved"],
+      ["payment", "approved"],
+      ["result", "approved"],
+      ["data", "approved"]
+    ]);
+    const status = resolveChargeStatus({
+      providerStatus,
+      approved,
+      httpStatus: payResponse.status
+    });
+    const providerPaymentId = firstStringAtPaths(body, [
+      ["id"],
+      ["paymentId"],
+      ["payment_id"],
+      ["chargeId"],
+      ["charge_id"],
+      ["result", "id"],
+      ["data", "id"],
+      ["payment", "id"],
+      ["charge", "id"]
+    ]);
+
+    return {
+      response: {
+        paymentId: params.internalPaymentId,
+        provider: "CLOVER",
+        orderId: params.request.orderId,
+        status,
+        approved: status === "SUCCEEDED",
+        amountCents: params.request.amountCents,
+        currency: params.request.currency,
+        occurredAt: new Date().toISOString(),
+        declineCode:
+          status === "DECLINED"
+            ? firstStringAtPaths(body, [
+                ["declineCode"],
+                ["decline_code"],
+                ["reasonCode"],
+                ["reason_code"],
+                ["errorCode"],
+                ["error_code"],
+                ["code"]
+              ])
+            : undefined,
+        message: providerMessage
+      },
+      providerPaymentId: providerPaymentId ?? params.internalPaymentId
+    };
+  }
+
+  private async triggerPrintEvent(params: { orderId: string; cloverOrderId: string; bearerToken: string }) {
+    const baseUrl = resolveCloverApiBaseUrl(this.oauthConfig.environment);
+    try {
+      await this.postClover({
+        url: `${baseUrl}/v3/merchants/${encodeURIComponent(this.credentials.merchantId)}/print_event`,
+        bearerToken: params.bearerToken,
+        body: {
+          orderRef: {
+            id: params.cloverOrderId
+          }
+        }
+      });
+    } catch (error) {
+      this.logger.warn(
+        {
+          error,
+          orderId: params.orderId,
+          cloverOrderId: params.cloverOrderId,
+          merchantId: this.credentials.merchantId
+        },
+        "Clover print event failed after order submission; leaving created order in place"
+      );
     }
   }
 
@@ -644,6 +729,14 @@ export class CloverAdapter implements PosAdapter {
 function trimToUndefined(value: string | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
+}
+
+function resolveCloverApiBaseUrl(environment: CloverOAuthConfig["environment"]) {
+  return environment === "production" ? "https://api.clover.com" : "https://apisandbox.dev.clover.com";
+}
+
+function resolveCloverEcommerceBaseUrl(environment: CloverOAuthConfig["environment"]) {
+  return environment === "production" ? "https://scl.clover.com" : "https://scl-sandbox.dev.clover.com";
 }
 
 function buildCloverLineItemNote(item: Order["items"][number]) {

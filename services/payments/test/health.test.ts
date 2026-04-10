@@ -45,6 +45,34 @@ function stubLiveCloverOauthEnv() {
   vi.stubEnv("CLOVER_OAUTH_REDIRECT_URI", "https://example.test/v1/payments/clover/oauth/callback");
 }
 
+function buildChargeOrder(orderId: string, amountCents: number) {
+  return {
+    id: orderId,
+    locationId: "flagship-01",
+    status: "PENDING_PAYMENT",
+    items: [
+      {
+        itemId: "latte",
+        itemName: "Checkout Latte",
+        quantity: 1,
+        unitPriceCents: amountCents
+      }
+    ],
+    total: {
+      currency: "USD",
+      amountCents
+    },
+    pickupCode: "ABC123",
+    timeline: [
+      {
+        status: "PENDING_PAYMENT",
+        occurredAt: "2026-04-10T14:00:00.000Z",
+        source: "customer"
+      }
+    ]
+  };
+}
+
 describe("payments service", () => {
   beforeEach(() => {
     vi.stubEnv("ORDERS_INTERNAL_API_TOKEN", internalPaymentsToken);
@@ -604,6 +632,9 @@ describe("payments service", () => {
     stubLiveCloverOauthEnv();
 
     const fetchMock = vi.fn<typeof fetch>();
+    let createOrderBody: Record<string, unknown> | undefined;
+    const lineItemBodies: Array<Record<string, unknown>> = [];
+    let payOrderBody: Record<string, unknown> | undefined;
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -629,11 +660,29 @@ describe("payments service", () => {
         );
       }
 
-      if (url === "https://scl-sandbox.dev.clover.com/v1/charges") {
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders") {
+        createOrderBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        return new Response(JSON.stringify({ id: "clover-order-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders/clover-order-1/line_items") {
+        lineItemBodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+        return new Response(JSON.stringify({ id: `line-item-${lineItemBodies.length}` }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://scl-sandbox.dev.clover.com/v1/orders/clover-order-1/pay") {
         const headers = new Headers(init?.headers);
         expect(headers.get("authorization")).toBe("Bearer oauth-access-token-1");
-        expect(JSON.parse(String(init?.body ?? "{}"))).toMatchObject({
-          merchantId: "merchant-sbx",
+        payOrderBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        expect(payOrderBody).toMatchObject({
+          amount: 1200,
+          currency: "usd",
           source: "clv_card_source_token"
         });
         return new Response(
@@ -645,6 +694,13 @@ describe("payments service", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
+      }
+
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/print_event") {
+        return new Response(JSON.stringify({ accepted: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
       }
 
       if (url === "https://scl-sandbox.dev.clover.com/v1/refunds") {
@@ -670,6 +726,7 @@ describe("payments service", () => {
       headers: internalHeaders(),
       payload: {
         orderId: "123e4567-e89b-12d3-a456-426614174031",
+        order: buildChargeOrder("123e4567-e89b-12d3-a456-426614174031", 1200),
         amountCents: 1200,
         currency: "USD",
         paymentSourceToken: "clv_card_source_token",
@@ -681,6 +738,23 @@ describe("payments service", () => {
       provider: "CLOVER",
       status: "SUCCEEDED",
       approved: true
+    });
+    expect(createOrderBody).toMatchObject({
+      total: 1200,
+      currency: "USD",
+      state: "Open",
+      groupLineItems: false
+    });
+    expect(lineItemBodies).toEqual([
+      {
+        name: "Checkout Latte",
+        alternateName: "latte",
+        price: 1200,
+        taxRates: []
+      }
+    ]);
+    expect(payOrderBody).toMatchObject({
+      external_customer_reference: "123e4567-e89b-12d3-a456-426614174031"
     });
 
     const internalPaymentId = chargeResponse.json().paymentId as string;
@@ -705,7 +779,7 @@ describe("payments service", () => {
       status: "REFUNDED"
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     await app.close();
   });
 
@@ -906,7 +980,21 @@ describe("payments service", () => {
         );
       }
 
-      if (url === "https://scl-sandbox.dev.clover.com/v1/charges") {
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders") {
+        return new Response(JSON.stringify({ id: "clover-order-wallet-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders/clover-order-wallet-1/line_items") {
+        return new Response(JSON.stringify({ id: "line-item-wallet-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://scl-sandbox.dev.clover.com/v1/orders/clover-order-wallet-1/pay") {
         const headers = new Headers(init?.headers);
         expect(headers.get("authorization")).toBe("Bearer oauth-access-token-1");
         expect(headers.get("apikey")).toBeNull();
@@ -922,6 +1010,13 @@ describe("payments service", () => {
         );
       }
 
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/print_event") {
+        return new Response(JSON.stringify({ accepted: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
       throw new Error(`unexpected live Clover URL: ${url}`);
     });
 
@@ -934,6 +1029,7 @@ describe("payments service", () => {
       headers: internalHeaders(),
       payload: {
         orderId: "123e4567-e89b-12d3-a456-426614174088",
+        order: buildChargeOrder("123e4567-e89b-12d3-a456-426614174088", 1200),
         amountCents: 1200,
         currency: "USD",
         applePayWallet: {
@@ -956,7 +1052,7 @@ describe("payments service", () => {
       status: "SUCCEEDED",
       approved: true
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     await app.close();
   });
 
@@ -1013,7 +1109,21 @@ describe("payments service", () => {
         );
       }
 
-      if (url === "https://scl-sandbox.dev.clover.com/v1/charges") {
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-oauth-1/orders") {
+        return new Response(JSON.stringify({ id: "clover-order-oauth-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-oauth-1/orders/clover-order-oauth-1/line_items") {
+        return new Response(JSON.stringify({ id: "line-item-oauth-1" }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url === "https://scl-sandbox.dev.clover.com/v1/orders/clover-order-oauth-1/pay") {
         const headers = new Headers(init?.headers);
         expect(headers.get("authorization")).toBe("Bearer oauth-access-token-1");
 
@@ -1026,6 +1136,13 @@ describe("payments service", () => {
           }),
           { status: 200, headers: { "content-type": "application/json" } }
         );
+      }
+
+      if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-oauth-1/print_event") {
+        return new Response(JSON.stringify({ accepted: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
       }
 
       throw new Error(`unexpected live Clover URL: ${url}`);
@@ -1071,6 +1188,7 @@ describe("payments service", () => {
       headers: internalHeaders(),
       payload: {
         orderId: "123e4567-e89b-12d3-a456-426614174089",
+        order: buildChargeOrder("123e4567-e89b-12d3-a456-426614174089", 1200),
         amountCents: 1200,
         currency: "USD",
         applePayWallet: {
@@ -1093,7 +1211,7 @@ describe("payments service", () => {
       status: "SUCCEEDED",
       approved: true
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
     await app.close();
   });
 

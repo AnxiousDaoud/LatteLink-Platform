@@ -645,6 +645,14 @@ describe("orders service", () => {
       (typeof input === "string" ? input : input.toString()).endsWith("/v1/payments/charges")
     );
     expect(paymentChargeCalls).toHaveLength(1);
+    const chargeBody = JSON.parse(String(paymentChargeCalls[0]?.[1]?.body ?? "{}")) as Record<string, unknown>;
+    expect(chargeBody).toMatchObject({
+      orderId: createdOrder.id,
+      order: expect.objectContaining({
+        id: createdOrder.id,
+        status: "PENDING_PAYMENT"
+      })
+    });
     const loyaltyMutationCalls = fetchMock.mock.calls.filter(([input]) =>
       (typeof input === "string" ? input : input.toString()).endsWith("/v1/loyalty/internal/ledger/apply")
     );
@@ -1098,6 +1106,10 @@ describe("orders service", () => {
     const chargeBody = JSON.parse(String(paymentChargeCalls[0]?.[1]?.body ?? "{}")) as Record<string, unknown>;
     expect(chargeBody).toMatchObject({
       idempotencyKey: "wallet-pay-1",
+      order: expect.objectContaining({
+        id: createdOrder.id,
+        status: "PENDING_PAYMENT"
+      }),
       applePayWallet: {
         version: "EC_v1"
       }
@@ -1517,7 +1529,7 @@ describe("orders service", () => {
         (typeof input === "string" ? input : input.toString()).endsWith("/v1/payments/orders/submit") &&
         (init?.method ?? "GET") === "POST"
     );
-    expect(submitOrderCalls).toHaveLength(1);
+    expect(submitOrderCalls).toHaveLength(0);
 
     const refundReconcile = await app.inject({
       method: "POST",

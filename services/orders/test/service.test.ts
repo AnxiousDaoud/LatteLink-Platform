@@ -413,8 +413,15 @@ describe("orders service layer", () => {
       (typeof input === "string" ? input : input.toString()).endsWith("/v1/payments/charges")
     );
     expect(chargeCalls).toHaveLength(1);
-    expect(submitOrder).toHaveBeenCalledTimes(1);
-    expect(submitOrder).toHaveBeenCalledWith(expect.objectContaining({ id: order.id, status: "PAID" }));
+    expect(submitOrder).not.toHaveBeenCalled();
+    const chargeBody = JSON.parse(String(chargeCalls[0]?.[1]?.body ?? "{}")) as Record<string, unknown>;
+    expect(chargeBody).toMatchObject({
+      orderId: order.id,
+      order: expect.objectContaining({
+        id: order.id,
+        status: "PENDING_PAYMENT"
+      })
+    });
   });
 
   it("processPayment cancels the order after a declined payment response", async () => {
@@ -518,7 +525,7 @@ describe("orders service layer", () => {
     expect(submitOrder).not.toHaveBeenCalled();
   });
 
-  it("reconcilePaymentWebhook submits order exactly once on paid transition", async () => {
+  it("reconcilePaymentWebhook does not create a separate Clover order on paid transition", async () => {
     const userId = "123e4567-e89b-12d3-a456-426614174515";
     const { deps, submitOrder } = await createTestDeps(repositories);
     const { order } = await createQuotedOrder(deps, { userId });
@@ -550,8 +557,7 @@ describe("orders service layer", () => {
       applied: true,
       orderStatus: "PAID"
     });
-    expect(submitOrder).toHaveBeenCalledTimes(1);
-    expect(submitOrder).toHaveBeenCalledWith(expect.objectContaining({ id: order.id, status: "PAID" }));
+    expect(submitOrder).not.toHaveBeenCalled();
   });
 
   it("processPayment cancels the order after a definitive upstream payment error", async () => {

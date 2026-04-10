@@ -52,6 +52,7 @@ const cloverEndpointsByEnvironment = {
 
 const chargeRequestSchema = z.object({
   orderId: z.string().uuid(),
+  order: orderSchema.optional(),
   amountCents: z.number().int().positive(),
   currency: z.literal("USD"),
   paymentSourceToken: z.string().min(1).optional(),
