@@ -714,7 +714,9 @@ describe("payments service", () => {
 
     const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockImplementation(async (input) => {
+    let createOrderBody: Record<string, unknown> | null = null;
+    const lineItemBodies: Array<Record<string, unknown>> = [];
+    fetchMock.mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url === "https://apisandbox.dev.clover.com/oauth/v2/token") {
         return new Response(
@@ -739,6 +741,7 @@ describe("payments service", () => {
       }
 
       if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders") {
+        createOrderBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
         return new Response(JSON.stringify({ id: "clover-order-1" }), {
           status: 200,
           headers: { "content-type": "application/json" }
@@ -746,7 +749,8 @@ describe("payments service", () => {
       }
 
       if (url === "https://apisandbox.dev.clover.com/v3/merchants/merchant-sbx/orders/clover-order-1/line_items") {
-        return new Response(JSON.stringify({ id: "line-item-1" }), {
+        lineItemBodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+        return new Response(JSON.stringify({ id: `line-item-${lineItemBodies.length}` }), {
           status: 200,
           headers: { "content-type": "application/json" }
         });
@@ -776,13 +780,32 @@ describe("payments service", () => {
           {
             itemId: "latte",
             itemName: "Honey Oat Latte",
-            quantity: 1,
-            unitPriceCents: 675
+            quantity: 2,
+            unitPriceCents: 675,
+            customization: {
+              selectedOptions: [
+                {
+                  groupId: "size",
+                  groupLabel: "Size",
+                  optionId: "large",
+                  optionLabel: "Large",
+                  priceDeltaCents: 75
+                },
+                {
+                  groupId: "milk",
+                  groupLabel: "Milk",
+                  optionId: "oat",
+                  optionLabel: "Oat",
+                  priceDeltaCents: 0
+                }
+              ],
+              notes: "Half sweet"
+            }
           }
         ],
         total: {
           currency: "USD",
-          amountCents: 675
+          amountCents: 1350
         },
         pickupCode: "ABC123",
         timeline: [
@@ -805,7 +828,30 @@ describe("payments service", () => {
       accepted: true,
       merchantId: "merchant-sbx"
     });
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(createOrderBody).toMatchObject({
+      total: 1350,
+      currency: "USD",
+      state: "Open",
+      groupLineItems: false,
+      note: "LatteLink order 123e4567-e89b-12d3-a456-426614174199"
+    });
+    expect(lineItemBodies).toEqual([
+      {
+        name: "Honey Oat Latte",
+        alternateName: "latte",
+        price: 675,
+        note: "Size: Large\nMilk: Oat\nNotes: Half sweet",
+        taxRates: []
+      },
+      {
+        name: "Honey Oat Latte",
+        alternateName: "latte",
+        price: 675,
+        note: "Size: Large\nMilk: Oat\nNotes: Half sweet",
+        taxRates: []
+      }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
     await app.close();
   });
 

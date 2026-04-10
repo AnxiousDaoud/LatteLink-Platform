@@ -424,7 +424,7 @@ export class CloverAdapter implements PosAdapter {
         currency: "USD",
         total: order.total.amountCents,
         state: "Open",
-        groupLineItems: true,
+        groupLineItems: false,
         manualTransaction: false,
         testMode: false,
         note: `LatteLink order ${order.id}`
@@ -445,14 +445,7 @@ export class CloverAdapter implements PosAdapter {
 
       for (const item of order.items) {
         const quantity = Math.max(1, Math.floor(item.quantity));
-        const customizationEntries = (item.customization?.selectedOptions ?? []).map(
-          (selection) => `${selection.groupLabel}: ${selection.optionLabel}`
-        );
-        const itemNotes = [
-          customizationEntries.length > 0 ? customizationEntries.join("; ") : undefined,
-          trimToUndefined(item.customization?.notes) ? `notes: ${item.customization?.notes}` : undefined
-        ].filter((value): value is string => Boolean(value));
-        const lineItemNote = itemNotes.join("; ");
+        const lineItemNote = buildCloverLineItemNote(item);
         const mappedModifierIds = (item.customization?.selectedOptions ?? [])
           .map((selection) => ({
             selection,
@@ -483,7 +476,7 @@ export class CloverAdapter implements PosAdapter {
               name: item.itemName ?? item.itemId,
               alternateName: trimToUndefined(item.itemId),
               price: item.unitPriceCents,
-              note: lineItemNote,
+              ...(lineItemNote ? { note: lineItemNote } : {}),
               taxRates: []
             }
           });
@@ -604,6 +597,16 @@ export class CloverAdapter implements PosAdapter {
 function trimToUndefined(value: string | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
+}
+
+function buildCloverLineItemNote(item: Order["items"][number]) {
+  const lines = (item.customization?.selectedOptions ?? []).map((selection) => `${selection.groupLabel}: ${selection.optionLabel}`);
+  const freeformNotes = trimToUndefined(item.customization?.notes);
+  if (freeformNotes) {
+    lines.push(`Notes: ${freeformNotes}`);
+  }
+
+  return lines.join("\n");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
