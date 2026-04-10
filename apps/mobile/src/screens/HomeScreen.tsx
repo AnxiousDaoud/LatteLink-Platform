@@ -114,6 +114,7 @@ export function HomeScreen() {
   const storeConfigQuery = useStoreConfigQuery();
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const appConfig = resolveAppConfigData(appConfigQuery.data);
+  const headerBackgroundColor = appConfig.header.background || uiPalette.background;
   const homeNewsCards = homeNewsCardsQuery.data?.cards ?? [];
   const storeConfig = resolveStoreConfigData(storeConfigQuery.data);
   const nextOpenLabel = formatNextOpenLabel(storeConfig.nextOpenAt);
@@ -272,7 +273,9 @@ export function HomeScreen() {
         </View>
       </Animated.ScrollView>
 
-      <Animated.View style={[styles.headerShell, { paddingTop: insets.top + HEADER_TOP_PADDING }, headerStyle]}>
+      <Animated.View
+        style={[styles.headerShell, { paddingTop: insets.top + HEADER_TOP_PADDING, backgroundColor: headerBackgroundColor }, headerStyle]}
+      >
         <Animated.View style={headerContentStyle}>
           <View style={styles.hero}>
             <Animated.Text style={[styles.title, titleStyle]}>{appConfig.brand.brandName}</Animated.Text>

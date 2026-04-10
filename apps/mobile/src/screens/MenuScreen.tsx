@@ -201,6 +201,7 @@ export function MenuScreen() {
   const storeConfigQuery = useStoreConfigQuery();
   const isInitialLoading = menuQuery.isLoading && !menuQuery.data;
   const appConfig = appConfigQuery.data ? resolveAppConfigData(appConfigQuery.data) : null;
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
   const storeConfig = storeConfigQuery.data ? resolveStoreConfigData(storeConfigQuery.data) : null;
   const hasBlockingConfigError =
     (!!appConfigQuery.error && !appConfigQuery.data) || (!!storeConfigQuery.error && !storeConfigQuery.data);
@@ -427,7 +428,9 @@ export function MenuScreen() {
         ])}
       </Animated.ScrollView>
 
-      <Animated.View style={[styles.headerShell, { paddingTop: insets.top + MENU_HEADER_TOP_PADDING }, headerStyle]}>
+      <Animated.View
+        style={[styles.headerShell, { paddingTop: insets.top + MENU_HEADER_TOP_PADDING, backgroundColor: headerBackgroundColor }, headerStyle]}
+      >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>

@@ -372,6 +372,10 @@ export const appConfigThemeSchema = z.object({
   displayFontFamily: z.string().min(1).optional()
 });
 
+export const appConfigHeaderSchema = z.object({
+  background: z.string().min(1)
+});
+
 export const appConfigBrandSchema = z.object({
   brandId: z.string().min(1),
   brandName: z.string().min(1),
@@ -516,6 +520,7 @@ export function resolveAppConfigStoreCapabilities(input: AppConfigCapabilityInpu
 function normalizeAppConfig(input: {
   brand: z.output<typeof appConfigBrandSchema>;
   theme: z.output<typeof appConfigThemeSchema>;
+  header?: z.output<typeof appConfigHeaderSchema>;
   enabledTabs: Array<z.output<z.ZodEnum<["home", "menu", "orders", "account"]>>>;
   featureFlags: z.output<typeof appConfigFeatureFlagsSchema>;
   loyaltyEnabled: boolean;
@@ -524,9 +529,13 @@ function normalizeAppConfig(input: {
   storeCapabilities?: z.output<typeof appConfigStoreCapabilitiesSchema>;
 }) {
   const storeCapabilities = resolveAppConfigStoreCapabilities(input);
+  const header = appConfigHeaderSchema.parse({
+    background: input.header?.background ?? input.theme.backgroundAlt
+  });
 
   return {
     ...input,
+    header,
     storeCapabilities,
     featureFlags: {
       ...input.featureFlags,
@@ -566,6 +575,7 @@ export function resolveAppConfigFulfillmentMode(config: AppConfigCapabilityInput
 const appConfigSchemaBase = z.object({
   brand: appConfigBrandSchema,
   theme: appConfigThemeSchema,
+  header: appConfigHeaderSchema.optional(),
   enabledTabs: z.array(z.enum(["home", "menu", "orders", "account"])).min(1),
   featureFlags: appConfigFeatureFlagsSchema,
   loyaltyEnabled: z.boolean(),
@@ -637,6 +647,7 @@ export type AdminStoreConfig = z.output<typeof adminStoreConfigSchema>;
 export type AdminMenuItemCreate = z.output<typeof adminMenuItemCreateSchema>;
 export type AdminMenuItemVisibilityUpdate = z.output<typeof adminMenuItemVisibilityUpdateSchema>;
 export type AppConfigTheme = z.output<typeof appConfigThemeSchema>;
+export type AppConfigHeader = z.output<typeof appConfigHeaderSchema>;
 export type AppConfigBrand = z.output<typeof appConfigBrandSchema>;
 export type AppConfigFeatureFlags = z.output<typeof appConfigFeatureFlagsSchema>;
 export type AppConfigPaymentCapabilities = z.output<typeof appConfigPaymentCapabilitiesSchema>;

@@ -277,6 +277,9 @@ const fallbackAppConfig = appConfigSchema.parse({
     fontFamily: "System",
     displayFontFamily: "Fraunces"
   },
+  header: {
+    background: "#F0ECE4"
+  },
   enabledTabs: ["home", "menu", "orders", "account"],
   featureFlags: {
     loyalty: true,
