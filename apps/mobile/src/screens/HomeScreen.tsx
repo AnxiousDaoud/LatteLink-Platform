@@ -26,8 +26,8 @@ import {
 import { TAB_BAR_HEIGHT, getTabBarBottomOffset } from "../navigation/tabBarMetrics";
 import { GlassCard, ScreenBackdrop, TabBarDepthBackdrop, uiPalette, uiTypography } from "../ui/system";
 
-const HEADER_TOP_PADDING = 18;
-const HEADER_EXPANDED_HEIGHT = 212;
+const HEADER_TOP_PADDING = 8;
+const HEADER_EXPANDED_HEIGHT = 144;
 const HEADER_COLLAPSED_HEIGHT = 92;
 const HEADER_SNAP_VELOCITY_THRESHOLD = 0.2;
 const HEADER_SNAP_EDGE_TOLERANCE = 2;
@@ -143,10 +143,14 @@ export function HomeScreen() {
   }));
 
   const titleStyle = useAnimatedStyle(() => ({
-    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [14, 6], Extrapolation.CLAMP),
+    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [16, 6], Extrapolation.CLAMP),
     fontSize: interpolate(scrollY.value, [0, headerCollapseDistance], [40, 28], Extrapolation.CLAMP),
     lineHeight: interpolate(scrollY.value, [0, headerCollapseDistance], [46, 32], Extrapolation.CLAMP),
     letterSpacing: interpolate(scrollY.value, [0, headerCollapseDistance], [-1.4, -0.9], Extrapolation.CLAMP)
+  }));
+
+  const headerContentStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: interpolate(scrollY.value, [0, headerCollapseDistance], [-8, 0], Extrapolation.CLAMP) }]
   }));
 
   const pickupMetaStyle = useAnimatedStyle(() => ({
@@ -164,12 +168,12 @@ export function HomeScreen() {
   }));
 
   const storeRailStyle = useAnimatedStyle(() => ({
-    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [28, 14], Extrapolation.CLAMP),
-    paddingBottom: interpolate(scrollY.value, [0, headerCollapseDistance], [18, 8], Extrapolation.CLAMP)
+    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [16, 10], Extrapolation.CLAMP),
+    paddingBottom: interpolate(scrollY.value, [0, headerCollapseDistance], [2, 0], Extrapolation.CLAMP)
   }));
 
   const storeTitleStyle = useAnimatedStyle(() => ({
-    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [6, 0], Extrapolation.CLAMP),
+    marginTop: interpolate(scrollY.value, [0, headerCollapseDistance], [2, 0], Extrapolation.CLAMP),
     transform: [{ translateY: interpolate(scrollY.value, [0, headerCollapseDistance], [0, -10], Extrapolation.CLAMP) }]
   }));
 
@@ -269,29 +273,31 @@ export function HomeScreen() {
       </Animated.ScrollView>
 
       <Animated.View style={[styles.headerShell, { paddingTop: insets.top + HEADER_TOP_PADDING }, headerStyle]}>
-        <View style={styles.hero}>
-          <Animated.Text style={[styles.title, titleStyle]}>{appConfig.brand.brandName}</Animated.Text>
-        </View>
-
-        <Animated.View style={[styles.storeRail, storeRailStyle]}>
-          <View style={styles.storeCopy}>
-            <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>
-              <Text style={[styles.storeMeta, !storeConfig.isOpen ? styles.storeMetaClosed : null]}>
-                {storeConfig.isOpen
-                  ? `Estimated pick-up is ${storeConfig.prepEtaMinutes} mins`
-                  : nextOpenLabel
-                    ? `Closed now · Opens ${nextOpenLabel}`
-                    : "Closed now"}
-              </Text>
-            </Animated.View>
-            <Animated.Text style={[styles.storeTitle, storeTitleStyle]}>{appConfig.brand.locationName}</Animated.Text>
+        <Animated.View style={headerContentStyle}>
+          <View style={styles.hero}>
+            <Animated.Text style={[styles.title, titleStyle]}>{appConfig.brand.brandName}</Animated.Text>
           </View>
 
-          <Animated.View style={menuLinkStyle}>
-            <Pressable onPress={() => router.push("/(tabs)/menu")} style={styles.inlineLink}>
-              <Text style={styles.inlineLinkText}>Menu</Text>
-              <Ionicons name="chevron-forward" size={16} color={uiPalette.text} />
-            </Pressable>
+          <Animated.View style={[styles.storeRail, storeRailStyle]}>
+            <View style={styles.storeCopy}>
+              <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>
+                <Text style={[styles.storeMeta, !storeConfig.isOpen ? styles.storeMetaClosed : null]}>
+                  {storeConfig.isOpen
+                    ? `Estimated pick-up is ${storeConfig.prepEtaMinutes} mins`
+                    : nextOpenLabel
+                      ? `Closed now · Opens ${nextOpenLabel}`
+                      : "Closed now"}
+                </Text>
+              </Animated.View>
+              <Animated.Text style={[styles.storeTitle, storeTitleStyle]}>{appConfig.brand.locationName}</Animated.Text>
+            </View>
+
+            <Animated.View style={menuLinkStyle}>
+              <Pressable onPress={() => router.push("/(tabs)/menu")} style={styles.inlineLink}>
+                <Text style={styles.inlineLinkText}>Menu</Text>
+                <Ionicons name="chevron-forward" size={16} color={uiPalette.text} />
+              </Pressable>
+            </Animated.View>
           </Animated.View>
         </Animated.View>
       </Animated.View>
@@ -323,7 +329,7 @@ const styles = StyleSheet.create({
     paddingTop: 0
   },
   title: {
-    marginTop: 14,
+    marginTop: 16,
     fontSize: 40,
     lineHeight: 46,
     color: uiPalette.text,
@@ -332,8 +338,8 @@ const styles = StyleSheet.create({
     letterSpacing: -1.4
   },
   storeRail: {
-    marginTop: 28,
-    paddingBottom: 18,
+    marginTop: 16,
+    paddingBottom: 2,
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
@@ -354,7 +360,7 @@ const styles = StyleSheet.create({
     color: uiPalette.warning
   },
   storeTitle: {
-    marginTop: 6,
+    marginTop: 2,
     fontSize: 19,
     lineHeight: 25,
     letterSpacing: 1.9,
@@ -375,7 +381,7 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   cardGrid: {
-    paddingTop: 14,
+    paddingTop: 8,
     gap: 14
   },
   newsCard: {

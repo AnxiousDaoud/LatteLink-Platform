@@ -20,7 +20,7 @@ function resolveDisplayName(variant: AppVariant) {
     case "production":
       return process.env.APP_DISPLAY_NAME ?? baseName;
     case "beta":
-      return process.env.APP_DISPLAY_NAME ?? `${baseName} Beta`;
+      return process.env.APP_DISPLAY_NAME ?? "Rawaq Beta";
     case "internal":
     default:
       return process.env.APP_DISPLAY_NAME ?? `${baseName} Internal`;
