@@ -325,6 +325,7 @@ export const adminMutationSuccessSchema = z.object({
 export const adminStoreConfigSchema = z.object({
   locationId: z.string().min(1),
   storeName: z.string().min(1),
+  locationName: z.string().min(1),
   hours: z.string().min(1),
   pickupInstructions: z.string().min(1),
   capabilities: z
@@ -577,6 +578,7 @@ export const appConfigSchema = appConfigSchemaBase.transform((value) => normaliz
 
 export const adminStoreConfigUpdateSchema = z.object({
   storeName: z.string().min(1),
+  locationName: z.string().min(1),
   hours: z.string().min(1),
   pickupInstructions: z.string().min(1),
   capabilities: appConfigStoreCapabilitiesSchema.optional()

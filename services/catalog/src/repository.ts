@@ -33,6 +33,7 @@ import {
 import { z } from "zod";
 import {
   DEFAULT_BRAND_ID,
+  DEFAULT_BRAND_NAME,
   DEFAULT_LOCATION_NAME,
   DEFAULT_LOCATION_ID,
   DEFAULT_STORE_HOURS,
@@ -323,6 +324,7 @@ type CatalogRepository = {
   getAdminStoreConfig(): Promise<AdminStoreConfig>;
   updateAdminStoreConfig(input: {
     storeName: string;
+    locationName: string;
     hours: string;
     pickupInstructions: string;
     capabilities?: AppConfigStoreCapabilities;
@@ -443,6 +445,7 @@ function buildAdminMenuResponse(params: {
 function buildAdminStoreConfig(input: {
   locationId: string;
   storeName: string;
+  locationName: string;
   hours: string;
   pickupInstructions: string;
   capabilities: AppConfigStoreCapabilities;
@@ -520,7 +523,8 @@ function createInMemoryRepository(): CatalogRepository {
       DEFAULT_LOCATION_ID,
       buildAdminStoreConfig({
         locationId: DEFAULT_LOCATION_ID,
-        storeName: DEFAULT_LOCATION_NAME,
+        storeName: DEFAULT_BRAND_NAME,
+        locationName: defaultAppConfig.brand.locationName,
         hours: DEFAULT_STORE_HOURS,
         pickupInstructions: defaultStoreConfigRecord.pickupInstructions,
         capabilities: defaultAppConfig.storeCapabilities
@@ -590,6 +594,7 @@ function createInMemoryRepository(): CatalogRepository {
       const nextAdminStoreConfig = buildAdminStoreConfig({
         locationId: input.locationId,
         storeName: input.storeName ?? input.locationName,
+        locationName: nextAppConfig.brand.locationName,
         hours: input.hours ?? DEFAULT_STORE_HOURS,
         pickupInstructions: input.pickupInstructions ?? defaultStoreConfigRecord.pickupInstructions,
         capabilities: nextAppConfig.storeCapabilities
@@ -895,6 +900,7 @@ function createInMemoryRepository(): CatalogRepository {
       const nextAdminStoreConfig = buildAdminStoreConfig({
         locationId: DEFAULT_LOCATION_ID,
         storeName: input.storeName,
+        locationName: input.locationName,
         hours: input.hours,
         pickupInstructions: input.pickupInstructions,
         capabilities: input.capabilities ?? currentAppConfig.storeCapabilities
@@ -908,7 +914,8 @@ function createInMemoryRepository(): CatalogRepository {
         ...currentAppConfig,
         brand: {
           ...currentAppConfig.brand,
-          locationName: input.storeName
+          brandName: input.storeName,
+          locationName: input.locationName
         },
         storeCapabilities: input.capabilities ?? currentAppConfig.storeCapabilities
       });
@@ -1016,7 +1023,7 @@ async function seedCatalogDefaults(db: PersistenceDb) {
     .values({
       brand_id: DEFAULT_BRAND_ID,
       location_id: defaultStoreConfigRecord.locationId,
-      store_name: DEFAULT_LOCATION_NAME,
+      store_name: DEFAULT_BRAND_NAME,
       hours_text: DEFAULT_STORE_HOURS,
       prep_eta_minutes: defaultStoreConfigRecord.prepEtaMinutes,
       tax_rate_basis_points: defaultStoreConfigRecord.taxRateBasisPoints,
@@ -1717,7 +1724,8 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
       if (!row) {
         return buildAdminStoreConfig({
           locationId: DEFAULT_LOCATION_ID,
-          storeName: DEFAULT_LOCATION_NAME,
+          storeName: DEFAULT_BRAND_NAME,
+          locationName: defaultAppConfigPayload.brand.locationName,
           hours: DEFAULT_STORE_HOURS,
           pickupInstructions: defaultStoreConfigRecord.pickupInstructions,
           capabilities: defaultAppConfigPayload.storeCapabilities
@@ -1735,6 +1743,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
       return buildAdminStoreConfig({
         locationId: row.location_id,
         storeName: row.store_name,
+        locationName: appConfig.brand.locationName,
         hours: row.hours_text,
         pickupInstructions: row.pickup_instructions,
         capabilities: appConfig.storeCapabilities
@@ -1759,7 +1768,8 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         ...currentAppConfig,
         brand: {
           ...currentAppConfig.brand,
-          locationName: input.storeName
+          brandName: input.storeName,
+          locationName: input.locationName
         },
         storeCapabilities: input.capabilities ?? currentAppConfig.storeCapabilities
       });
@@ -1804,6 +1814,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
       return buildAdminStoreConfig({
         locationId: DEFAULT_LOCATION_ID,
         storeName: input.storeName,
+        locationName: input.locationName,
         hours: input.hours,
         pickupInstructions: input.pickupInstructions,
         capabilities: nextAppConfig.storeCapabilities

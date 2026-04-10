@@ -900,7 +900,8 @@ describe("gateway", () => {
         return new Response(
           JSON.stringify({
             locationId: "flagship-01",
-            storeName: "Gazelle Coffee Flagship",
+            storeName: "Gazelle Coffee",
+            locationName: "Ann Arbor, MI",
             hours: "Daily · 7:00 AM - 6:00 PM",
             pickupInstructions: "Pickup at the flagship order counter."
           }),
@@ -911,13 +912,15 @@ describe("gateway", () => {
       if (url.endsWith("/v1/catalog/admin/store/config") && method === "PUT") {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           storeName?: string;
+          locationName?: string;
           hours?: string;
           pickupInstructions?: string;
         };
         return new Response(
           JSON.stringify({
             locationId: "flagship-01",
-            storeName: body.storeName ?? "Gazelle Coffee Flagship",
+            storeName: body.storeName ?? "Gazelle Coffee",
+            locationName: body.locationName ?? "Ann Arbor, MI",
             hours: body.hours ?? "Daily · 7:00 AM - 6:00 PM",
             pickupInstructions: body.pickupInstructions ?? "Pickup at the flagship order counter."
           }),
@@ -1857,7 +1860,8 @@ describe("gateway", () => {
     });
     expect(storeResponse.statusCode).toBe(200);
     expect(storeResponse.json()).toMatchObject({
-      storeName: "Gazelle Coffee Flagship"
+      storeName: "Gazelle Coffee",
+      locationName: "Ann Arbor, MI"
     });
 
     const requestedUrls = fetchMock.mock.calls.map(([input]) => (typeof input === "string" ? input : input.url));
@@ -2009,7 +2013,10 @@ describe("gateway", () => {
       url: "/v1/admin/store/config",
       headers: staffOperatorHeaders,
       payload: {
-        storeName: "Blocked Rename"
+        storeName: "Blocked Rename",
+        locationName: "Blocked Location",
+        hours: "Daily · 7:00 AM - 6:00 PM",
+        pickupInstructions: "Pickup at the bar."
       }
     });
     expect(storeUpdateResponse.statusCode).toBe(403);
@@ -2076,6 +2083,7 @@ describe("gateway", () => {
       headers: ownerOperatorHeaders,
       payload: {
         storeName: "LatteLink Flagship",
+        locationName: "Ann Arbor, MI",
         hours: "Daily · 6:00 AM - 5:00 PM",
         pickupInstructions: "Pickup at the front bar."
       }
@@ -2083,6 +2091,7 @@ describe("gateway", () => {
     expect(storeUpdateResponse.statusCode).toBe(200);
     expect(storeUpdateResponse.json()).toMatchObject({
       storeName: "LatteLink Flagship",
+      locationName: "Ann Arbor, MI",
       pickupInstructions: "Pickup at the front bar."
     });
 

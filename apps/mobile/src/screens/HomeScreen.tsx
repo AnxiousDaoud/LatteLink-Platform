@@ -149,13 +149,6 @@ export function HomeScreen() {
     letterSpacing: interpolate(scrollY.value, [0, headerCollapseDistance], [-1.4, -0.9], Extrapolation.CLAMP)
   }));
 
-  const subtitleStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 28, 52], [1, 0.35, 0], Extrapolation.CLAMP),
-    height: interpolate(scrollY.value, [0, 52], [28, 0], Extrapolation.CLAMP),
-    marginTop: interpolate(scrollY.value, [0, 52], [2, 0], Extrapolation.CLAMP),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 52], [0, -8], Extrapolation.CLAMP) }]
-  }));
-
   const pickupMetaStyle = useAnimatedStyle(() => ({
     opacity: interpolate(scrollY.value, [0, 20, 48], [1, 0.28, 0], Extrapolation.CLAMP),
     height: interpolate(scrollY.value, [0, 48], [18, 0], Extrapolation.CLAMP),
@@ -278,9 +271,6 @@ export function HomeScreen() {
       <Animated.View style={[styles.headerShell, { paddingTop: insets.top + HEADER_TOP_PADDING }, headerStyle]}>
         <View style={styles.hero}>
           <Animated.Text style={[styles.title, titleStyle]}>{appConfig.brand.brandName}</Animated.Text>
-          <Animated.View style={[styles.subtitleWrap, subtitleStyle]}>
-            <Text style={styles.subtitle}>{appConfig.brand.locationName}</Text>
-          </Animated.View>
         </View>
 
         <Animated.View style={[styles.storeRail, storeRailStyle]}>
@@ -294,7 +284,7 @@ export function HomeScreen() {
                     : "Closed now"}
               </Text>
             </Animated.View>
-            <Animated.Text style={[styles.storeTitle, storeTitleStyle]}>{appConfig.brand.marketLabel}</Animated.Text>
+            <Animated.Text style={[styles.storeTitle, storeTitleStyle]}>{appConfig.brand.locationName}</Animated.Text>
           </View>
 
           <Animated.View style={menuLinkStyle}>
@@ -340,16 +330,6 @@ const styles = StyleSheet.create({
     fontFamily: uiTypography.displayFamily,
     fontWeight: "600",
     letterSpacing: -1.4
-  },
-  subtitle: {
-    marginLeft: 4,
-    maxWidth: 340,
-    fontSize: 16,
-    lineHeight: 26,
-    color: uiPalette.textSecondary
-  },
-  subtitleWrap: {
-    overflow: "hidden"
   },
   storeRail: {
     marginTop: 28,

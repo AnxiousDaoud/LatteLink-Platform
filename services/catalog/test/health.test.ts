@@ -182,7 +182,8 @@ describe("catalog service", () => {
     });
     expect(adminStoreConfigResponse.statusCode).toBe(200);
     const adminStoreConfig = adminStoreConfigSchema.parse(adminStoreConfigResponse.json());
-    expect(adminStoreConfig.storeName).toBe(DEFAULT_LOCATION_NAME);
+    expect(adminStoreConfig.storeName).toBe(DEFAULT_BRAND_NAME);
+    expect(adminStoreConfig.locationName).toBe(DEFAULT_LOCATION_NAME);
     expect(adminStoreConfig.capabilities.menu.source).toBe("platform_managed");
 
     const storeUpdateResponse = await app.inject({
@@ -193,6 +194,7 @@ describe("catalog service", () => {
       },
       payload: {
         storeName: "Gazelle Coffee Downtown",
+        locationName: "Ann Arbor, MI",
         hours: "Weekdays · 6:30 AM - 5:00 PM",
         pickupInstructions: "Use the front pickup shelves.",
         capabilities: {
@@ -213,6 +215,7 @@ describe("catalog service", () => {
     expect(storeUpdateResponse.statusCode).toBe(200);
     expect(adminStoreConfigSchema.parse(storeUpdateResponse.json())).toMatchObject({
       storeName: "Gazelle Coffee Downtown",
+      locationName: "Ann Arbor, MI",
       hours: "Weekdays · 6:30 AM - 5:00 PM",
       capabilities: {
         menu: {
@@ -233,7 +236,8 @@ describe("catalog service", () => {
     expect(appConfigResponse.statusCode).toBe(200);
     expect(appConfigSchema.parse(appConfigResponse.json())).toMatchObject({
       brand: {
-        locationName: "Gazelle Coffee Downtown"
+        brandName: "Gazelle Coffee Downtown",
+        locationName: "Ann Arbor, MI"
       },
       storeCapabilities: {
         menu: {

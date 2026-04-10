@@ -164,7 +164,7 @@ function LoadingMenuState({
             <View style={[styles.pickupMetaWrap, styles.loadingPickupMetaWrap]}>
               <Text style={styles.pickupMeta}>Estimated pick-up is 12 mins</Text>
             </View>
-            <Text style={styles.locationText}>Ann Arbor, Mi.</Text>
+            <Text style={styles.locationText}>Ann Arbor, MI</Text>
           </View>
         </View>
 
@@ -436,7 +436,7 @@ export function MenuScreen() {
               </Text>
             </Animated.View>
             <Animated.Text style={[styles.locationText, locationStyle]}>
-              {appConfig?.brand.marketLabel ?? appConfig?.brand.locationName ?? "Store info unavailable"}
+              {appConfig?.brand.locationName ?? "Store info unavailable"}
             </Animated.Text>
           </View>
         </View>

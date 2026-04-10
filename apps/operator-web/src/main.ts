@@ -1883,7 +1883,7 @@ function renderStoreSection() {
       ${renderSectionHeading({
         eyebrow: "Settings",
         title: state.storeConfig.storeName,
-        description: "Update store identity, hours, and customer pickup instructions."
+        description: "Update the storefront title, location label, hours, and customer pickup instructions."
       })}
       <article class="dash-surface">
         <div class="dash-surface-head">
@@ -1907,6 +1907,10 @@ function renderStoreSection() {
                     <input name="storeName" value="${escapeHtml(state.storeConfig.storeName)}" required />
                   </label>
                   <label class="field">
+                    <span>Location name</span>
+                    <input name="locationName" value="${escapeHtml(state.storeConfig.locationName)}" required />
+                  </label>
+                  <label class="field">
                     <span>Hours</span>
                     <input name="hours" value="${escapeHtml(state.storeConfig.hours)}" required />
                   </label>
@@ -1926,6 +1930,10 @@ function renderStoreSection() {
                   <div class="dash-detail-metric">
                     <span>Store name</span>
                     <strong>${escapeHtml(state.storeConfig.storeName)}</strong>
+                  </div>
+                  <div class="dash-detail-metric">
+                    <span>Location name</span>
+                    <strong>${escapeHtml(state.storeConfig.locationName)}</strong>
                   </div>
                   <div class="dash-detail-metric">
                     <span>Hours</span>
@@ -2371,6 +2379,7 @@ async function handleStoreSubmit(form: HTMLFormElement) {
     render();
     await updateOperatorStoreConfig(state.session, {
       storeName: formData.get("storeName"),
+      locationName: formData.get("locationName"),
       hours: formData.get("hours"),
       pickupInstructions: formData.get("pickupInstructions")
     });

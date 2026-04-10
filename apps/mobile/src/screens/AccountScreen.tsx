@@ -168,7 +168,6 @@ export function AccountScreen() {
             <View style={styles.heroCopy}>
               <SectionLabel label="Account" />
               <Text style={styles.heroTitle}>{accountGreeting}</Text>
-              <Text style={styles.heroBody}>{appConfig.brand.locationName}</Text>
             </View>
             <Chip label={loyaltyEnabled ? "Loyalty On" : "Loyalty Off"} active={loyaltyEnabled} />
           </View>
@@ -287,12 +286,6 @@ const styles = StyleSheet.create({
     color: uiPalette.text,
     fontFamily: uiTypography.displayFamily,
     fontWeight: "700"
-  },
-  heroBody: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 21,
-    color: uiPalette.textSecondary
   },
   loggedOutPreviewBand: {
     marginTop: 20,

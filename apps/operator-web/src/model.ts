@@ -83,6 +83,7 @@ export type OperatorMenuItemCreateFormInput = {
 
 export type OperatorStoreConfigFormInput = {
   storeName?: string;
+  locationName?: string;
   hours?: string;
   pickupInstructions?: string;
 };
@@ -456,6 +457,7 @@ export function normalizeStoreConfigForm(
 
   return adminStoreConfigUpdateSchema.parse({
     storeName: normalizeText(value.storeName),
+    locationName: normalizeText(value.locationName),
     hours: normalizeText(value.hours),
     pickupInstructions: normalizeText(value.pickupInstructions)
   });

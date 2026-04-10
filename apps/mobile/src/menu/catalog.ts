@@ -260,7 +260,7 @@ const fallbackAppConfig = appConfigSchema.parse({
     brandId: "gazelle-default",
     brandName: "Gazelle Coffee",
     locationId: "flagship-01",
-    locationName: "Gazelle Coffee Flagship",
+    locationName: "Ann Arbor, MI",
     marketLabel: "Ann Arbor, MI"
   },
   theme: {
