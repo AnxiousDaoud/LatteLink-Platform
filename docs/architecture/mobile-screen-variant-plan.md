@@ -45,7 +45,7 @@ The current repo already has the beginnings of tenant-aware runtime config, but 
 ### Existing Tenant Foundations
 
 - catalog already supports internal multi-location provisioning and listing in [`services/catalog/src/repository.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/services/catalog/src/repository.ts#L1062)
-- app config defaults are seeded in [`services/catalog/src/tenant.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/services/catalog/src/tenant.ts)
+- app config defaults are resolved in [`services/catalog/src/tenant.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/services/catalog/src/tenant.ts)
 
 ### Current Mobile and Public API Limits
 
@@ -341,8 +341,8 @@ Files:
 
 Changes:
 
-- seed a default resolved experience in `tenant.ts`
-- seed default rollout rules for flagship/default location
+- define a default resolved experience in `tenant.ts`
+- define default rollout rules for the default tenant/location
 - teach `getAppConfig()` to accept client compatibility context
 - resolve screen rollouts to a single public `experience` object before returning
 - add internal/admin read and write paths for rollout rule management

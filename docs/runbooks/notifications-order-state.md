@@ -57,7 +57,7 @@ curl -s http://127.0.0.1:3005/v1/notifications/internal/order-state \
     \"orderId\":\"123e4567-e89b-12d3-a456-426614174951\",
     \"status\":\"PAID\",
     \"pickupCode\":\"PICKUP1\",
-    \"locationId\":\"flagship-01\",
+    \"locationId\":\"location-01\",
     \"occurredAt\":\"2026-03-10T18:00:00.000Z\",
     \"note\":\"Payment accepted\"
   }"

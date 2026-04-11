@@ -22,7 +22,7 @@ The worker now includes:
 - `MENU_SYNC_RETRY_DELAY_MS`
   - default: `2000` (first retry delay, doubles per attempt)
 - `MENU_SYNC_LOCATION_ID`
-  - default: `flagship-01`
+  - default: legacy dev placeholder in code; set this explicitly for any real deployment
 - `MENU_SYNC_DEAD_LETTER_PATH`
   - default: `./dead-letter/menu-sync.jsonl`
 
@@ -46,7 +46,7 @@ Dead-letter record shape:
 {
   "occurredAt": "2026-03-10T00:00:00.000Z",
   "sourceUrl": "https://webapp.gazellecoffee.com/api/content/public",
-  "locationId": "flagship-01",
+  "locationId": "location-01",
   "attempts": 4,
   "error": "Menu source responded with 503"
 }

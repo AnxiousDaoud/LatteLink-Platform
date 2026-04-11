@@ -89,10 +89,10 @@ Persistence schema:
 
 Catalog defaults currently resolve to:
 
-- `brandId = gazelle-default`
-- `brandName = Gazelle Coffee`
-- `locationId = flagship-01`
-- `locationName = Gazelle Coffee Flagship`
+- `brandId = rawaqcoffee`
+- `brandName = Rawaq Coffee`
+- `locationId = rawaqcoffee01`
+- `locationName = Rawaq Coffee Flagship`
 - `marketLabel = Ann Arbor, MI`
 
 ## Mobile Consumption
@@ -132,7 +132,7 @@ Relevant env vars:
 
 ## Operational Notes
 
-The flagship brand still defaults from static catalog tenant values. The new runtime config path makes those defaults replaceable without forcing customer or operator clients to hardcode them.
+The default tenant brand still resolves from static catalog tenant values. The new runtime config path makes those defaults replaceable without forcing customer or operator clients to hardcode them.
 
 If the deployment wants a different brand or location, the catalog defaults should be changed in:
 

@@ -18,10 +18,10 @@ Merge methods may stay enabled, but they are no longer part of the required ship
 
 ### `main`
 
-- [ ] require pull requests
-- [ ] block direct pushes
-- [ ] require conversation resolution
-- [ ] require status checks before pushing
+- [x] do not require pull requests
+- [x] do not block direct pushes
+- [ ] require conversation resolution if you still want stricter review on optional PRs
+- [ ] require status checks before merge only if you keep optional PR review paths
 
 `main` should allow direct pushes.
 

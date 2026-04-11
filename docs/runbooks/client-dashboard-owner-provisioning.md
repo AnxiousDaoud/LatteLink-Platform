@@ -38,7 +38,7 @@ From the repo root:
 pnpm provision:client-owner -- \
   --display-name "Avery Quinn" \
   --email "avery@store.com" \
-  --location-id "flagship-01" \
+  --location-id "northside-01" \
   --dashboard-url "https://client.example.com"
 ```
 

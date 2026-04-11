@@ -4,7 +4,7 @@ Last reviewed: `2026-04-04`
 
 ## Goal
 
-Run the full service stack on one low-cost host before AWS cutover.
+Run the full service stack on one low-cost host for the current live deployment lane.
 
 ## Target Topology
 

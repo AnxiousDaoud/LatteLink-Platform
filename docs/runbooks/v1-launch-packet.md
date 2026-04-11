@@ -48,7 +48,7 @@ Use these as the authoritative source docs for each phase:
 | Mobile build and QA    | [mobile-eas-builds.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/mobile-eas-builds.md), [mobile-testflight-pilot-release.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/mobile-testflight-pilot-release.md), [mobile-pilot-purchase-flow-qa.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/mobile-pilot-purchase-flow-qa.md), [apple-pay-checkout.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/apple-pay-checkout.md)                                                     |
 | Provider prerequisites | [production-prerequisites.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/production-prerequisites.md), [clover-payment-integration.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/clover-payment-integration.md)                                                                                                                                                                                                                                                                                                                     |
 
-For the current V1 rollout lane, do not treat the older staged `AWS/ECS` release docs as the source of truth. This packet assumes the active V1 path is:
+For the current V1 rollout lane, this packet assumes the active path is:
 
 - backend on `DigitalOcean` + `GHCR`
 - client dashboard on `Vercel`

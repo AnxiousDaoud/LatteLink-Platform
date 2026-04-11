@@ -40,29 +40,36 @@ Hard-gate checklist before enabling real passkey auth, Apple Pay, and Clover pro
 - [ ] Webhook endpoint URL and signing secret configured.
 - [ ] Idempotency behavior validated in sandbox.
 
-## GitHub Environments and Secrets
+## GitHub Vars and Secrets
 
-Set in GitHub Environments (`dev`, `staging`, `prod`) and documented in internal vault:
+Set in the repository vars and secrets used by the free-first deploy workflows and document them in internal vault:
 
-- [ ] `AWS_ROLE_ARN`
-- [ ] `DATABASE_URL`
-- [ ] `REDIS_URL`
-- [ ] `APPLE_TEAM_ID`
-- [ ] `APPLE_KEY_ID`
-- [ ] `APPLE_PRIVATE_KEY`
-- [ ] `APPLE_CLIENT_ID` or `APPLE_ALLOWED_CLIENT_IDS`
-- [ ] `APPLE_MERCHANT_ID`
-- [ ] `CLOVER_APP_ID`
-- [ ] `CLOVER_APP_SECRET`
-- [ ] `CLOVER_OAUTH_REDIRECT_URI`
-- [ ] `CLOVER_OAUTH_STATE_SECRET`
-- [ ] `CLOVER_BEARER_TOKEN`
-- [ ] `CLOVER_API_ACCESS_KEY`
-- [ ] `CLOVER_MERCHANT_ID`
-- [ ] `CLOVER_WEBHOOK_SHARED_SECRET`
-- [ ] `JWT_PRIVATE_KEY`
-- [ ] `JWT_PUBLIC_KEY`
-- [ ] `EXPO_TOKEN`
+- [ ] `FREE_API_DOMAIN`
+- [ ] `FREE_IMAGE_REGISTRY_PREFIX`
+- [ ] `FREE_CLIENT_DASHBOARD_DOMAIN`
+- [ ] `FREE_DATABASE_URL` or `FREE_POSTGRES_PASSWORD`
+- [ ] `FREE_GATEWAY_INTERNAL_API_TOKEN`
+- [ ] `FREE_ORDERS_INTERNAL_API_TOKEN`
+- [ ] `FREE_LOYALTY_INTERNAL_API_TOKEN`
+- [ ] `FREE_NOTIFICATIONS_INTERNAL_API_TOKEN`
+- [ ] `FREE_JWT_SECRET`
+- [ ] `LETSENCRYPT_EMAIL`
+- [ ] `FREE_APPLE_TEAM_ID` or `APPLE_TEAM_ID`
+- [ ] `FREE_APPLE_KEY_ID` or `APPLE_KEY_ID`
+- [ ] `FREE_APPLE_PRIVATE_KEY` or `APPLE_PRIVATE_KEY`
+- [ ] `FREE_APPLE_CLIENT_ID` or `APPLE_CLIENT_ID`
+- [ ] `FREE_APPLE_ALLOWED_CLIENT_IDS` or `APPLE_ALLOWED_CLIENT_IDS`
+- [ ] `FREE_GOOGLE_OAUTH_CLIENT_ID`
+- [ ] `FREE_GOOGLE_OAUTH_CLIENT_SECRET`
+- [ ] `FREE_GOOGLE_OAUTH_STATE_SECRET`
+- [ ] `FREE_CLOVER_APP_ID`
+- [ ] `FREE_CLOVER_APP_SECRET`
+- [ ] `FREE_CLOVER_OAUTH_REDIRECT_URI`
+- [ ] `FREE_CLOVER_OAUTH_STATE_SECRET`
+- [ ] `FREE_CLOVER_BEARER_TOKEN`
+- [ ] `FREE_CLOVER_API_ACCESS_KEY`
+- [ ] `FREE_CLOVER_MERCHANT_ID`
+- [ ] `FREE_CLOVER_WEBHOOK_SHARED_SECRET`
 
 ## Exit Criteria
 
