@@ -2473,9 +2473,15 @@ body::before {
 .dash-nav {
   display: grid;
   gap: 6px;
+  width: 100%;
+  align-content: start;
 }
 
 .dash-nav-item {
+  width: auto;
+  max-width: 100%;
+  justify-content: space-between;
+  align-self: stretch;
   min-height: 44px;
   padding: 11px 14px;
   border: 1px solid transparent;
@@ -2496,6 +2502,10 @@ body::before {
 .dash-nav-item .dash-nav-dot,
 .nav-link__dot {
   background: #cbd5e1;
+}
+
+.dash-nav-item__content {
+  min-width: 0;
 }
 
 .dash-nav-item--active .dash-nav-dot {
