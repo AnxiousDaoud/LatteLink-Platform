@@ -7,7 +7,7 @@
   "files": ["dist", "src/generated"],
   "scripts": {
     "generate": "openapi-typescript ../../services/gateway/openapi/openapi.json -o src/generated/types.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --outDir dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --max-warnings=0",
     "test": "vitest run"

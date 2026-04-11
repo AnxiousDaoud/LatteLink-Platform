@@ -234,7 +234,8 @@ describe("contracts-catalog", () => {
       storeName: "Gazelle Coffee",
       locationName: "Ann Arbor, MI",
       hours: "Daily · 7:00 AM - 6:00 PM",
-      pickupInstructions: "Pickup at the flagship order counter."
+      pickupInstructions: "Pickup at the flagship order counter.",
+      taxRateBasisPoints: 600
     });
 
     expect(adminItem.categoryTitle).toBe("Espresso Bar");
@@ -254,6 +255,7 @@ describe("contracts-catalog", () => {
       locationName: "Ann Arbor, MI",
       hours: "Weekdays · 6:30 AM - 5:00 PM",
       pickupInstructions: "Use the front pickup shelves.",
+      taxRateBasisPoints: 650,
       capabilities: {
         menu: {
           source: "external_sync"
@@ -271,6 +273,7 @@ describe("contracts-catalog", () => {
 
     expect(menuUpdate.visible).toBe(false);
     expect(storeUpdate.hours).toContain("Weekdays");
+    expect(storeUpdate.taxRateBasisPoints).toBe(650);
     expect(storeUpdate.capabilities?.menu.source).toBe("external_sync");
     expect(catalogContract.routes.adminMenu.path).toBe("/admin/menu");
     expect(catalogContract.routes.adminStoreConfig.path).toBe("/admin/store/config");
@@ -303,6 +306,7 @@ describe("contracts-catalog", () => {
       storeName: "Northside Coffee",
       hours: "Daily · 7:00 AM - 6:00 PM",
       pickupInstructions: "Pickup at the espresso counter.",
+      taxRateBasisPoints: 675,
       capabilities: bootstrap.capabilities,
       action: "created"
     });

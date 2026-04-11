@@ -184,6 +184,7 @@ describe("catalog service", () => {
     const adminStoreConfig = adminStoreConfigSchema.parse(adminStoreConfigResponse.json());
     expect(adminStoreConfig.storeName).toBe(DEFAULT_BRAND_NAME);
     expect(adminStoreConfig.locationName).toBe(DEFAULT_LOCATION_NAME);
+    expect(adminStoreConfig.taxRateBasisPoints).toBe(600);
     expect(adminStoreConfig.capabilities.menu.source).toBe("platform_managed");
 
     const storeUpdateResponse = await app.inject({
@@ -197,6 +198,7 @@ describe("catalog service", () => {
         locationName: "Ann Arbor, MI",
         hours: "Weekdays · 6:30 AM - 5:00 PM",
         pickupInstructions: "Use the front pickup shelves.",
+        taxRateBasisPoints: 650,
         capabilities: {
           menu: {
             source: "external_sync"
@@ -217,6 +219,7 @@ describe("catalog service", () => {
       storeName: "Gazelle Coffee Downtown",
       locationName: "Ann Arbor, MI",
       hours: "Weekdays · 6:30 AM - 5:00 PM",
+      taxRateBasisPoints: 650,
       capabilities: {
         menu: {
           source: "external_sync"
@@ -230,6 +233,12 @@ describe("catalog service", () => {
           visible: false
         }
       }
+    });
+
+    const storeConfigResponse = await app.inject({ method: "GET", url: "/v1/store/config" });
+    expect(storeConfigResponse.statusCode).toBe(200);
+    expect(storeConfigResponseSchema.parse(storeConfigResponse.json())).toMatchObject({
+      taxRateBasisPoints: 650
     });
 
     const appConfigResponse = await app.inject({ method: "GET", url: "/v1/app-config" });
@@ -488,6 +497,7 @@ describe("catalog service", () => {
         storeName: "Northside Coffee",
         hours: "Daily · 7:00 AM - 6:00 PM",
         pickupInstructions: "Pickup at the espresso counter.",
+        taxRateBasisPoints: 675,
         capabilities: {
           menu: {
             source: "platform_managed"
@@ -508,6 +518,7 @@ describe("catalog service", () => {
     const bootstrap = internalLocationSummarySchema.parse(bootstrapResponse.json());
     expect(bootstrap.action).toBe("created");
     expect(bootstrap.locationId).toBe("northside-01");
+    expect(bootstrap.taxRateBasisPoints).toBe(675);
 
     const listResponse = await app.inject({
       method: "GET",
@@ -544,6 +555,7 @@ describe("catalog service", () => {
     expect(internalLocationSummarySchema.parse(summaryResponse.json())).toMatchObject({
       brandName: "Northside Coffee",
       locationId: "northside-01",
+      taxRateBasisPoints: 675,
       capabilities: {
         operations: {
           fulfillmentMode: "staff"

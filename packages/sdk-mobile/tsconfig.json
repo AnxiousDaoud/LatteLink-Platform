@@ -1,9 +1,4 @@
 {
   "extends": "../config-typescript/library.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "rootDir": "src",
-    "outDir": "dist"
-  },
   "include": ["src"]
 }

@@ -26,6 +26,14 @@ function readBoolean(formData: FormData, key: string) {
   return formData.get(key) === "on";
 }
 
+function readTaxRateBasisPoints(formData: FormData, key: string): number | undefined {
+  const raw = readString(formData, key);
+  if (!raw) return undefined;
+  const percent = parseFloat(raw);
+  if (isNaN(percent) || percent < 0 || percent > 100) return undefined;
+  return Math.round(percent * 100);
+}
+
 function slugify(value: string) {
   return value
     .trim()
@@ -109,6 +117,7 @@ export async function createClientAction(formData: FormData) {
       storeName: readOptionalString(formData, "storeName") ?? clientName,
       hours: readOptionalString(formData, "hours"),
       pickupInstructions: readOptionalString(formData, "pickupInstructions"),
+      taxRateBasisPoints: readTaxRateBasisPoints(formData, "taxRatePercent"),
       capabilities: readCapabilities(formData)
     });
 
@@ -142,6 +151,7 @@ export async function updateClientCapabilitiesAction(formData: FormData) {
       storeName: readString(formData, "storeName"),
       hours: readString(formData, "hours"),
       pickupInstructions: readString(formData, "pickupInstructions"),
+      taxRateBasisPoints: readTaxRateBasisPoints(formData, "taxRatePercent"),
       capabilities: readCapabilities(formData)
     });
   } catch (error) {

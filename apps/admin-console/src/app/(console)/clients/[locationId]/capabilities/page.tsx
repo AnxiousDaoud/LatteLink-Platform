@@ -105,6 +105,19 @@ export default async function ClientCapabilitiesPage({ params, searchParams }: C
                 </div>
                 <div className="field-grid">
                   <label className="field">
+                    <span>Tax rate (%)</span>
+                    <input
+                      name="taxRatePercent"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      defaultValue={(location.taxRateBasisPoints / 100).toFixed(2)}
+                      required
+                    />
+                    <p className="field-hint">Sales tax rate for this location, e.g. 6.5 for 6.5%.</p>
+                  </label>
+                  <label className="field">
                     <span>Menu source</span>
                     <select name="menuSource" defaultValue={location.capabilities.menu.source}>
                       <option value="platform_managed">Platform managed</option>

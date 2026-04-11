@@ -118,6 +118,11 @@ export default async function NewClientPage({ searchParams }: NewClientPageProps
                   <option value="staff">Staff managed</option>
                 </select>
               </label>
+              <label className="field">
+                <span>Tax rate (%)</span>
+                <input name="taxRatePercent" type="number" step="0.01" min="0" max="100" placeholder="6.00" required />
+                <p className="field-hint">Sales tax rate for this location, e.g. 6.5 for 6.5%.</p>
+              </label>
               <label className="toggle-field">
                 <input type="checkbox" name="dashboardEnabled" defaultChecked />
                 <span>Enable client dashboard</span>

@@ -328,6 +328,7 @@ export const adminStoreConfigSchema = z.object({
   locationName: z.string().min(1),
   hours: z.string().min(1),
   pickupInstructions: z.string().min(1),
+  taxRateBasisPoints: z.number().int().min(0).max(10000),
   capabilities: z
     .object({
       menu: z.object({
@@ -591,6 +592,7 @@ export const adminStoreConfigUpdateSchema = z.object({
   locationName: z.string().min(1),
   hours: z.string().min(1),
   pickupInstructions: z.string().min(1),
+  taxRateBasisPoints: z.number().int().min(0).max(10000).optional(),
   capabilities: appConfigStoreCapabilitiesSchema.optional()
 });
 
@@ -607,6 +609,7 @@ export const internalLocationBootstrapSchema = z.object({
   storeName: z.string().trim().min(1).optional(),
   hours: z.string().trim().min(1).optional(),
   pickupInstructions: z.string().trim().min(1).optional(),
+  taxRateBasisPoints: z.number().int().min(0).max(10000).optional(),
   capabilities: appConfigStoreCapabilitiesSchema.optional()
 });
 
@@ -619,6 +622,7 @@ export const internalLocationSummarySchema = z.object({
   storeName: z.string().min(1),
   hours: z.string().min(1),
   pickupInstructions: z.string().min(1),
+  taxRateBasisPoints: z.number().int().min(0).max(10000),
   capabilities: appConfigStoreCapabilitiesSchema,
   action: z.enum(["created", "updated"]).optional()
 });

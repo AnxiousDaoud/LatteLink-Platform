@@ -326,6 +326,7 @@ type CatalogRepository = {
     locationName: string;
     hours: string;
     pickupInstructions: string;
+    taxRateBasisPoints?: number;
     capabilities?: AppConfigStoreCapabilities;
   }): Promise<AdminStoreConfig>;
   getMenu(): Promise<MenuResponse>;
@@ -447,6 +448,7 @@ function buildAdminStoreConfig(input: {
   locationName: string;
   hours: string;
   pickupInstructions: string;
+  taxRateBasisPoints: number;
   capabilities: AppConfigStoreCapabilities;
 }) {
   return adminStoreConfigSchema.parse(input);
@@ -482,6 +484,7 @@ function buildInternalLocationSummary(input: {
   storeName: string;
   hours: string;
   pickupInstructions: string;
+  taxRateBasisPoints: number;
   capabilities: AppConfigStoreCapabilities;
   action?: "created" | "updated";
 }) {
@@ -526,6 +529,7 @@ function createInMemoryRepository(): CatalogRepository {
         locationName: defaultAppConfig.brand.locationName,
         hours: DEFAULT_STORE_HOURS,
         pickupInstructions: defaultStoreConfigRecord.pickupInstructions,
+        taxRateBasisPoints: defaultStoreConfigRecord.taxRateBasisPoints,
         capabilities: defaultAppConfig.storeCapabilities
       })
     ]
@@ -540,6 +544,7 @@ function createInMemoryRepository(): CatalogRepository {
       return Array.from(adminStoreConfigsByLocation.entries())
         .flatMap(([locationId, adminStoreConfig]) => {
           const appConfig = appConfigsByLocation.get(locationId);
+          const storeConfig = storeConfigsByLocation.get(locationId);
           if (!appConfig) {
             return [];
           }
@@ -554,6 +559,7 @@ function createInMemoryRepository(): CatalogRepository {
               storeName: adminStoreConfig.storeName,
               hours: adminStoreConfig.hours,
               pickupInstructions: adminStoreConfig.pickupInstructions,
+              taxRateBasisPoints: storeConfig?.taxRateBasisPoints ?? defaultStoreConfigRecord.taxRateBasisPoints,
               capabilities: appConfig.storeCapabilities
             })
           ];
@@ -563,6 +569,7 @@ function createInMemoryRepository(): CatalogRepository {
     async getInternalLocationSummary(locationId) {
       const adminStoreConfig = adminStoreConfigsByLocation.get(locationId);
       const appConfig = appConfigsByLocation.get(locationId);
+      const storeConfig = storeConfigsByLocation.get(locationId);
       if (!adminStoreConfig || !appConfig) {
         return undefined;
       }
@@ -576,12 +583,16 @@ function createInMemoryRepository(): CatalogRepository {
         storeName: adminStoreConfig.storeName,
         hours: adminStoreConfig.hours,
         pickupInstructions: adminStoreConfig.pickupInstructions,
+        taxRateBasisPoints: storeConfig?.taxRateBasisPoints ?? defaultStoreConfigRecord.taxRateBasisPoints,
         capabilities: appConfig.storeCapabilities
       });
     },
     async bootstrapInternalLocation(rawInput) {
       const input = internalLocationBootstrapSchema.parse(rawInput);
       const existing = adminStoreConfigsByLocation.get(input.locationId);
+      const existingStoreConfig = storeConfigsByLocation.get(input.locationId);
+      const taxRateBasisPoints =
+        input.taxRateBasisPoints ?? existingStoreConfig?.taxRateBasisPoints ?? defaultStoreConfigRecord.taxRateBasisPoints;
       const nextAppConfig = resolveProvisionedAppConfigPayload({
         brandId: input.brandId,
         brandName: input.brandName,
@@ -596,13 +607,14 @@ function createInMemoryRepository(): CatalogRepository {
         locationName: nextAppConfig.brand.locationName,
         hours: input.hours ?? DEFAULT_STORE_HOURS,
         pickupInstructions: input.pickupInstructions ?? defaultStoreConfigRecord.pickupInstructions,
+        taxRateBasisPoints,
         capabilities: nextAppConfig.storeCapabilities
       });
       const nextStoreConfig: StoreConfigRecord = {
         locationId: input.locationId,
         hoursText: nextAdminStoreConfig.hours,
-        prepEtaMinutes: defaultStoreConfigRecord.prepEtaMinutes,
-        taxRateBasisPoints: defaultStoreConfigRecord.taxRateBasisPoints,
+        prepEtaMinutes: existingStoreConfig?.prepEtaMinutes ?? defaultStoreConfigRecord.prepEtaMinutes,
+        taxRateBasisPoints,
         pickupInstructions: nextAdminStoreConfig.pickupInstructions
       };
 
@@ -622,6 +634,7 @@ function createInMemoryRepository(): CatalogRepository {
         storeName: nextAdminStoreConfig.storeName,
         hours: nextAdminStoreConfig.hours,
         pickupInstructions: nextAdminStoreConfig.pickupInstructions,
+        taxRateBasisPoints: nextStoreConfig.taxRateBasisPoints,
         capabilities: nextAppConfig.storeCapabilities,
         action: existing ? "updated" : "created"
       });
@@ -896,17 +909,20 @@ function createInMemoryRepository(): CatalogRepository {
     async updateAdminStoreConfig(input) {
       const currentAppConfig = appConfigsByLocation.get(DEFAULT_LOCATION_ID) ?? defaultAppConfig;
       const currentStoreConfig = storeConfigsByLocation.get(DEFAULT_LOCATION_ID) ?? defaultStoreConfigRecord;
+      const taxRateBasisPoints = input.taxRateBasisPoints ?? currentStoreConfig.taxRateBasisPoints;
       const nextAdminStoreConfig = buildAdminStoreConfig({
         locationId: DEFAULT_LOCATION_ID,
         storeName: input.storeName,
         locationName: input.locationName,
         hours: input.hours,
         pickupInstructions: input.pickupInstructions,
+        taxRateBasisPoints,
         capabilities: input.capabilities ?? currentAppConfig.storeCapabilities
       });
       const nextStoreConfig: StoreConfigRecord = {
         ...currentStoreConfig,
         hoursText: input.hours,
+        taxRateBasisPoints,
         pickupInstructions: input.pickupInstructions
       };
       const nextAppConfig = appConfigSchema.parse({
@@ -1095,6 +1111,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
               storeName: storeRow.store_name,
               hours: storeRow.hours_text,
               pickupInstructions: storeRow.pickup_instructions,
+              taxRateBasisPoints: storeRow.tax_rate_basis_points,
               capabilities: appConfig.storeCapabilities
             })
           ];
@@ -1129,6 +1146,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         storeName: storeRow.store_name,
         hours: storeRow.hours_text,
         pickupInstructions: storeRow.pickup_instructions,
+        taxRateBasisPoints: storeRow.tax_rate_basis_points,
         capabilities: appConfig.storeCapabilities
       });
     },
@@ -1157,6 +1175,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
       const storeName = input.storeName ?? input.locationName;
       const hours = input.hours ?? DEFAULT_STORE_HOURS;
       const pickupInstructions = input.pickupInstructions ?? defaultStoreConfigRecord.pickupInstructions;
+      const taxRateBasisPoints = input.taxRateBasisPoints ?? existingStoreConfigRow?.tax_rate_basis_points ?? defaultStoreConfigRecord.taxRateBasisPoints;
       const seededMenu = buildProvisionedMenuPayload(input.locationId);
 
       await db.transaction().execute(async (trx) => {
@@ -1168,8 +1187,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
             store_name: storeName,
             hours_text: hours,
             prep_eta_minutes: existingStoreConfigRow?.prep_eta_minutes ?? defaultStoreConfigRecord.prepEtaMinutes,
-            tax_rate_basis_points:
-              existingStoreConfigRow?.tax_rate_basis_points ?? defaultStoreConfigRecord.taxRateBasisPoints,
+            tax_rate_basis_points: taxRateBasisPoints,
             pickup_instructions: pickupInstructions
           })
           .onConflict((oc) =>
@@ -1177,6 +1195,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
               brand_id: persistedBrandId,
               store_name: storeName,
               hours_text: hours,
+              tax_rate_basis_points: taxRateBasisPoints,
               pickup_instructions: pickupInstructions
             })
           )
@@ -1244,6 +1263,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         storeName,
         hours,
         pickupInstructions,
+        taxRateBasisPoints,
         capabilities: nextAppConfig.storeCapabilities,
         action: existingStoreConfigRow ? "updated" : "created"
       });
@@ -1727,6 +1747,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
           locationName: defaultAppConfigPayload.brand.locationName,
           hours: DEFAULT_STORE_HOURS,
           pickupInstructions: defaultStoreConfigRecord.pickupInstructions,
+          taxRateBasisPoints: defaultStoreConfigRecord.taxRateBasisPoints,
           capabilities: defaultAppConfigPayload.storeCapabilities
         });
       }
@@ -1745,6 +1766,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         locationName: appConfig.brand.locationName,
         hours: row.hours_text,
         pickupInstructions: row.pickup_instructions,
+        taxRateBasisPoints: row.tax_rate_basis_points,
         capabilities: appConfig.storeCapabilities
       });
     },
@@ -1763,6 +1785,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         .executeTakeFirst();
 
       const currentAppConfig = appConfigSchema.parse(existingAppConfigRow?.app_config_json ?? defaultAppConfigPayload);
+      const taxRateBasisPoints = input.taxRateBasisPoints ?? existingStoreConfigRow?.tax_rate_basis_points ?? defaultStoreConfigRecord.taxRateBasisPoints;
       const nextAppConfig = appConfigSchema.parse({
         ...currentAppConfig,
         brand: {
@@ -1775,21 +1798,21 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
       await db.transaction().execute(async (trx) => {
         await trx
           .insertInto("catalog_store_configs")
-        .values({
-          brand_id: DEFAULT_BRAND_ID,
-          location_id: defaultStoreConfigRecord.locationId,
-          store_name: input.storeName,
-          hours_text: input.hours,
-          prep_eta_minutes: existingStoreConfigRow?.prep_eta_minutes ?? defaultStoreConfigRecord.prepEtaMinutes,
-          tax_rate_basis_points:
-            existingStoreConfigRow?.tax_rate_basis_points ?? defaultStoreConfigRecord.taxRateBasisPoints,
-          pickup_instructions: input.pickupInstructions
-        })
+          .values({
+            brand_id: DEFAULT_BRAND_ID,
+            location_id: defaultStoreConfigRecord.locationId,
+            store_name: input.storeName,
+            hours_text: input.hours,
+            prep_eta_minutes: existingStoreConfigRow?.prep_eta_minutes ?? defaultStoreConfigRecord.prepEtaMinutes,
+            tax_rate_basis_points: taxRateBasisPoints,
+            pickup_instructions: input.pickupInstructions
+          })
           .onConflict((oc) =>
             oc.column("location_id").doUpdateSet({
               brand_id: DEFAULT_BRAND_ID,
               store_name: input.storeName,
               hours_text: input.hours,
+              tax_rate_basis_points: taxRateBasisPoints,
               pickup_instructions: input.pickupInstructions
             })
           )
@@ -1816,6 +1839,7 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         locationName: input.locationName,
         hours: input.hours,
         pickupInstructions: input.pickupInstructions,
+        taxRateBasisPoints,
         capabilities: nextAppConfig.storeCapabilities
       });
     },
