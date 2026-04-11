@@ -256,7 +256,7 @@ describe("magic link auth", () => {
       operator: {
         email: "owner@gazellecoffee.com",
         role: "owner",
-        locationId: "flagship-01"
+        locationId: "rawaqcoffee01"
       }
     });
 
@@ -325,7 +325,7 @@ describe("magic link auth", () => {
       operator: {
         email: "owner@gazellecoffee.com",
         role: "owner",
-        locationId: "flagship-01"
+        locationId: "rawaqcoffee01"
       }
     });
 

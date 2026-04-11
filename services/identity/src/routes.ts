@@ -50,6 +50,7 @@ import {
 import { createIdentityRepository, type IdentityRepository } from "./repository.js";
 import { createMailSender, type MailSender } from "./mail.js";
 import { provisionOwnerAccess } from "./provisioning.js";
+import { DEFAULT_OPERATOR_LOCATION_ID } from "./defaults.js";
 
 type CustomerSession = NonNullable<Awaited<ReturnType<IdentityRepository["getSessionByAccessToken"]>>>;
 
@@ -86,7 +87,6 @@ const defaultPasskeyVerifyRateLimitMax = 12;
 const defaultPasskeyChallengeRateLimitMax = 24;
 const defaultAccessTokenTtlMs = 30 * 60 * 1000;
 const defaultInternalAdminAccessTokenTtlMs = 12 * 60 * 60 * 1000;
-const defaultOperatorLocationId = "flagship-01";
 const defaultGoogleOAuthStateTtlMs = 10 * 60 * 1000;
 // Successful refresh rotation extends the session's idle lifetime by issuing a new refresh token.
 // We intentionally keep this as an idle timeout for now; absolute session caps are a future policy choice.
@@ -1907,7 +1907,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
 
       const created = await repository.createOperatorUser({
         ...input,
-        locationId: operator.locationId || defaultOperatorLocationId
+        locationId: operator.locationId || DEFAULT_OPERATOR_LOCATION_ID
       });
       logIdentityMutation(request, "operator user created", {
         actorOperatorUserId: operator.operatorUserId,

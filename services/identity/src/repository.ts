@@ -18,6 +18,7 @@ import {
   sql
 } from "@gazelle/persistence";
 import { z } from "zod";
+import { DEFAULT_OPERATOR_LOCATION_ID } from "./defaults.js";
 
 type AuthSession = z.output<typeof authSessionSchema>;
 
@@ -451,7 +452,7 @@ function toSortedCustomerAuthMethods(methods: Iterable<CustomerAuthMethod>): Cus
 
 function getDefaultOperatorLocationId() {
   const configured = process.env.DEFAULT_OPERATOR_LOCATION_ID?.trim();
-  return configured && configured.length > 0 ? configured : "flagship-01";
+  return configured && configured.length > 0 ? configured : DEFAULT_OPERATOR_LOCATION_ID;
 }
 
 function getDefaultOperatorPassword(role: OperatorRole) {

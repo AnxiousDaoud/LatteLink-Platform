@@ -212,7 +212,7 @@ describe("operator auth", () => {
     expect(ownerCreate.json()).toMatchObject({
       email: "nightlead@gazellecoffee.com",
       role: "manager",
-      locationId: "flagship-01"
+      locationId: "rawaqcoffee01"
     });
 
     const duplicateCreate = await app.inject({
