@@ -2121,9 +2121,10 @@ strong {
 
   .dash-shell {
     width: 100%;
-    height: auto;
+    height: 100vh;
     min-height: 100vh;
     margin: 0;
+    overflow: hidden;
   }
 
   .dash-kpi-row,
@@ -2482,9 +2483,10 @@ body::before {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   min-height: 100vh;
-  height: auto;
+  height: 100vh;
   background: transparent;
   box-shadow: none;
+  overflow: hidden;
 }
 
 .dash-sidebar {
@@ -2493,6 +2495,8 @@ body::before {
   background: rgba(255, 255, 255, 0.94);
   border-right: 1px solid var(--color-border);
   backdrop-filter: blur(14px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .dash-logo-area {
@@ -2599,6 +2603,7 @@ body::before {
 
 .dash-main {
   min-width: 0;
+  min-height: 0;
 }
 
 .dash-topbar {
