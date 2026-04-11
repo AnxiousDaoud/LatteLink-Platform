@@ -1341,37 +1341,37 @@ function renderNewsCard(card: OperatorNewsCard, canWrite: boolean, canToggleVisi
 
   return `
     <form class="dash-data-row dash-data-row--news-card" data-form="news-card" data-card-id="${card.cardId}">
-      <div class="dash-data-row__identity">
+      <div class="dash-data-row__identity dash-data-row__identity--news-card">
         <strong>${escapeHtml(card.title)}</strong>
         <span>${escapeHtml(card.label)} · ${escapeHtml(card.cardId)}</span>
       </div>
-      <div class="dash-data-row__fields">
-        <label class="field dash-field-inline">
+      <div class="dash-data-row__fields dash-data-row__fields--news-card">
+        <label class="field dash-field-inline dash-field-span-1">
           <span>Label</span>
           <input name="label" value="${escapeHtml(card.label)}" ${canWrite ? "" : "disabled"} required />
         </label>
-        <label class="field dash-field-inline">
+        <label class="field dash-field-inline dash-field-span-1">
           <span>Title</span>
           <input name="title" value="${escapeHtml(card.title)}" ${canWrite ? "" : "disabled"} required />
         </label>
-        <label class="field dash-field-inline">
+        <label class="field dash-field-inline dash-field-span-full">
           <span>Body</span>
           <textarea name="body" rows="3" ${canWrite ? "" : "disabled"} required>${escapeHtml(card.body)}</textarea>
         </label>
-        <label class="field dash-field-inline">
+        <label class="field dash-field-inline dash-field-span-full">
           <span>Note</span>
           <textarea name="note" rows="2" ${canWrite ? "" : "disabled"}>${escapeHtml(card.note ?? "")}</textarea>
         </label>
-        <label class="field dash-field-inline">
+        <label class="field dash-field-inline dash-field-span-1">
           <span>Sort order</span>
           <input name="sortOrder" type="number" min="0" step="1" value="${card.sortOrder}" ${canWrite ? "" : "disabled"} required />
         </label>
-        <label class="toggle dash-toggle-inline">
+        <label class="toggle dash-toggle-inline dash-toggle-inline--news-card">
           <input type="checkbox" name="visible" ${card.visible ? "checked" : ""} ${canWrite ? "" : "disabled"} />
           <span>${card.visible ? "Visible" : "Hidden"}</span>
         </label>
       </div>
-      <div class="dash-data-row__actions">
+      <div class="dash-data-row__actions dash-data-row__actions--news-card">
         <span class="dash-status-badge dash-status-badge--${card.visible ? "success" : "neutral"}">${card.visible ? "Visible" : "Hidden"}</span>
         ${
           canWrite
@@ -1779,24 +1779,24 @@ function renderCardsSection() {
                     <h3 class="dash-surface-title">Add a homepage card</h3>
                   </div>
                 </div>
-                <form class="dash-inline-form dash-inline-form--menu" data-form="news-card-create">
-                  <label class="field dash-field-inline">
+                <form class="dash-inline-form dash-inline-form--news-card" data-form="news-card-create">
+                  <label class="field dash-field-inline dash-field-span-1">
                     <span>Label</span>
                     <input name="label" placeholder="NEW DRINK" required />
                   </label>
-                  <label class="field dash-field-inline">
+                  <label class="field dash-field-inline dash-field-span-1">
                     <span>Title</span>
                     <input name="title" placeholder="Seasonal highlight" required />
                   </label>
-                  <label class="field dash-field-inline">
+                  <label class="field dash-field-inline dash-field-span-full">
                     <span>Body</span>
                     <textarea name="body" rows="3" placeholder="Card body copy" required></textarea>
                   </label>
-                  <label class="field dash-field-inline">
+                  <label class="field dash-field-inline dash-field-span-full">
                     <span>Note</span>
                     <textarea name="note" rows="2" placeholder="Optional note"></textarea>
                   </label>
-                  <label class="field dash-field-inline">
+                  <label class="field dash-field-inline dash-field-span-1">
                     <span>Sort order</span>
                     <input
                       name="sortOrder"
@@ -1807,13 +1807,15 @@ function renderCardsSection() {
                       required
                     />
                   </label>
-                  <label class="toggle dash-toggle-inline">
+                  <label class="toggle dash-toggle-inline dash-toggle-inline--news-card">
                     <input type="checkbox" name="visible" checked />
                     <span>Visible</span>
                   </label>
-                  <button class="button button--primary" type="submit" ${state.creatingNewsCard ? "disabled" : ""}>
-                    ${state.creatingNewsCard ? "Creating…" : "Create card"}
-                  </button>
+                  <div class="dash-form-actions dash-form-actions--news-card">
+                    <button class="button button--primary" type="submit" ${state.creatingNewsCard ? "disabled" : ""}>
+                      ${state.creatingNewsCard ? "Creating…" : "Create card"}
+                    </button>
+                  </div>
                 </form>
               </article>
             `
