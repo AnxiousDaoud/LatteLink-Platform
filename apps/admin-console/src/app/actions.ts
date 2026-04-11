@@ -85,20 +85,20 @@ export async function signOutAction() {
 }
 
 export async function createClientAction(formData: FormData) {
+  const clientName = readString(formData, "clientName");
+  const locationName = readString(formData, "locationName");
+  const marketLabel = readString(formData, "marketLabel");
+  const ownerDisplayName = readString(formData, "ownerDisplayName");
+  const ownerEmail = readString(formData, "ownerEmail");
+  const brandId = readOptionalString(formData, "brandId") ?? slugify(clientName);
+  const locationId = readOptionalString(formData, "locationId") ?? `${brandId}-01`;
+
   try {
     await requireAdminCapability("clients:write");
-    const clientName = readString(formData, "clientName");
-    const locationName = readString(formData, "locationName");
-    const marketLabel = readString(formData, "marketLabel");
-    const ownerDisplayName = readString(formData, "ownerDisplayName");
-    const ownerEmail = readString(formData, "ownerEmail");
 
     if (!clientName || !locationName || !marketLabel || !ownerDisplayName || !ownerEmail) {
       throw new Error("Client name, location name, market, and owner fields are required.");
     }
-
-    const brandId = readOptionalString(formData, "brandId") ?? slugify(clientName);
-    const locationId = readOptionalString(formData, "locationId") ?? `${brandId}-01`;
 
     await bootstrapInternalLocation({
       brandId,
@@ -118,11 +118,11 @@ export async function createClientAction(formData: FormData) {
       password: readOptionalString(formData, "temporaryPassword"),
       dashboardUrl: readOptionalString(formData, "dashboardUrl") ?? process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
     });
-
-    redirect(`/clients/${locationId}?created=1`);
   } catch (error) {
     redirect(`/clients/new?error=${encodeURIComponent(toRedirectError(error))}`);
   }
+
+  redirect(`/clients/${locationId}?created=1`);
 }
 
 export async function updateClientCapabilitiesAction(formData: FormData) {
@@ -144,11 +144,11 @@ export async function updateClientCapabilitiesAction(formData: FormData) {
       pickupInstructions: readString(formData, "pickupInstructions"),
       capabilities: readCapabilities(formData)
     });
-
-    redirect(`/clients/${locationId}/capabilities?updated=1`);
   } catch (error) {
     redirect(`/clients/${locationId}/capabilities?error=${encodeURIComponent(toRedirectError(error))}`);
   }
+
+  redirect(`/clients/${locationId}/capabilities?updated=1`);
 }
 
 export async function reprovisionOwnerAction(formData: FormData) {
@@ -165,9 +165,9 @@ export async function reprovisionOwnerAction(formData: FormData) {
       password: readOptionalString(formData, "temporaryPassword"),
       dashboardUrl: readOptionalString(formData, "dashboardUrl") ?? process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
     });
-
-    redirect(`/clients/${locationId}/owner?updated=1`);
   } catch (error) {
     redirect(`/clients/${locationId}/owner?error=${encodeURIComponent(toRedirectError(error))}`);
   }
+
+  redirect(`/clients/${locationId}/owner?updated=1`);
 }
