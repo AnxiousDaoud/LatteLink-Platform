@@ -1008,6 +1008,7 @@ describe("gateway", () => {
             storeName: "Gazelle Coffee",
             locationName: "Ann Arbor, MI",
             hours: "Daily · 7:00 AM - 6:00 PM",
+            taxRateBasisPoints: 600,
             pickupInstructions: "Pickup at the flagship order counter."
           }),
           { status: 200, headers: { "content-type": "application/json" } }
@@ -1019,6 +1020,7 @@ describe("gateway", () => {
           storeName?: string;
           locationName?: string;
           hours?: string;
+          taxRateBasisPoints?: number;
           pickupInstructions?: string;
         };
         return new Response(
@@ -1027,6 +1029,7 @@ describe("gateway", () => {
             storeName: body.storeName ?? "Gazelle Coffee",
             locationName: body.locationName ?? "Ann Arbor, MI",
             hours: body.hours ?? "Daily · 7:00 AM - 6:00 PM",
+            taxRateBasisPoints: body.taxRateBasisPoints ?? 600,
             pickupInstructions: body.pickupInstructions ?? "Pickup at the flagship order counter."
           }),
           { status: 200, headers: { "content-type": "application/json" } }
@@ -1043,6 +1046,7 @@ describe("gateway", () => {
           storeName?: string;
           hours?: string;
           pickupInstructions?: string;
+          taxRateBasisPoints?: number;
           capabilities?: unknown;
         };
 
@@ -1056,6 +1060,7 @@ describe("gateway", () => {
             storeName: body.storeName ?? body.locationName ?? "Northside Coffee",
             hours: body.hours ?? "Daily · 7:00 AM - 6:00 PM",
             pickupInstructions: body.pickupInstructions ?? "Pickup at the espresso counter.",
+            taxRateBasisPoints: body.taxRateBasisPoints ?? 600,
             capabilities:
               body.capabilities ?? {
                 menu: {
@@ -1089,6 +1094,7 @@ describe("gateway", () => {
                 storeName: "Northside Coffee",
                 hours: "Daily · 7:00 AM - 6:00 PM",
                 pickupInstructions: "Pickup at the espresso counter.",
+                taxRateBasisPoints: 600,
                 capabilities: {
                   menu: {
                     source: "platform_managed"
@@ -1123,6 +1129,7 @@ describe("gateway", () => {
             storeName: "Northside Coffee",
             hours: "Daily · 7:00 AM - 6:00 PM",
             pickupInstructions: "Pickup at the espresso counter.",
+            taxRateBasisPoints: 600,
             capabilities: {
               menu: {
                 source: "platform_managed"
