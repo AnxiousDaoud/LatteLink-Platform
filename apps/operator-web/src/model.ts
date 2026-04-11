@@ -278,6 +278,26 @@ export function getOrderCancelUnavailableMessage(
   return getOrderControlUnavailableMessage(operator, config);
 }
 
+export function getOrderDetailActionUnavailableMessage(
+  operator: Pick<OperatorUser, "capabilities"> | null | undefined,
+  config: Pick<AppConfig, "storeCapabilities" | "featureFlags" | "loyaltyEnabled" | "fulfillment"> | null | undefined,
+  order: Pick<OperatorOrder, "status"> | null | undefined
+) {
+  if (!order) {
+    return "Order actions are unavailable right now.";
+  }
+
+  if (order.status === "COMPLETED") {
+    return "This order is already completed.";
+  }
+
+  if (order.status === "CANCELED") {
+    return "This order has already been canceled.";
+  }
+
+  return getOrderCancelUnavailableMessage(operator, config, order) ?? getOrderControlUnavailableMessage(operator, config);
+}
+
 export function canCreateMenuItems(
   operator: Pick<OperatorUser, "capabilities"> | null | undefined,
   config: Pick<AppConfig, "storeCapabilities" | "featureFlags" | "loyaltyEnabled" | "fulfillment"> | null | undefined

@@ -36,6 +36,7 @@ import {
   canAccessCapability,
   canCancelOrder,
   canCreateMenuItems,
+  getOrderDetailActionUnavailableMessage,
   canManageTeamMembers,
   canToggleMenuItemVisibility,
   canUpdateStoreSettings,
@@ -1226,7 +1227,7 @@ function renderOrderDetail(order: OperatorOrder, appConfig: AppConfig | null) {
       controlButtons
         ? `<div class="button-row">${controlButtons}</div>`
         : `<p class="muted-copy">${escapeHtml(
-            cancelControlsMessage ?? manualStatusControlsMessage ?? "Manual order controls are unavailable for this store."
+            getOrderDetailActionUnavailableMessage(state.session?.operator ?? null, appConfig, order)
           )}</p>`
     }
     <div class="dash-detail-block">
