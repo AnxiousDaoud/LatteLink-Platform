@@ -32,7 +32,7 @@ Primary implementation surfaces already in place:
 There is no pre-existing admin web surface. The chosen MVP path is:
 
 - operator/admin APIs in backend services
-- a lightweight internal browser app under `apps/operator-web`
+- a lightweight internal client dashboard under `apps/client-dashboard`
 - no staff UI mixed into the Expo customer app
 
 ## Shared Contracts That Need Coordination
@@ -107,7 +107,7 @@ Expected scope:
 Primary ownership:
 
 - backend admin/operator APIs in `services/orders`, `services/catalog`, and `services/gateway`
-- new internal operator browser app in `apps/operator-web`
+- new internal client dashboard app in `apps/client-dashboard`
 - operator-specific tests
 - `docs/operator-dashboard.md`
 
@@ -178,7 +178,7 @@ Expected files:
 - `services/catalog/src/routes.ts`
 - `services/catalog/src/repository.ts`
 - `services/gateway/src/routes.ts`
-- `apps/operator-web`
+- `apps/client-dashboard`
 - related gateway/order/catalog tests
 
 ### Platform Layer

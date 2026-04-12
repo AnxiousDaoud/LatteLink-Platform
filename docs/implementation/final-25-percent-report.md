@@ -54,7 +54,7 @@ Result:
 
 ### Operator Side
 
-- `apps/operator-web/*`
+- `apps/client-dashboard/*`
 - `services/gateway/src/routes.ts`
 - `services/gateway/test/gateway.test.ts`
 - `services/catalog/src/routes.ts`
@@ -121,16 +121,16 @@ High-signal file groups:
   - `packages/sdk-mobile/src/index.ts`
   - `packages/sdk-mobile/src/generated/types.ts`
   - `packages/sdk-mobile/test/client.test.ts`
-- operator web app:
-  - `apps/operator-web/package.json`
-  - `apps/operator-web/index.html`
-  - `apps/operator-web/src/api.ts`
-  - `apps/operator-web/src/main.ts`
-  - `apps/operator-web/src/model.ts`
-  - `apps/operator-web/src/storage.ts`
-  - `apps/operator-web/src/styles.css`
-  - `apps/operator-web/test/api.test.ts`
-  - `apps/operator-web/test/model.test.ts`
+- client dashboard app:
+  - `apps/client-dashboard/package.json`
+  - `apps/client-dashboard/index.html`
+  - `apps/client-dashboard/src/api.ts`
+  - `apps/client-dashboard/src/main.ts`
+  - `apps/client-dashboard/src/model.ts`
+  - `apps/client-dashboard/src/storage.ts`
+  - `apps/client-dashboard/src/styles.css`
+  - `apps/client-dashboard/test/api.test.ts`
+  - `apps/client-dashboard/test/model.test.ts`
 
 ## Verification
 
@@ -146,10 +146,10 @@ Completed:
 - `pnpm --filter @gazelle/sdk-mobile test`
 - `pnpm --filter @gazelle/mobile test`
 - `pnpm --filter @gazelle/mobile typecheck`
-- `pnpm --filter @gazelle/operator-web test`
-- `pnpm --filter @gazelle/operator-web typecheck`
-- `pnpm --filter @gazelle/operator-web lint`
-- `pnpm --filter @gazelle/operator-web build`
+- `pnpm --filter @gazelle/client-dashboard test`
+- `pnpm --filter @gazelle/client-dashboard typecheck`
+- `pnpm --filter @gazelle/client-dashboard lint`
+- `pnpm --filter @gazelle/client-dashboard build`
 - `pnpm --filter @gazelle/gateway openapi`
 - `pnpm --filter @gazelle/sdk-mobile generate`
 

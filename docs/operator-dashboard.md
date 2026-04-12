@@ -159,7 +159,7 @@ Required behavior:
 
 Current state:
 
-- the current dashboard in `apps/operator-web` uses a browser-stored API base URL plus staff token
+- the current dashboard in `apps/client-dashboard` uses a browser-stored API base URL plus staff token
 - gateway admin routes currently rely on `x-staff-token` in [`services/gateway/src/routes.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/services/gateway/src/routes.ts)
 
 Gap:
@@ -369,7 +369,7 @@ It should include:
 
 Current app location:
 
-- [`apps/operator-web`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/operator-web)
+- [`apps/client-dashboard`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/client-dashboard)
 
 Current sections:
 
@@ -380,9 +380,9 @@ Current sections:
 Current implementation shape:
 
 - Vite-powered SPA
-- single entry in [`main.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/operator-web/src/main.ts)
-- API access via [`api.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/operator-web/src/api.ts)
-- current styles in [`styles.css`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/operator-web/src/styles.css)
+- single entry in [`main.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/client-dashboard/src/main.ts)
+- API access via [`api.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/client-dashboard/src/api.ts)
+- current styles in [`styles.css`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/client-dashboard/src/styles.css)
 
 This is a reasonable frontend foundation, but the product model and polish are not finished.
 
@@ -818,7 +818,7 @@ Goal:
 
 Deliverables:
 
-- new design system for operator-web
+- new design system for the client dashboard
 - role-aware navigation and sections
 - improved login flow
 - premium order board, menu editor, and store-settings UI

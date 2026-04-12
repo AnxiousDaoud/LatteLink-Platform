@@ -4,7 +4,7 @@ Last updated: `2026-04-02`
 
 ## Current State
 
-The client dashboard lives in `apps/operator-web` and is the store-facing operational workspace.
+The client dashboard lives in `apps/client-dashboard` and is the store-facing operational workspace.
 
 It now has:
 

@@ -9,7 +9,7 @@ Last updated: `2026-03-20`
 - hardened payment idempotency and retry coverage
 - additive platform config and tenant defaults via `GET /v1/app-config`
 - admin menu and store-config routes with gateway protection
-- browser-based operator web app under `apps/operator-web`
+- browser-based client dashboard under `apps/client-dashboard`
 
 ## Customer-Facing Impact
 

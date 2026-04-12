@@ -28,7 +28,7 @@ These roadmaps are meant to align:
 - `V1` is the current target: pilot-production readiness.
 - `V5` is the target state `5 months` from now.
 - `frontend` is interpreted as the customer-facing mobile ordering app in `apps/mobile`.
-- the client dashboard is the store-facing dashboard in `apps/operator-web`
+- the client dashboard is the store-facing dashboard in `apps/client-dashboard`
 - the admin console already exists in code at `apps/admin-console`, and its roadmap starts from a scaffolded internal control plane rather than an absent app
 
 ## V1 Deployment Lanes

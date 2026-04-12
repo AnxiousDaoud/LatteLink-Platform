@@ -156,7 +156,7 @@ const sampleMenuCategories: OperatorMenuCategory[] = [
   }
 ];
 
-describe("operator-web model", () => {
+describe("client dashboard model", () => {
   it("derives order actions and active-order filtering from status", () => {
     expect(getOrderActions(sampleOrder, "staff").map((action) => action.status)).toEqual(["IN_PREP"]);
     expect(getOrderActions({ ...sampleOrder, status: "IN_PREP" }, "staff").map((action) => action.status)).toEqual([

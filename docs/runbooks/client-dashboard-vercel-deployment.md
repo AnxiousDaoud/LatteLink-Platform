@@ -17,9 +17,9 @@ Deploy the V1 client dashboard to Vercel as an independent frontend lane.
 
 ## Repo Assets
 
-- app: `apps/operator-web`
+- app: `apps/client-dashboard`
 - workflow: `.github/workflows/client-dashboard-vercel.yml`
-- example env payload: `apps/operator-web/.env.example`
+- example env payload: `apps/client-dashboard/.env.example`
 
 ## Required GitHub Secrets
 
@@ -52,13 +52,13 @@ Use this secret as the active build-time config for the deployed dashboard workf
 - later rotate the secret to the real production API URL without changing workflow code
 - add future `VITE_*` values without redesigning the workflow
 
-The workflow writes this secret to `apps/operator-web/.env.local` and `apps/operator-web/.env.production.local` before `vercel build`.
+The workflow writes this secret to `apps/client-dashboard/.env.local` and `apps/client-dashboard/.env.production.local` before `vercel build`.
 
 ## Vercel Project Setup
 
 1. Import the GitHub repository into Vercel.
 2. Create a dedicated Vercel project for the client dashboard.
-3. Set the Root Directory to `apps/operator-web`.
+3. Set the Root Directory to `apps/client-dashboard`.
 4. Keep the framework preset as `Vite`.
 5. Use the default Vercel project settings unless Vercel fails to detect them.
 6. Add the custom dashboard domain in the Vercel project Domains settings.
@@ -69,7 +69,7 @@ The workflow writes this secret to `apps/operator-web/.env.local` and `apps/oper
 If you use the GitHub Actions workflow, link the Vercel project from the app directory, not the monorepo root:
 
 ```bash
-cd apps/operator-web
+cd apps/client-dashboard
 vercel link
 ```
 
@@ -82,14 +82,14 @@ Keep `.vercel/` out of git.
 
 ## Deploy Flow
 
-1. Ensure the Vercel project is linked to `apps/operator-web`.
+1. Ensure the Vercel project is linked to `apps/client-dashboard`.
 2. Ensure the dashboard domain is configured in Vercel and DNS points to Vercel.
 3. Configure the four GitHub secrets listed above.
 4. Trigger `client-dashboard-vercel` from GitHub Actions or push a matching change to `main`.
 5. The workflow:
-   - verifies `apps/operator-web`
+   - verifies `apps/client-dashboard`
    - writes the dashboard `.env` payload locally for the build
-   - runs the Vercel CLI from `apps/operator-web`
+   - runs the Vercel CLI from `apps/client-dashboard`
    - pulls Vercel project configuration
    - builds prebuilt preview or production artifacts
    - deploys the prebuilt artifacts to Vercel

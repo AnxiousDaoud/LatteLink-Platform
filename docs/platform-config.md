@@ -15,7 +15,7 @@ The current implementation is additive:
 - existing menu and store config behavior remains unchanged
 - the catalog service owns `GET /v1/app-config`
 - the gateway now proxies `GET /v1/app-config`
-- the mobile app and operator web app read runtime config when available and fall back to local defaults if the endpoint is unavailable
+- the mobile app and client dashboard read runtime config when available and fall back to local defaults if the endpoint is unavailable
 
 ## App Config Contract
 
@@ -101,13 +101,13 @@ Mobile config helpers:
 
 - [`apps/mobile/src/menu/catalog.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/mobile/src/menu/catalog.ts)
 - [`apps/mobile/src/api/client.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/mobile/src/api/client.ts)
-- [`apps/operator-web/src/api.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/operator-web/src/api.ts)
+- [`apps/client-dashboard/src/api.ts`](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/apps/client-dashboard/src/api.ts)
 
 Behavior:
 
 - customer menu/store calls still use the current API base
 - customer mobile now prefers gateway `GET /v1/app-config` and falls back to the catalog service only if needed
-- operator web uses the same gateway `GET /v1/app-config` route for runtime brand and store-capability visibility
+- client dashboard uses the same gateway `GET /v1/app-config` route for runtime brand and store-capability visibility
 - in local/dev builds, if app-config cannot be loaded, the mobile app falls back to the default brand config so customer flows stay usable
 - in pilot/production builds, app-config outages should surface as real unavailable states instead of silently masking configuration failures
 - Apple Pay labels now use runtime brand config when available

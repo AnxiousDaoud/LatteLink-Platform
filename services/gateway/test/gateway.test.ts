@@ -995,7 +995,7 @@ describe("gateway", () => {
             categoryId: "espresso",
             categoryTitle: "Espresso Bar",
             name: body.name ?? "Updated item",
-            description: "Updated through operator web app.",
+            description: "Updated through client dashboard.",
             priceCents: body.priceCents ?? 675,
             visible: body.visible ?? true,
             sortOrder: 0,
@@ -1482,7 +1482,7 @@ describe("gateway", () => {
     await app.close();
   });
 
-  it("allows the default operator web origin through CORS", async () => {
+  it("allows the default client dashboard origin through CORS", async () => {
     const app = await buildApp();
     const response = await app.inject({
       method: "GET",

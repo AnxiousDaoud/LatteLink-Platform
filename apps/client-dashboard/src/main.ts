@@ -120,7 +120,7 @@ const cancelConfirmTimeoutMs = 10_000;
 
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 if (!appRoot) {
-  throw new Error("Operator root element was not found.");
+  throw new Error("Client dashboard root element was not found.");
 }
 
 const root: HTMLDivElement = appRoot;

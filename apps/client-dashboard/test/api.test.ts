@@ -7,7 +7,7 @@ import {
   normalizeApiBaseUrl
 } from "../src/api";
 
-describe("operator-web api helpers", () => {
+describe("client dashboard api helpers", () => {
   it("normalizes operator api base URLs onto /v1", () => {
     expect(normalizeApiBaseUrl("http://127.0.0.1:8080")).toBe("http://127.0.0.1:8080/v1");
     expect(normalizeApiBaseUrl("http://127.0.0.1:8080/")).toBe("http://127.0.0.1:8080/v1");

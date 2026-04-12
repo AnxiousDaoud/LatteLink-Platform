@@ -1,5 +1,5 @@
 {
-  "name": "@gazelle/operator-web",
+  "name": "@gazelle/client-dashboard",
   "version": "0.1.0",
   "private": true,
   "type": "module",
