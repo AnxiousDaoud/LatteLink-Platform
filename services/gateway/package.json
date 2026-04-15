@@ -24,7 +24,7 @@
     "@lattelink/contracts-loyalty": "workspace:*",
     "@lattelink/contracts-notifications": "workspace:*",
     "@lattelink/contracts-orders": "workspace:*",
-    "fastify": "^5.8.4",
+    "fastify": "^5.8.5",
     "pino-pretty": "^13.0.0",
     "zod": "^3.24.2"
   },
