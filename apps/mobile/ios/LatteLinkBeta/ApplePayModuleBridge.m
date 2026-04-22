@@ -14,7 +14,7 @@ RCT_EXTERN_METHOD(requestPayment:(NSDictionary *)request
 
 @end
 
-@interface RCT_EXTERN_REMAP_MODULE(ApplePayButtonView, ApplePayButtonViewManager, RCTViewManager)
+@interface RCT_EXTERN_REMAP_MODULE(LatteLinkApplePayButtonView, LatteLinkApplePayButtonViewManager, RCTViewManager)
 
 RCT_EXPORT_VIEW_PROPERTY(buttonType, NSString)
 RCT_EXPORT_VIEW_PROPERTY(buttonStyle, NSString)

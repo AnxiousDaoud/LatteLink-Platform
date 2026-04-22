@@ -23,9 +23,10 @@ function resolveNativeApplePayButtonView() {
   try {
     const resolveConfig = (name: string) =>
       typeof UIManager.getViewManagerConfig === "function" ? UIManager.getViewManagerConfig(name) : null;
-    const hasViewManager = resolveConfig("ApplePayButtonView") || resolveConfig("ApplePayButtonViewManager");
+    const hasViewManager =
+      resolveConfig("LatteLinkApplePayButtonView") || resolveConfig("LatteLinkApplePayButtonViewManager");
 
-    return hasViewManager ? requireNativeComponent<NativeApplePayButtonProps>("ApplePayButtonView") : null;
+    return hasViewManager ? requireNativeComponent<NativeApplePayButtonProps>("LatteLinkApplePayButtonView") : null;
   } catch {
     return null;
   }

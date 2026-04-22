@@ -198,19 +198,20 @@ final class ApplePayModule: NSObject, PKPaymentAuthorizationViewControllerDelega
   }
 }
 
-@objc(ApplePayButtonViewManager)
-final class ApplePayButtonViewManager: RCTViewManager {
+// Use app-specific Objective-C names so we do not collide with Stripe's native Apple Pay view classes.
+@objc(LatteLinkApplePayButtonViewManager)
+final class LatteLinkApplePayButtonViewManager: RCTViewManager {
   override static func requiresMainQueueSetup() -> Bool {
     true
   }
 
   override func view() -> UIView! {
-    ApplePayButtonView()
+    LatteLinkApplePayButtonView()
   }
 }
 
-@objc(ApplePayButtonView)
-final class ApplePayButtonView: UIView {
+@objc(LatteLinkApplePayButtonView)
+final class LatteLinkApplePayButtonView: UIView {
   @objc var buttonType: NSString = "buy" {
     didSet {
       updateButton()
