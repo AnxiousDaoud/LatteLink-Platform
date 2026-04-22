@@ -96,6 +96,9 @@ const config: ExpoConfig = {
     supportsTablet: false,
     bundleIdentifier,
     usesAppleSignIn: true,
+    infoPlist: {
+      NSCameraUsageDescription: "Allow $(PRODUCT_NAME) to access the camera to scan QR codes and capture profile images when those features are used."
+    },
     associatedDomains: resolveAssociatedDomains(),
     entitlements:
       applePayMerchantIdentifiers.length > 0
