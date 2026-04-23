@@ -128,6 +128,11 @@ export const stripeMobilePaymentSessionRequestSchema = z.object({
   orderId: z.string().uuid()
 });
 
+export const stripeMobilePaymentFinalizeRequestSchema = z.object({
+  orderId: z.string().uuid(),
+  paymentIntentId: z.string().min(1)
+});
+
 export const stripeMobilePaymentSessionResponseSchema = z.object({
   orderId: z.string().uuid(),
   paymentIntentId: z.string().min(1),
@@ -140,6 +145,15 @@ export const stripeMobilePaymentSessionResponseSchema = z.object({
   currency: z.literal("USD"),
   applePayEnabled: z.boolean(),
   cardEnabled: z.boolean()
+});
+
+export const stripeMobilePaymentFinalizeResponseSchema = z.object({
+  orderId: z.string().uuid(),
+  paymentIntentId: z.string().min(1),
+  accepted: z.literal(true),
+  applied: z.boolean(),
+  orderStatus: orderStatusSchema,
+  note: z.string().optional()
 });
 
 export const orderPaymentContextSchema = z.object({
@@ -158,6 +172,8 @@ export type OrderTimelineEntry = z.output<typeof orderTimelineEntrySchema>;
 export type Order = z.output<typeof orderSchema>;
 export type StripeMobilePaymentSessionRequest = z.output<typeof stripeMobilePaymentSessionRequestSchema>;
 export type StripeMobilePaymentSessionResponse = z.output<typeof stripeMobilePaymentSessionResponseSchema>;
+export type StripeMobilePaymentFinalizeRequest = z.output<typeof stripeMobilePaymentFinalizeRequestSchema>;
+export type StripeMobilePaymentFinalizeResponse = z.output<typeof stripeMobilePaymentFinalizeResponseSchema>;
 export type OrderPaymentContext = z.output<typeof orderPaymentContextSchema>;
 
 export const paymentReconciliationProviderSchema = z.enum(["CLOVER", "STRIPE"]);

@@ -24,6 +24,8 @@ import {
   orderSchema,
   ordersPaymentReconciliationResultSchema,
   ordersPaymentReconciliationSchema,
+  stripeMobilePaymentFinalizeRequestSchema,
+  stripeMobilePaymentFinalizeResponseSchema,
   stripeMobilePaymentSessionRequestSchema,
   stripeMobilePaymentSessionResponseSchema
 } from "@lattelink/contracts-orders";
@@ -2421,17 +2423,12 @@ function resolveStripeOrderReconciliation(event: Stripe.Event): OrderPaymentReco
       return undefined;
     }
 
-    return ordersPaymentReconciliationSchema.parse({
+    return buildStripePaymentIntentSucceededReconciliation({
       eventId: event.id,
-      provider: "STRIPE",
-      kind: "CHARGE",
       orderId,
-      paymentId: intent.id,
-      status: "SUCCEEDED",
+      paymentIntent: intent,
       occurredAt: toStripeWebhookOccurredAt(event.created),
-      message: "Stripe payment succeeded",
-      amountCents: intent.amount_received > 0 ? intent.amount_received : intent.amount,
-      currency: normalizeStripeCurrency(intent.currency)
+      message: "Stripe payment succeeded"
     });
   }
 
@@ -2485,6 +2482,28 @@ function resolveStripeOrderReconciliation(event: Stripe.Event): OrderPaymentReco
   }
 
   return undefined;
+}
+
+function buildStripePaymentIntentSucceededReconciliation(params: {
+  orderId: string;
+  paymentIntent: Stripe.PaymentIntent;
+  occurredAt?: string;
+  eventId?: string;
+  message?: string;
+}): OrderPaymentReconciliation {
+  const { orderId, paymentIntent, occurredAt, eventId, message } = params;
+  return ordersPaymentReconciliationSchema.parse({
+    eventId,
+    provider: "STRIPE",
+    kind: "CHARGE",
+    orderId,
+    paymentId: paymentIntent.id,
+    status: "SUCCEEDED",
+    occurredAt: occurredAt ?? new Date().toISOString(),
+    message: message ?? "Stripe payment succeeded",
+    amountCents: paymentIntent.amount_received > 0 ? paymentIntent.amount_received : paymentIntent.amount,
+    currency: normalizeStripeCurrency(paymentIntent.currency)
+  });
 }
 
 function resolveStripeMerchantDisplayName(locationSummary: z.output<typeof internalLocationSummarySchema>) {
@@ -2910,6 +2929,203 @@ export async function registerRoutes(app: FastifyInstance) {
         })
       );
     }
+  });
+
+  app.post("/v1/payments/stripe/mobile-session/finalize", { preHandler: app.rateLimit(paymentsWriteRateLimit) }, async (request, reply) => {
+    if (!authorizeGatewayRequest(request, reply, gatewayInternalToken)) {
+      return;
+    }
+    if (!requireStripeSecretKey(request, reply, stripeSecretKey)) {
+      return;
+    }
+
+    const input = stripeMobilePaymentFinalizeRequestSchema.parse(request.body);
+    const parsedUserHeaders = userHeadersSchema.safeParse(request.headers);
+    const userId = parsedUserHeaders.success ? parsedUserHeaders.data["x-user-id"] : undefined;
+    const orderPaymentContextResult = await fetchOrderPaymentContext({
+      ordersBaseUrl,
+      internalToken: ordersInternalToken,
+      requestId: request.id,
+      orderId: input.orderId,
+      userId
+    });
+
+    if (!orderPaymentContextResult.ok) {
+      const upstreamError = serviceErrorSchema.safeParse(orderPaymentContextResult.body);
+      return reply.status(orderPaymentContextResult.status ?? 502).send(
+        upstreamError.success
+          ? upstreamError.data
+          : serviceErrorSchema.parse({
+              code: "ORDERS_PAYMENT_CONTEXT_UNAVAILABLE",
+              message: "Unable to load order payment context",
+              requestId: request.id
+            })
+      );
+    }
+
+    const orderPaymentContext = orderPaymentContextResult.response;
+    if (orderPaymentContext.status !== "PENDING_PAYMENT") {
+      return stripeMobilePaymentFinalizeResponseSchema.parse({
+        orderId: input.orderId,
+        paymentIntentId: input.paymentIntentId,
+        accepted: true,
+        applied: false,
+        orderStatus: orderPaymentContext.status,
+        note: "Order is already settled for payment finalization"
+      });
+    }
+
+    const locationSummaryResult = await fetchInternalLocationSummary({
+      catalogBaseUrl,
+      gatewayToken: gatewayInternalToken,
+      requestId: request.id,
+      locationId: orderPaymentContext.locationId
+    });
+
+    if (!locationSummaryResult.ok) {
+      const upstreamError = serviceErrorSchema.safeParse(locationSummaryResult.body);
+      return reply.status(locationSummaryResult.status ?? 502).send(
+        upstreamError.success
+          ? upstreamError.data
+          : serviceErrorSchema.parse({
+              code: "CATALOG_LOCATION_UNAVAILABLE",
+              message: "Unable to load location payment profile",
+              requestId: request.id
+            })
+      );
+    }
+
+    const paymentProfile = locationSummaryResult.response.paymentProfile;
+    if (!paymentProfile?.stripeAccountId) {
+      return reply.status(409).send(
+        serviceErrorSchema.parse({
+          code: "STRIPE_ACCOUNT_NOT_CONFIGURED",
+          message: "Location does not have a Stripe account configured",
+          requestId: request.id,
+          details: {
+            locationId: orderPaymentContext.locationId
+          }
+        })
+      );
+    }
+
+    let paymentIntent: Stripe.PaymentIntent;
+    try {
+      paymentIntent = await stripeClient.paymentIntents.retrieve(
+        input.paymentIntentId,
+        {},
+        {
+          stripeAccount: paymentProfile.stripeAccountId
+        }
+      );
+    } catch (error) {
+      request.log.error(
+        {
+          error,
+          requestId: request.id,
+          orderId: input.orderId,
+          paymentIntentId: input.paymentIntentId,
+          stripeAccountId: paymentProfile.stripeAccountId
+        },
+        "Stripe mobile payment finalization lookup failed"
+      );
+      return reply.status(502).send(
+        serviceErrorSchema.parse({
+          code: "STRIPE_PAYMENT_INTENT_LOOKUP_FAILED",
+          message: error instanceof Error ? error.message : "Unable to verify Stripe payment",
+          requestId: request.id
+        })
+      );
+    }
+
+    const metadataOrderId = resolveStripeMetadataOrderId(paymentIntent.metadata);
+    if (metadataOrderId !== input.orderId) {
+      return reply.status(409).send(
+        serviceErrorSchema.parse({
+          code: "STRIPE_PAYMENT_INTENT_ORDER_MISMATCH",
+          message: "Stripe payment does not match this order",
+          requestId: request.id,
+          details: {
+            orderId: input.orderId,
+            paymentIntentId: paymentIntent.id
+          }
+        })
+      );
+    }
+
+    const normalizedCurrency = normalizeStripeCurrency(paymentIntent.currency);
+    const verifiedAmountCents = paymentIntent.amount_received > 0 ? paymentIntent.amount_received : paymentIntent.amount;
+    if (normalizedCurrency !== orderPaymentContext.total.currency || verifiedAmountCents !== orderPaymentContext.total.amountCents) {
+      return reply.status(409).send(
+        serviceErrorSchema.parse({
+          code: "STRIPE_PAYMENT_INTENT_AMOUNT_MISMATCH",
+          message: "Stripe payment amount does not match this order",
+          requestId: request.id,
+          details: {
+            orderId: input.orderId,
+            paymentIntentId: paymentIntent.id,
+            expectedAmountCents: orderPaymentContext.total.amountCents,
+            actualAmountCents: verifiedAmountCents,
+            expectedCurrency: orderPaymentContext.total.currency,
+            actualCurrency: normalizedCurrency
+          }
+        })
+      );
+    }
+
+    if (paymentIntent.status !== "succeeded") {
+      return reply.status(409).send(
+        serviceErrorSchema.parse({
+          code: "STRIPE_PAYMENT_NOT_SUCCEEDED",
+          message: "Stripe payment has not succeeded yet",
+          requestId: request.id,
+          details: {
+            orderId: input.orderId,
+            paymentIntentId: paymentIntent.id,
+            stripeStatus: paymentIntent.status
+          }
+        })
+      );
+    }
+
+    const dispatchResult = await dispatchOrderReconciliation({
+      ordersBaseUrl,
+      internalToken: ordersInternalToken,
+      requestId: request.id,
+      payload: buildStripePaymentIntentSucceededReconciliation({
+        orderId: input.orderId,
+        paymentIntent,
+        message: "Stripe mobile payment finalized"
+      })
+    });
+
+    if (!dispatchResult.ok) {
+      request.log.error(
+        {
+          requestId: request.id,
+          orderId: input.orderId,
+          paymentIntentId: input.paymentIntentId,
+          dispatchResult
+        },
+        "failed to dispatch Stripe mobile payment finalization to orders service"
+      );
+      return reply.status(502).send(
+        serviceErrorSchema.parse({
+          code: "ORDERS_RECONCILIATION_FAILED",
+          message: "Orders reconciliation call failed",
+          requestId: request.id
+        })
+      );
+    }
+
+    return stripeMobilePaymentFinalizeResponseSchema.parse({
+      orderId: input.orderId,
+      paymentIntentId: paymentIntent.id,
+      accepted: true,
+      applied: dispatchResult.response.applied,
+      orderStatus: dispatchResult.response.orderStatus ?? orderPaymentContext.status,
+      note: dispatchResult.response.note
+    });
   });
 
   app.post(

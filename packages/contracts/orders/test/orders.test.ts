@@ -3,6 +3,7 @@ import {
   orderPaymentContextSchema,
   orderStatusSchema,
   ordersPaymentReconciliationSchema,
+  stripeMobilePaymentFinalizeResponseSchema,
   stripeMobilePaymentSessionResponseSchema
 } from "../src";
 
@@ -53,6 +54,18 @@ describe("contracts-orders", () => {
     });
 
     expect(parsed.paymentIntentId).toBe("pi_3QxExample123");
+  });
+
+  it("accepts Stripe mobile payment finalization responses", () => {
+    const parsed = stripeMobilePaymentFinalizeResponseSchema.parse({
+      orderId: "123e4567-e89b-12d3-a456-426614174000",
+      paymentIntentId: "pi_3QxExample123",
+      accepted: true,
+      applied: true,
+      orderStatus: "PAID"
+    });
+
+    expect(parsed.orderStatus).toBe("PAID");
   });
 
   it("accepts internal order payment context payloads", () => {

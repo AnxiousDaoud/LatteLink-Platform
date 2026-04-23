@@ -65,6 +65,8 @@ import {
 import {
   ordersContract,
   createOrderRequestSchema,
+  stripeMobilePaymentFinalizeRequestSchema,
+  stripeMobilePaymentFinalizeResponseSchema,
   stripeMobilePaymentSessionRequestSchema,
   stripeMobilePaymentSessionResponseSchema,
   orderQuoteSchema,
@@ -1261,6 +1263,28 @@ export async function registerRoutes(app: FastifyInstance) {
           "x-gateway-token": gatewayInternalApiToken
         },
         responseSchema: stripeMobilePaymentSessionResponseSchema
+      });
+    }
+  );
+
+  app.post(
+    "/v1/payments/stripe/mobile-session/finalize",
+    { preHandler: [app.rateLimit(checkoutRateLimit), requireCustomerAuth] },
+    async (request, reply) => {
+      const input = stripeMobilePaymentFinalizeRequestSchema.parse(request.body);
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: paymentsBaseUrl,
+        serviceLabel: "Payments",
+        method: "POST",
+        path: "/v1/payments/stripe/mobile-session/finalize",
+        body: input,
+        additionalHeaders: {
+          "x-gateway-token": gatewayInternalApiToken
+        },
+        responseSchema: stripeMobilePaymentFinalizeResponseSchema
       });
     }
   );

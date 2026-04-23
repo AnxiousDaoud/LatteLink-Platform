@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { buildPricingSummary, describeCustomization, type CartItem } from "../src/cart/model";
 import { useCart } from "../src/cart/store";
+import { apiClient } from "../src/api/client";
 import {
   formatUsd,
   resolveAppConfigData,
@@ -318,10 +319,23 @@ export default function CheckoutScreen() {
         return;
       }
 
+      setStatusMessage("Verifying payment with Stripe…");
+      let finalizedOrderStatus = preparedCheckout.order.status;
+      try {
+        const finalizedPayment = await apiClient.finalizeStripeMobilePayment({
+          orderId: preparedCheckout.order.id,
+          paymentIntentId: preparedCheckout.paymentSession.paymentIntentId
+        });
+        finalizedOrderStatus = finalizedPayment.orderStatus;
+      } catch {
+        // PaymentSheet already succeeded. Do not leave the cart active and risk a duplicate charge.
+        finalizedOrderStatus = "PENDING_PAYMENT";
+      }
+
       setConfirmation({
         orderId: preparedCheckout.order.id,
         pickupCode: preparedCheckout.order.pickupCode,
-        status: preparedCheckout.order.status,
+        status: finalizedOrderStatus,
         total: preparedCheckout.order.total,
         items: preparedCheckout.order.items,
         occurredAt: new Date().toISOString()

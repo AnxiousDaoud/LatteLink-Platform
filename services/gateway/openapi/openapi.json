@@ -71,6 +71,15 @@
         }
       }
     },
+    "/payments/stripe/mobile-session/finalize": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/internal/locations/{locationId}/stripe/onboarding-link": {
       "post": {
         "parameters": [
