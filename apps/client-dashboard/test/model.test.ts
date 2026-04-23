@@ -12,6 +12,7 @@ import {
   countVisibleMenuItems,
   filterActiveOrders,
   filterOrdersByView,
+  filterVisibleOrders,
   formatOrderStatus,
   getAppConfigCapabilityLabels,
   getAvailableSections,
@@ -20,6 +21,7 @@ import {
   getOperatorRoleLabel,
   getOrderActions,
   getOrderCustomerLabel,
+  isAbortedCheckoutOrder,
   isActiveOrder,
   normalizeMenuItemCreateForm,
   normalizeMenuItemForm,
@@ -214,6 +216,25 @@ describe("client dashboard model", () => {
     expect(filterOrdersByView(orders, "completed").map((order) => order.status)).toEqual(["COMPLETED", "CANCELED"]);
     expect(filterOrdersByView(orders, "all").map((order) => order.status)).toEqual(["PAID", "COMPLETED", "CANCELED"]);
     expect(filterOrdersByView([], "active")).toEqual([]);
+  });
+
+  it("hides canceled unpaid checkout attempts from operator order lists", () => {
+    const abortedCheckout = resolveOrder({
+      ...sampleOrder,
+      id: "123e4567-e89b-12d3-a456-426614174099",
+      status: "CANCELED",
+      timeline: [
+        { status: "PENDING_PAYMENT", occurredAt: "2026-03-20T00:00:00.000Z" },
+        {
+          status: "CANCELED",
+          occurredAt: "2026-03-20T00:01:00.000Z",
+          note: "Customer abandoned checkout before payment confirmation"
+        }
+      ]
+    });
+
+    expect(isAbortedCheckoutOrder(abortedCheckout)).toBe(true);
+    expect(filterVisibleOrders([sampleOrder, abortedCheckout])).toEqual([sampleOrder]);
   });
 
   it("formats statuses and customer labels for the dashboard", () => {

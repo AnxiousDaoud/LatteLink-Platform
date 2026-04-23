@@ -176,15 +176,22 @@ Keep Clover configuration separate under operational integrations, not customer 
 
 1. Mobile loads `GET /v1/app-config`.
 2. Mobile confirms Stripe checkout is enabled for the location.
-3. Mobile creates quote and internal order.
-4. Order is persisted as `PENDING_PAYMENT`.
-5. Mobile requests a Stripe mobile checkout session from backend.
-6. Backend creates a Stripe PaymentIntent on the connected account and returns PaymentSheet configuration.
-7. Mobile presents PaymentSheet.
-8. Stripe sends a signed webhook event.
-9. `payments` verifies the webhook signature and reconciles the event.
-10. `orders` transitions the order to `PAID` only after verified reconciliation.
+3. Mobile creates a quote.
+4. Mobile requests a Stripe mobile checkout session from backend using quote context.
+5. Backend creates a Stripe PaymentIntent on the connected account and returns PaymentSheet configuration.
+6. Mobile presents PaymentSheet.
+7. Stripe sends a signed webhook event.
+8. `payments` verifies the webhook signature and reconciles the event.
+9. `orders` creates the customer-visible order only after verified successful Stripe reconciliation.
+10. The created order starts from the paid state and then follows fulfillment state transitions.
 11. If Clover POS is enabled, submit the paid order to Clover as an operational order only.
+
+Temporary guard until the fully deferred order flow is implemented:
+
+- any order created for a Stripe attempt must be automatically canceled if PaymentSheet initialization fails
+- any order created for a Stripe attempt must be automatically canceled if the customer cancels PaymentSheet before payment confirmation
+- any order created for a Stripe attempt must be automatically canceled if PaymentSheet returns a payment failure before confirmation
+- canceled pre-payment attempts must not appear in customer recent orders or the operator order dashboard
 
 ### Operational Clover Rule
 
@@ -297,8 +304,8 @@ Refactor:
 
 Target behavior:
 
-- create order before payment completion
-- keep order in `PENDING_PAYMENT` until verified Stripe reconciliation
+- do not create a customer-visible active order before payment completion
+- create the customer-visible order only from verified Stripe reconciliation or an equivalent server-side finalization path
 - apply idempotent `PAID` transitions from internal reconciliation events
 - support refund-driven order cancellation where applicable
 - optionally submit paid orders to Clover operationally after payment confirmation

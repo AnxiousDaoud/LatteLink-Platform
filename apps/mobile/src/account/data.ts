@@ -88,11 +88,30 @@ export function sortOrdersByLatestActivity(orders: OrderHistoryEntry[]) {
   });
 }
 
+export function isAbortedCheckoutOrder(order: OrderHistoryEntry) {
+  if (order.status !== "CANCELED") {
+    return false;
+  }
+
+  return !order.timeline.some(
+    (entry) =>
+      entry.status === "PAID" ||
+      entry.status === "IN_PREP" ||
+      entry.status === "READY" ||
+      entry.status === "COMPLETED"
+  );
+}
+
+function filterVisibleOrderHistory(orders: OrderHistoryEntry[]) {
+  return orders.filter((order) => !isAbortedCheckoutOrder(order));
+}
+
 export function useOrderHistoryQuery(enabled = true) {
   return useQuery({
     queryKey: orderHistoryQueryKey,
     enabled,
-    queryFn: async (): Promise<OrderHistoryEntry[]> => sortOrdersByLatestActivity(orderListSchema.parse(await apiClient.listOrders()))
+    queryFn: async (): Promise<OrderHistoryEntry[]> =>
+      sortOrdersByLatestActivity(filterVisibleOrderHistory(orderListSchema.parse(await apiClient.listOrders())))
   });
 }
 
@@ -113,7 +132,7 @@ export function useCancelOrderMutation() {
           ? currentOrders.map((entry) => (entry.id === order.id ? order : entry))
           : [order, ...currentOrders];
 
-        return sortOrdersByLatestActivity(nextOrders);
+        return sortOrdersByLatestActivity(filterVisibleOrderHistory(nextOrders));
       });
 
       await Promise.allSettled([

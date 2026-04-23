@@ -22,6 +22,7 @@ import {
   useAppConfigQuery,
   useStoreConfigQuery
 } from "../src/menu/catalog";
+import { useCancelOrderMutation } from "../src/account/data";
 import {
   CheckoutSubmissionError,
   quoteItemsEqual,
@@ -31,6 +32,7 @@ import {
   useStripeCheckoutMutation
 } from "../src/orders/checkout";
 import { useCheckoutFlow } from "../src/orders/flow";
+import { GlassActionPill } from "../src/cart/GlassActionPill";
 import { Button, Card, SectionLabel, uiPalette, uiTypography } from "../src/ui/system";
 import { resolveConfiguredApplePayMerchantIdentifier } from "../src/orders/applePay";
 
@@ -88,14 +90,43 @@ function resolveStripeUrlScheme() {
   if (typeof configuredScheme === "string" && configuredScheme.trim().length > 0) {
     return configuredScheme.trim();
   }
+  if (Array.isArray(configuredScheme)) {
+    const firstScheme = configuredScheme.find((scheme) => typeof scheme === "string" && scheme.trim().length > 0);
+    if (firstScheme) {
+      return firstScheme.trim();
+    }
+  }
 
   const fallbackUrl = Linking.createURL("");
   const schemeMatch = fallbackUrl.match(/^([a-z][a-z0-9+\-.]*):/i);
   return schemeMatch?.[1];
 }
 
-function resolveStripeReturnUrl() {
-  return Constants.appOwnership === "expo" ? Linking.createURL("/--/") : Linking.createURL("");
+function normalizeStripeReturnUrl(url: string | undefined, scheme: string | undefined) {
+  if (!url || !scheme) {
+    return undefined;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === `${scheme}:` ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveStripeReturnUrl(): string | undefined {
+  const scheme = resolveStripeUrlScheme();
+  const path = "stripe-redirect";
+
+  if (scheme) {
+    return normalizeStripeReturnUrl(Linking.createURL(path, { scheme }), scheme);
+  }
+
+  return normalizeStripeReturnUrl(
+    Constants.appOwnership === "expo" ? Linking.createURL(`/--/${path}`) : Linking.createURL(path),
+    resolveStripeUrlScheme()
+  );
 }
 
 export default function CheckoutScreen() {
@@ -110,6 +141,7 @@ export default function CheckoutScreen() {
   const storeConfig = storeConfigQuery.data ? resolveStoreConfigData(storeConfigQuery.data) : null;
   const pricingSummary = buildPricingSummary(subtotalCents, storeConfig?.taxRateBasisPoints ?? 0);
   const checkoutMutation = useStripeCheckoutMutation();
+  const cancelOrderMutation = useCancelOrderMutation();
   const storeClosedMessage =
     storeConfig && !storeConfig.isOpen
       ? "The store is currently closed. Come back during opening hours."
@@ -148,6 +180,9 @@ export default function CheckoutScreen() {
   const [paymentSheetPending, setPaymentSheetPending] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusTone, setStatusTone] = useState<"info" | "warning">("info");
+  const payActionDisabled = !checkoutReady || paymentSheetPending || checkoutMutation.isPending;
+  const payActionLabel =
+    paymentSheetPending || checkoutMutation.isPending ? "Opening secure payment…" : `Pay ${formatUsd(pricingSummary.totalCents)}`;
 
   async function invalidateAccountQueries() {
     await queryClient.invalidateQueries({ queryKey: ["account"] });
@@ -168,6 +203,28 @@ export default function CheckoutScreen() {
     }
 
     router.replace("/cart");
+  }
+
+  async function cancelPreparedCheckoutOrder(
+    orderId: string,
+    reason: string,
+    fallbackMessage: string
+  ) {
+    try {
+      await cancelOrderMutation.mutateAsync({
+        orderId,
+        reason
+      });
+      clearRetryOrder();
+      clearFailure();
+      void invalidateAccountQueries();
+      return true;
+    } catch (cancelError) {
+      const cancelMessage = cancelError instanceof Error ? cancelError.message : "Unable to close the unpaid order.";
+      setStatusMessage(`${fallbackMessage} We could not close the pending order automatically. ${cancelMessage}`);
+      setStatusTone("warning");
+      return false;
+    }
   }
 
   async function handleStripeCheckout() {
@@ -201,10 +258,11 @@ export default function CheckoutScreen() {
         urlScheme: resolveStripeUrlScheme()
       });
 
+      const stripeReturnUrl = resolveStripeReturnUrl();
       const initResult = await initPaymentSheet({
         merchantDisplayName: preparedCheckout.paymentSession.merchantDisplayName,
         paymentIntentClientSecret: preparedCheckout.paymentSession.paymentIntentClientSecret,
-        returnURL: resolveStripeReturnUrl(),
+        ...(stripeReturnUrl ? { returnURL: stripeReturnUrl } : {}),
         allowsDelayedPaymentMethods: false,
         applePay: preparedCheckout.paymentSession.applePayEnabled
           ? {
@@ -214,18 +272,50 @@ export default function CheckoutScreen() {
       });
 
       if (initResult.error) {
-        throw new CheckoutSubmissionError(initResult.error.message, "pay", preparedCheckout.order);
+        const canceled = await cancelPreparedCheckoutOrder(
+          preparedCheckout.order.id,
+          `Stripe checkout failed before PaymentSheet opened: ${initResult.error.message}`,
+          "Payment could not open."
+        );
+        if (!canceled) {
+          return;
+        }
+
+        setStatusMessage("Payment could not open. Your bag is still ready, so you can try again.");
+        setStatusTone("warning");
+        return;
       }
 
       setStatusMessage("Waiting for Stripe confirmation…");
 
       const presentResult = await presentPaymentSheet();
       if (presentResult.error?.code === PaymentSheetError.Canceled) {
-        throw new CheckoutSubmissionError("Payment was canceled before completion.", "pay", preparedCheckout.order);
+        const canceled = await cancelPreparedCheckoutOrder(
+          preparedCheckout.order.id,
+          "Customer abandoned checkout before payment confirmation",
+          "Payment was canceled."
+        );
+        if (canceled) {
+          setStatusMessage("");
+          setStatusTone("info");
+          dismissCheckoutToCart();
+        }
+        return;
       }
 
       if (presentResult.error) {
-        throw new CheckoutSubmissionError(presentResult.error.message, "pay", preparedCheckout.order);
+        const canceled = await cancelPreparedCheckoutOrder(
+          preparedCheckout.order.id,
+          `Stripe checkout failed before payment confirmation: ${presentResult.error.message}`,
+          "Payment did not go through."
+        );
+        if (!canceled) {
+          return;
+        }
+
+        setStatusMessage("Payment didn’t go through. Your bag is still ready, so you can try again.");
+        setStatusTone("warning");
+        return;
       }
 
       setConfirmation({
@@ -286,7 +376,7 @@ export default function CheckoutScreen() {
       setPaymentSheetPending(false);
     }
   }
-  const scrollBottomPadding = Math.max(insets.bottom, 16) + 24;
+  const scrollBottomPadding = Math.max(insets.bottom, 16) + 172;
 
   return (
     <View style={styles.screen}>
@@ -362,40 +452,45 @@ export default function CheckoutScreen() {
               <SummaryRow label="Total" value={formatUsd(pricingSummary.totalCents)} emphasized />
             </Card>
 
-            <Card style={styles.sectionCard}>
-              <SectionLabel label="Payment" />
-              <Text style={styles.sectionTitle}>Secure Stripe checkout</Text>
-              <Text style={styles.sectionBody}>
-                {supportedPaymentMethodsLabel} are collected inside Stripe PaymentSheet. The app never handles raw card
-                data directly.
+            <View style={styles.paymentSummaryBlock}>
+              <Text style={styles.paymentSummaryEyebrow}>Payment</Text>
+              <Text style={styles.paymentSummaryTitle}>Secure Stripe checkout</Text>
+              <Text style={styles.paymentSummaryBody}>
+                {supportedPaymentMethodsLabel} are collected inside Stripe PaymentSheet. Your order appears only after
+                Stripe confirms the payment.
               </Text>
-              <Text style={styles.sectionBody}>
-                Your order stays pending until the backend receives a verified Stripe webhook and marks it paid.
-              </Text>
-
-              <Button
-                label={paymentSheetPending || checkoutMutation.isPending ? "Opening secure payment…" : `Pay ${formatUsd(pricingSummary.totalCents)}`}
-                variant="secondary"
-                disabled={!checkoutReady || paymentSheetPending || checkoutMutation.isPending}
-                onPress={() => {
-                  void handleStripeCheckout();
-                }}
-                style={styles.fullWidthButton}
-              />
-            </Card>
-
-            {checkoutUnavailableMessage || statusMessage ? (
-              <View style={styles.bottomStatusStack}>
-                {checkoutUnavailableMessage ? <StatusBanner message={checkoutUnavailableMessage} tone="warning" /> : null}
-
-                {statusMessage ? (
-                  <StatusBanner message={statusMessage} tone={statusTone === "warning" ? "warning" : "info"} />
-                ) : null}
-              </View>
-            ) : null}
+            </View>
           </>
         )}
       </ScrollView>
+
+      {items.length > 0 ? (
+        <View pointerEvents="box-none" style={[styles.bottomDock, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          {checkoutUnavailableMessage || statusMessage ? (
+            <View style={styles.bottomStatusStack}>
+              {checkoutUnavailableMessage ? <StatusBanner message={checkoutUnavailableMessage} tone="warning" /> : null}
+
+              {statusMessage ? (
+                <StatusBanner message={statusMessage} tone={statusTone === "warning" ? "warning" : "info"} />
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.bottomActionMetaRow}>
+            <Text style={styles.bottomActionMetaLabel}>{supportedPaymentMethodsLabel}</Text>
+            <Text style={styles.bottomActionMetaValue}>{formatUsd(pricingSummary.totalCents)}</Text>
+          </View>
+
+          <GlassActionPill
+            label={payActionLabel}
+            onPress={() => {
+              void handleStripeCheckout();
+            }}
+            tone="dark"
+            disabled={payActionDisabled}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -633,9 +728,6 @@ const styles = StyleSheet.create({
   fieldGridItem: {
     flex: 1
   },
-  fullWidthButton: {
-    marginTop: 16
-  },
   actions: {
     marginTop: 16,
     flexDirection: "row",
@@ -645,8 +737,33 @@ const styles = StyleSheet.create({
     flex: 1
   },
   bottomStatusStack: {
-    marginTop: 4,
     gap: 12
+  },
+  paymentSummaryBlock: {
+    paddingHorizontal: 2,
+    paddingTop: 4,
+    gap: 8
+  },
+  paymentSummaryEyebrow: {
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: uiPalette.textSecondary,
+    fontWeight: "700"
+  },
+  paymentSummaryTitle: {
+    fontSize: 22,
+    lineHeight: 26,
+    color: uiPalette.text,
+    fontFamily: uiTypography.displayFamily,
+    fontWeight: "700"
+  },
+  paymentSummaryBody: {
+    maxWidth: 340,
+    fontSize: 13,
+    lineHeight: 19,
+    color: uiPalette.textSecondary
   },
   bottomDock: {
     position: "absolute",
@@ -654,7 +771,28 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: 20,
-    paddingTop: 16
+    paddingTop: 16,
+    gap: 12
+  },
+  bottomActionMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 8
+  },
+  bottomActionMetaLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    color: uiPalette.textSecondary,
+    fontWeight: "700"
+  },
+  bottomActionMetaValue: {
+    fontSize: 15,
+    lineHeight: 18,
+    color: uiPalette.text,
+    fontWeight: "700"
   },
   applePayPressable: {
     width: "100%"

@@ -20,6 +20,7 @@ import {
 } from "@lattelink/contracts-catalog";
 import { orderSchema } from "@lattelink/contracts-orders";
 import {
+  filterVisibleOrders,
   normalizeMenuItemCreateForm,
   normalizeMenuItemForm,
   operatorMenuItemSchema,
@@ -326,7 +327,7 @@ export async function fetchOperatorSnapshot(session: OperatorSession): Promise<O
 
   return {
     appConfig,
-    orders: orders as OperatorOrder[],
+    orders: filterVisibleOrders(orders as OperatorOrder[]),
     menu,
     cards: cards.cards.map((card) => ({
       ...card

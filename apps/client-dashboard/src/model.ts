@@ -370,6 +370,24 @@ export function isActiveOrder(order: OperatorOrder) {
   return !isTerminalOrderStatus(order.status);
 }
 
+export function isAbortedCheckoutOrder(order: OperatorOrder) {
+  if (order.status !== "CANCELED") {
+    return false;
+  }
+
+  return !order.timeline.some(
+    (entry) =>
+      entry.status === "PAID" ||
+      entry.status === "IN_PREP" ||
+      entry.status === "READY" ||
+      entry.status === "COMPLETED"
+  );
+}
+
+export function filterVisibleOrders(orders: readonly OperatorOrder[]) {
+  return orders.filter((order) => !isAbortedCheckoutOrder(order));
+}
+
 export function filterActiveOrders(orders: readonly OperatorOrder[]) {
   return orders.filter(isActiveOrder);
 }
