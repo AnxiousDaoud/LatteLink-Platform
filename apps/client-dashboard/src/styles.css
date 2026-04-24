@@ -99,6 +99,11 @@ textarea {
   font: inherit;
 }
 
+::selection {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
 button {
   cursor: pointer;
   border: none;
