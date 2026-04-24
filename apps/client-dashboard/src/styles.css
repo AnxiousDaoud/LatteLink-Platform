@@ -692,9 +692,7 @@ label.field > span {
 }
 
 .dash-shell--store {
-  background:
-    radial-gradient(circle at top left, rgba(216, 170, 74, 0.14), transparent 28%),
-    linear-gradient(180deg, #f7f2e8 0%, #f4efe6 100%);
+  background: var(--color-bg);
 }
 
 /* -------- Header -------- */
@@ -710,7 +708,7 @@ label.field > span {
 }
 
 .dash-header--store {
-  background: rgba(247, 242, 232, 0.92);
+  background: rgba(255, 255, 255, 0.85);
 }
 
 .dash-header__shell {
@@ -734,6 +732,12 @@ label.field > span {
   align-items: baseline;
   gap: 6px;
   min-width: max-content;
+}
+
+.dash-lockup--store {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .dash-store-lockup,
@@ -1537,25 +1541,25 @@ label.field > span {
 }
 
 .dash-section--store-mode {
-  gap: 18px;
+  gap: 16px;
 }
 
 .dash-store-board {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 20px;
   align-items: start;
 }
 
 .dash-store-lane {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px;
+  gap: 16px;
+  padding: 20px;
   border-radius: var(--r-lg);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(91, 73, 41, 0.1);
-  box-shadow: 0 18px 38px rgba(91, 73, 41, 0.08);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
 .dash-store-lane__head {
@@ -1573,12 +1577,12 @@ label.field > span {
 .dash-ticket-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 16px;
-  border-radius: var(--r-lg);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 245, 238, 0.98));
-  border: 1px solid rgba(91, 73, 41, 0.12);
-  box-shadow: 0 12px 28px rgba(91, 73, 41, 0.08);
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  box-shadow: none;
 }
 
 .dash-ticket-card__top,
@@ -1598,9 +1602,10 @@ label.field > span {
 
 .dash-ticket-code {
   font-family: var(--font-display);
-  font-size: 30px;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
   color: var(--color-text);
 }
 
@@ -1611,15 +1616,16 @@ label.field > span {
 }
 
 .dash-ticket-items {
-  display: grid;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 .dash-ticket-item {
   display: grid;
   gap: 4px;
   padding-top: 10px;
-  border-top: 1px dashed var(--color-border);
+  border-top: 1px solid var(--color-border);
 }
 
 .dash-ticket-item:first-child {
@@ -1628,13 +1634,14 @@ label.field > span {
 }
 
 .dash-ticket-item strong {
-  font-size: 15px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--color-text);
 }
 
 .dash-ticket-item p {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--color-text-2);
 }

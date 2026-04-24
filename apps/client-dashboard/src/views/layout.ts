@@ -65,18 +65,18 @@ function renderDashboardContent() {
   }
 }
 
-function renderStoreModeHeader(locationLabel: string, marketLabel: string) {
+function renderStoreModeHeader(storeLabel: string, locationLabel: string) {
   return `
     <header class="dash-header dash-header--store">
       <div class="dash-header__shell dash-header__shell--store">
         <div class="dash-store-lockup">
-          <div class="dash-lockup">
+          <div class="dash-lockup dash-lockup--store">
             <span class="dash-wordmark">LatteLink</span>
             <span class="dash-byline">Store mode</span>
           </div>
           <div class="dash-store-title-group">
-            <div class="dash-page-title">${escapeHtml(locationLabel)}</div>
-            <div class="dash-shop-sub">${escapeHtml(marketLabel)}</div>
+            <div class="dash-page-title">${escapeHtml(storeLabel)}</div>
+            <div class="dash-shop-sub">${escapeHtml(locationLabel)}</div>
           </div>
         </div>
 
@@ -118,6 +118,19 @@ export function renderDashboard() {
   const marketLabel = isAllLocationsSelected()
     ? `${state.availableLocations.length} locations`
     : selectedLocation?.marketLabel ?? state.appConfig?.brand.marketLabel ?? "Store operations";
+  const storeHeaderTitle = isAllLocationsSelected()
+    ? state.storeConfig?.storeName ?? state.appConfig?.brand.brandName ?? "Operator dashboard"
+    : state.storeConfig?.storeName ??
+      state.appConfig?.brand.brandName ??
+      selectedLocation?.locationName ??
+      state.appConfig?.brand.locationName ??
+      "Operator dashboard";
+  const storeHeaderSubtitle = isAllLocationsSelected()
+    ? `${state.availableLocations.length} locations`
+    : state.storeConfig?.locationName ??
+      selectedLocation?.locationName ??
+      state.appConfig?.brand.locationName ??
+      marketLabel;
   const liveEnabled = isStaffDashboardEnabled(state.appConfig) && isOrderTrackingEnabled(state.appConfig);
   const settingsAvailable = getAvailableDashboardSections().includes("store");
   const locationSelector = hasMultipleLocations()
@@ -143,7 +156,7 @@ export function renderDashboard() {
   if (storeMode) {
     return `
       <div class="dash-shell dash-shell--store">
-        ${renderStoreModeHeader(locationLabel, marketLabel)}
+        ${renderStoreModeHeader(storeHeaderTitle, storeHeaderSubtitle)}
         <main class="dash-main dash-main--store">
           <div class="dash-content dash-content--store">
             ${renderBanner()}
