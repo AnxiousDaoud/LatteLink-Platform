@@ -281,12 +281,25 @@ function renderStoreModeBoard(appConfig: AppConfig | null) {
   const completedOrders = visibleOrders.filter((order) => order.status === "COMPLETED" || order.status === "CANCELED");
   const selectedLocation = getSelectedLocation();
   const activeOrders = filterOrdersByView(state.orders, "active");
+  const storeHeading = isAllLocationsSelected()
+    ? state.storeConfig?.storeName ?? state.appConfig?.brand.brandName ?? "Store mode"
+    : state.storeConfig?.storeName ??
+      state.appConfig?.brand.brandName ??
+      selectedLocation?.locationName ??
+      state.appConfig?.brand.locationName ??
+      "Store mode";
+  const locationHeading = isAllLocationsSelected()
+    ? `${state.availableLocations.length} locations`
+    : state.storeConfig?.locationName ??
+      selectedLocation?.locationName ??
+      state.appConfig?.brand.locationName ??
+      "Live ticket board";
 
   return `
     <section class="dash-section dash-section--store-mode">
       ${renderSectionHeading({
-        eyebrow: "Store mode",
-        title: selectedLocation?.locationName ? `${selectedLocation.locationName} live board` : "Live ticket board",
+        eyebrow: storeHeading,
+        title: locationHeading,
         description: "Every ticket shows the items and modifiers the team needs to make right now.",
         actions: `
           <div class="dash-segmented-control">
