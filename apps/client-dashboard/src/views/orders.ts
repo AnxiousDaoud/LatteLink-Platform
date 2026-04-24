@@ -320,8 +320,6 @@ function renderStoreTicket(order: OperatorOrder, appConfig: AppConfig | null) {
     .join("");
   const tone = getStoreLaneTone(order.status);
   const itemCount = getOrderItemCount(order);
-  const createdAt = order.timeline[0]?.occurredAt;
-  const updatedAt = order.timeline[order.timeline.length - 1]?.occurredAt;
   const controls = [
     manualStatusControlsEnabled && nextAction
       ? `
@@ -352,14 +350,12 @@ function renderStoreTicket(order: OperatorOrder, appConfig: AppConfig | null) {
         </div>
         <div class="dash-ticket-meta">
           <div class="dash-ticket-code">${escapeHtml(order.pickupCode)}</div>
-          <span class="dash-ticket-age">${escapeHtml(getOrderElapsedLabel(order))}</span>
-          <span class="dash-ticket-updated">Updated ${escapeHtml(formatOrderTimeLabel(updatedAt))}</span>
         </div>
       </div>
       <div class="dash-ticket-facts">
         <div class="dash-ticket-fact">
-          <span>Created</span>
-          <strong>${escapeHtml(formatOrderTimeLabel(createdAt))}</strong>
+          <span>Elapsed</span>
+          <strong>${escapeHtml(getOrderElapsedLabel(order))}</strong>
         </div>
         <div class="dash-ticket-fact">
           <span>Items</span>

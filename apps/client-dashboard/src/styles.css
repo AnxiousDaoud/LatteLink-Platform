@@ -1779,8 +1779,7 @@ label.field > span {
   color: var(--color-text);
 }
 
-.dash-ticket-age,
-.dash-ticket-updated {
+.dash-ticket-age {
   font-size: 12px;
   color: var(--color-text-3);
 }
@@ -1791,8 +1790,7 @@ label.field > span {
 
 .dash-ticket-card__band .dash-ticket-code,
 .dash-ticket-card__band .dash-ticket-customer,
-.dash-ticket-card__band .dash-ticket-age,
-.dash-ticket-card__band .dash-ticket-updated {
+.dash-ticket-card__band .dash-ticket-age {
   color: #fff;
 }
 
