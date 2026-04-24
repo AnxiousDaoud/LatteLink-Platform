@@ -1727,7 +1727,7 @@ label.field > span {
 
 .dash-ticket-card__band {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-between;
   gap: 12px;
   min-height: 104px;
@@ -1754,13 +1754,19 @@ label.field > span {
   gap: 12px;
 }
 
+.dash-ticket-heading {
+  flex: 1;
+  justify-content: space-between;
+}
+
 .dash-ticket-meta {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
+  align-items: center;
+  justify-content: center;
   margin-left: auto;
-  text-align: right;
+  min-width: 96px;
+  text-align: center;
 }
 
 .dash-ticket-code {
