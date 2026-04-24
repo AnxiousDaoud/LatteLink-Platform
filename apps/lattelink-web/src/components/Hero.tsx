@@ -47,7 +47,7 @@ export function Hero() {
               background: "var(--color-text)",
             }}
           />
-          LatteLink by Nomly
+          LatteLink by nomly
         </motion.div>
 
         <motion.h1
@@ -78,7 +78,7 @@ export function Hero() {
             color: "var(--color-text-muted)",
           }}
         >
-          LatteLink by Nomly helps independent coffee shops launch a polished
+          LatteLink by nomly helps independent coffee shops launch a polished
           mobile ordering app, loyalty program, and customer experience —
           without giving up margin to a marketplace.
         </motion.p>

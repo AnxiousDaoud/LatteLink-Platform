@@ -53,7 +53,7 @@ export function Nav() {
           <Link
             href="/"
             style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-            aria-label="Nomly home"
+            aria-label="nomly home"
           >
             <NomlyMark size={18} />
           </Link>

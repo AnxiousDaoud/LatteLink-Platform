@@ -9,7 +9,7 @@ const productLinks = [
 ];
 
 const companyLinks = [
-  { href: "/#nomly", label: "Nomly" },
+  { href: "/#nomly", label: "nomly" },
   { href: "/#contact", label: "Contact" },
   { href: `mailto:${contactEmail}`, label: "Email us" },
 ];
@@ -54,7 +54,7 @@ export function Footer() {
                 maxWidth: 320,
               }}
             >
-              Nomly builds infrastructure for modern local commerce. LatteLink
+              nomly builds infrastructure for modern local commerce. LatteLink
               is the first product, focused on independent coffee shops.
             </p>
           </div>
@@ -82,7 +82,7 @@ export function Footer() {
               color: "var(--color-text-subtle)",
             }}
           >
-            &copy; {year} Nomly. <LatteLinkWordmark size={13} /> by Nomly.
+            &copy; {year} nomly. <LatteLinkWordmark size={13} /> by nomly.
           </div>
           <div
             style={{

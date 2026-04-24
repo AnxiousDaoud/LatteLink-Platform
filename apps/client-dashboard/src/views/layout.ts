@@ -79,7 +79,7 @@ export function renderDashboard() {
         <div class="dash-header__shell">
           <div class="dash-lockup">
             <span class="dash-wordmark">LatteLink</span>
-            <span class="dash-byline">by Nomly</span>
+            <span class="dash-byline">by nomly</span>
           </div>
 
           <nav class="dash-nav" aria-label="Dashboard sections">

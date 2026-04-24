@@ -52,7 +52,7 @@ export function Nomly() {
           <AnimateIn delay={0.05}>
             <div style={{ marginTop: 24 }}>
               <Lead invert maxWidth={640}>
-                Nomly is a quiet, infrastructural company building the digital
+                nomly is a quiet, infrastructural company building the digital
                 surface area that small, independent operators need to compete
                 with the chains. LatteLink is the first product — purpose-built
                 for coffee shops — with more verticals to follow.

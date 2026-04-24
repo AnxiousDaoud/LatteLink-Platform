@@ -31,7 +31,7 @@ export function renderAuthScreen() {
       <header class="auth-nav">
         <div class="auth-nav__shell">
           <div class="brand-lockup">
-            <span class="brand-wordmark">LatteLink<span> by Nomly</span></span>
+            <span class="brand-wordmark">LatteLink<span> by nomly</span></span>
           </div>
           <span class="auth-nav__tag">Operator Dashboard</span>
         </div>
