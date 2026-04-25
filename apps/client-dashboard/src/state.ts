@@ -54,6 +54,7 @@ export type AppState = {
   creatingTeamUser: boolean;
   lastRefreshedAt: number | null;
   autoRefreshHandle: ReturnType<typeof setInterval> | null;
+  orderStreamUnsubscribe: (() => void) | null;
   pendingCancelOrderId: string | null;
   pendingCancelTimeoutHandle: ReturnType<typeof setTimeout> | null;
   menuCreateDraft: {
@@ -121,6 +122,7 @@ export const state: AppState = {
   creatingTeamUser: false,
   lastRefreshedAt: null,
   autoRefreshHandle: null,
+  orderStreamUnsubscribe: null,
   pendingCancelOrderId: null,
   pendingCancelTimeoutHandle: null,
   toasts: [],

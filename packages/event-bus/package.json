@@ -1,27 +1,18 @@
 {
-  "name": "@lattelink/notifications",
+  "name": "@lattelink/event-bus",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist"],
   "scripts": {
-    "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test --max-warnings=0",
-    "test": "vitest run",
-    "openapi": "tsx src/openapi.ts"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@fastify/rate-limit": "^10.3.0",
-    "@lattelink/contracts-notifications": "workspace:*",
-    "@lattelink/event-bus": "workspace:*",
-    "@lattelink/persistence": "workspace:*",
-    "@fastify/swagger": "^9.7.0",
-    "@fastify/swagger-ui": "^5.2.5",
-    "fastify": "^5.8.4",
-    "pino-pretty": "^13.0.0",
+    "ioredis": "^5.6.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {

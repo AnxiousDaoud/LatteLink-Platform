@@ -34,6 +34,7 @@ services:
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:8080/v1}
       - GATEWAY_UPSTREAM_TIMEOUT_MS=${GATEWAY_UPSTREAM_TIMEOUT_MS:-5000}
       - GATEWAY_RATE_LIMIT_WINDOW_MS=${GATEWAY_RATE_LIMIT_WINDOW_MS:-60000}
+      - VALKEY_URL=redis://valkey:6379
     depends_on:
       - identity
       - orders
@@ -41,6 +42,7 @@ services:
       - payments
       - loyalty
       - notifications
+      - valkey
 
   identity:
     image: ${IMAGE_REGISTRY_PREFIX:-ghcr.io/anxiousdaoud/lattelink-platform}/identity:${IMAGE_TAG:-latest}
@@ -83,9 +85,12 @@ services:
       - ORDERS_INTERNAL_API_TOKEN=${ORDERS_INTERNAL_API_TOKEN:-}
       - LOYALTY_INTERNAL_API_TOKEN=${LOYALTY_INTERNAL_API_TOKEN:-}
       - NOTIFICATIONS_INTERNAL_API_TOKEN=${NOTIFICATIONS_INTERNAL_API_TOKEN:-}
+      - VALKEY_URL=redis://valkey:6379
     depends_on:
       postgres:
         condition: service_healthy
+      valkey:
+        condition: service_started
 
   catalog:
     image: ${IMAGE_REGISTRY_PREFIX:-ghcr.io/anxiousdaoud/lattelink-platform}/catalog:${IMAGE_TAG:-latest}
@@ -162,9 +167,12 @@ services:
       - NOTIFICATIONS_PROVIDER_MODE=${NOTIFICATIONS_PROVIDER_MODE:-expo}
       - EXPO_PUSH_API_URL=${EXPO_PUSH_API_URL:-}
       - EXPO_ACCESS_TOKEN=${EXPO_ACCESS_TOKEN:-}
+      - VALKEY_URL=redis://valkey:6379
     depends_on:
       postgres:
         condition: service_healthy
+      valkey:
+        condition: service_started
 
   worker-notifications-dispatch:
     image: ${IMAGE_REGISTRY_PREFIX:-ghcr.io/anxiousdaoud/lattelink-platform}/workers/notifications-dispatch:${IMAGE_TAG:-latest}

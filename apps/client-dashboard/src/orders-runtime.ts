@@ -1,4 +1,5 @@
 import { state, ordersRefreshIntervalMs, cancelConfirmTimeoutMs } from "./state.js";
+import { subscribeToAdminOrderStream, type AdminOrderStreamEvent } from "./api.js";
 import { canAccessCapability, filterOrdersByView, isActiveOrder } from "./model.js";
 import { render } from "./render.js";
 
@@ -7,10 +8,14 @@ export function stopAutoRefresh() {
     clearInterval(state.autoRefreshHandle);
     state.autoRefreshHandle = null;
   }
+  if (state.orderStreamUnsubscribe !== null) {
+    state.orderStreamUnsubscribe();
+    state.orderStreamUnsubscribe = null;
+  }
 }
 
 export function startAutoRefresh(loadDashboard: (options?: { silent?: boolean }) => Promise<void>) {
-  if (typeof window === "undefined" || state.autoRefreshHandle !== null) {
+  if (typeof window === "undefined") {
     return;
   }
   if (
@@ -21,11 +26,51 @@ export function startAutoRefresh(loadDashboard: (options?: { silent?: boolean })
   ) {
     return;
   }
-  state.autoRefreshHandle = setInterval(() => {
-    if (state.section === "orders" && state.session && !state.loading) {
-      void loadDashboard({ silent: true });
+
+  if (state.orderStreamUnsubscribe !== null || state.autoRefreshHandle !== null) {
+    return;
+  }
+
+  const session = state.session;
+  const locationId = state.selectedLocationId;
+
+  state.orderStreamUnsubscribe = subscribeToAdminOrderStream({
+    session,
+    locationId,
+    onEvent: (event: AdminOrderStreamEvent) => {
+      if (state.section !== "orders" || !state.session) {
+        return;
+      }
+      if (event.type === "snapshot") {
+        state.orders = event.orders;
+        state.lastRefreshedAt = Date.now();
+        reconcileSelectedOrder();
+        render();
+      } else if (event.type === "order_update") {
+        const idx = state.orders.findIndex((o) => o.id === event.order.id);
+        if (idx >= 0) {
+          state.orders = [...state.orders.slice(0, idx), event.order, ...state.orders.slice(idx + 1)];
+        } else {
+          state.orders = [event.order, ...state.orders];
+        }
+        state.lastRefreshedAt = Date.now();
+        reconcileSelectedOrder();
+        render();
+      }
+    },
+    onError: () => {
+      if (state.orderStreamUnsubscribe !== null) {
+        state.orderStreamUnsubscribe = null;
+      }
+      if (state.autoRefreshHandle === null && state.section === "orders" && state.session) {
+        state.autoRefreshHandle = setInterval(() => {
+          if (state.section === "orders" && state.session && !state.loading) {
+            void loadDashboard({ silent: true });
+          }
+        }, ordersRefreshIntervalMs);
+      }
     }
-  }, ordersRefreshIntervalMs);
+  });
 }
 
 export function clearPendingCancel() {

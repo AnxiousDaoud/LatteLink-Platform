@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { EventBusSubscriber } from "@lattelink/event-bus";
 import { z } from "zod";
 import { apiErrorSchema, authSessionSchema } from "@lattelink/contracts-core";
 import {
@@ -1211,6 +1212,8 @@ export async function registerRoutes(app: FastifyInstance) {
     process.env.GATEWAY_ORDER_STREAM_POLL_MS,
     defaultOrderStreamPollIntervalMs
   );
+  const valkeyUrl = trimToUndefined(process.env.VALKEY_URL);
+  const eventBusSubscriber = valkeyUrl ? new EventBusSubscriber(valkeyUrl) : null;
   const staffReadRateLimit = {
     max: toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_STAFF_READ_MAX, 120),
     timeWindow: rateLimitWindowMs,
@@ -1246,6 +1249,10 @@ export async function registerRoutes(app: FastifyInstance) {
         identityBaseUrl,
         requiredCapability: capability
       });
+
+  app.addHook("onClose", async () => {
+    await eventBusSubscriber?.close();
+  });
 
   app.get("/health", async () => ({ status: "ok", service: "gateway" }));
   app.get("/ready", async () => ({ status: "ready", service: "gateway" }));
@@ -2392,6 +2399,129 @@ export async function registerRoutes(app: FastifyInstance) {
         forwardUserIdHeader: false,
         responseSchema: orderSchema
       });
+    }
+  );
+
+  app.get(
+    "/v1/admin/orders/stream",
+    {
+      preHandler: [app.rateLimit(staffReadRateLimit), requireOperatorCapability("orders:read")]
+    },
+    async (request, reply) => {
+      const locationContext = resolveRequestedOperatorLocationId(request);
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+
+      const locationId = locationContext.locationId;
+
+      const snapshotHeaders: Record<string, string> = {
+        "x-request-id": request.id,
+        ...(gatewayInternalApiToken ? { "x-gateway-token": gatewayInternalApiToken } : {}),
+        ...(locationId ? { "x-operator-location-id": locationId } : {})
+      };
+
+      let snapshotResponse: Response;
+      try {
+        snapshotResponse = await fetch(`${ordersBaseUrl}/v1/orders`, {
+          method: "GET",
+          headers: snapshotHeaders
+        });
+      } catch {
+        return reply.status(502).send({ code: "UPSTREAM_UNAVAILABLE", message: "Orders service is unavailable", requestId: request.id });
+      }
+
+      if (!snapshotResponse.ok) {
+        return reply.status(snapshotResponse.status).send({ code: "UPSTREAM_ERROR", message: "Orders service error", requestId: request.id });
+      }
+
+      const rawOrders = await snapshotResponse.json() as unknown;
+      const parsedOrders = z.array(orderSchema).safeParse(rawOrders);
+      if (!parsedOrders.success) {
+        return reply.status(502).send({ code: "UPSTREAM_INVALID_RESPONSE", message: "Orders response invalid", requestId: request.id });
+      }
+
+      reply.hijack();
+      reply.raw.statusCode = 200;
+      reply.raw.setHeader("Content-Type", "text/event-stream");
+      reply.raw.setHeader("Cache-Control", "no-cache");
+      reply.raw.setHeader("Connection", "keep-alive");
+      reply.raw.setHeader("X-Accel-Buffering", "no");
+      if (typeof reply.raw.flushHeaders === "function") {
+        reply.raw.flushHeaders();
+      }
+
+      let closed = false;
+
+      const sendEvent = (data: unknown) => {
+        if (closed || reply.raw.destroyed || reply.raw.writableEnded) {
+          return;
+        }
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const cleanup = (unsubscribe: (() => void) | null) => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        unsubscribe?.();
+        request.raw.removeListener("close", handleDisconnect);
+        if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+          reply.raw.end();
+        }
+      };
+
+      let handleDisconnect = () => cleanup(null);
+
+      sendEvent({ type: "snapshot", orders: parsedOrders.data });
+
+      if (!eventBusSubscriber) {
+        // No event bus — send snapshot only and close
+        cleanup(null);
+        return;
+      }
+
+      let unsubscribe: (() => void) | null = null;
+
+      const handleOrderEvent = async (event: { orderId: string; locationId: string }) => {
+        if (closed) {
+          return;
+        }
+        const orderHeaders: Record<string, string> = {
+          "x-request-id": request.id,
+          ...(gatewayInternalApiToken ? { "x-gateway-token": gatewayInternalApiToken } : {}),
+          ...(event.locationId ? { "x-operator-location-id": event.locationId } : {})
+        };
+        try {
+          const orderResponse = await fetch(`${ordersBaseUrl}/v1/orders/${event.orderId}`, {
+            method: "GET",
+            headers: orderHeaders
+          });
+          if (!orderResponse.ok) {
+            return;
+          }
+          const parsedOrder = orderSchema.safeParse(await orderResponse.json());
+          if (parsedOrder.success) {
+            sendEvent({ type: "order_update", order: parsedOrder.data });
+          }
+        } catch {
+          // ignore upstream errors in streaming context
+        }
+      };
+
+      if (locationId) {
+        unsubscribe = await eventBusSubscriber.subscribeToOrderEvents(locationId, (ev) => {
+          void handleOrderEvent(ev);
+        });
+      } else {
+        unsubscribe = await eventBusSubscriber.subscribeToAllOrderEvents((ev) => {
+          void handleOrderEvent(ev);
+        });
+      }
+
+      handleDisconnect = () => cleanup(unsubscribe);
+      request.raw.on("close", handleDisconnect);
     }
   );
 

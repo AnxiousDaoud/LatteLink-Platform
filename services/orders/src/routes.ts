@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { createEventBusPublisher } from "@lattelink/event-bus";
 import {
   createOrderRequestSchema,
   orderPaymentContextSchema,
@@ -319,6 +320,8 @@ export async function registerRoutes(app: FastifyInstance) {
     timeWindow: ordersRateLimitWindowMs
   };
   const gatewayApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
+  const valkeyUrl = trimToUndefined(process.env.VALKEY_URL);
+  const eventBusPublisher = valkeyUrl ? createEventBusPublisher(valkeyUrl) : undefined;
   const fulfillmentConfigCache = createFulfillmentConfigCache({ catalogBaseUrl });
   const repository = await createOrdersRepository(app.log);
   const sharedDeps = {
@@ -329,7 +332,8 @@ export async function registerRoutes(app: FastifyInstance) {
     loyaltyBaseUrl,
     loyaltyInternalToken: loyaltyInternalApiToken,
     notificationsBaseUrl,
-    notificationsInternalToken: notificationsInternalApiToken
+    notificationsInternalToken: notificationsInternalApiToken,
+    eventBusPublisher
   };
 
   const getServiceDeps = (request: FastifyRequest): OrderServiceDeps => ({
@@ -345,6 +349,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.addHook("onClose", async () => {
     await repository.close();
+    await eventBusPublisher?.quit();
   });
 
   app.get("/health", async () => ({ status: "ok", service: "orders" }));

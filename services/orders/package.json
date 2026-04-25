@@ -16,6 +16,8 @@
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",
     "@lattelink/contracts-catalog": "workspace:*",
+    "@lattelink/event-bus": "workspace:*",
+    "ioredis": "^5.6.1",
     "@lattelink/persistence": "workspace:*",
     "@lattelink/contracts-orders": "workspace:*",
     "@fastify/swagger": "^9.7.0",

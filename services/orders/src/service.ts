@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
+import { publishOrderEvent, type OrderEvent } from "@lattelink/event-bus";
+import type { Redis } from "ioredis";
 import {
   priceMenuItemCustomization,
   storeConfigResponseSchema,
@@ -200,6 +202,7 @@ export type OrderServiceDeps = {
   loyaltyInternalToken?: string;
   notificationsBaseUrl: string;
   notificationsInternalToken?: string;
+  eventBusPublisher?: Redis;
   posAdapter?: PosAdapter;
   getFulfillmentConfig(locationId?: string): Promise<AppConfigFulfillment>;
   logger: FastifyBaseLogger;
@@ -506,6 +509,28 @@ async function sendOrderStateNotification(params: {
     occurredAt: latestTimelineEntry?.occurredAt ?? new Date().toISOString(),
     note: latestTimelineEntry?.note
   });
+
+  if (deps.eventBusPublisher) {
+    const event: OrderEvent = {
+      orderId: order.id,
+      locationId: order.locationId,
+      status: payload.status,
+      userId,
+      occurredAt: payload.occurredAt,
+      pickupCode: order.pickupCode,
+      note: payload.note
+    };
+    try {
+      await publishOrderEvent(deps.eventBusPublisher, event);
+    } catch (error) {
+      deps.logger.warn(
+        { error, orderId: order.id, status: order.status, userId, requestId },
+        "event bus unavailable while publishing order-state event"
+      );
+    }
+    return;
+  }
+
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-request-id": requestId

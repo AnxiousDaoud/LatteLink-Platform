@@ -647,3 +647,91 @@ export function updateOperatorStaffUser(
     schema: operatorUserSchema
   });
 }
+
+const adminOrderStreamSnapshotSchema = z.object({
+  type: z.literal("snapshot"),
+  orders: z.array(orderSchema)
+});
+
+const adminOrderStreamUpdateSchema = z.object({
+  type: z.literal("order_update"),
+  order: orderSchema
+});
+
+export type AdminOrderStreamEvent =
+  | { type: "snapshot"; orders: OperatorOrder[] }
+  | { type: "order_update"; order: OperatorOrder };
+
+export function subscribeToAdminOrderStream(params: {
+  session: OperatorSession;
+  locationId: string | null;
+  onEvent: (event: AdminOrderStreamEvent) => void;
+  onError: () => void;
+}): () => void {
+  const { session, locationId, onEvent, onError } = params;
+  const query = locationId && locationId !== "all" ? `?locationId=${encodeURIComponent(locationId)}` : "";
+  const url = `${requireApiBaseUrl(session.apiBaseUrl)}/admin/orders/stream${query}`;
+  const headers = buildOperatorHeaders(session.accessToken);
+
+  let closed = false;
+  let abortController = new AbortController();
+
+  const connect = () => {
+    if (closed) {
+      return;
+    }
+    abortController = new AbortController();
+    fetch(url, { headers, signal: abortController.signal })
+      .then(async (response) => {
+        if (!response.ok || !response.body) {
+          throw new Error(`Stream request failed with status ${response.status}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || closed) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data:")) {
+              continue;
+            }
+            const raw = line.slice(5).trim();
+            let parsed: unknown;
+            try {
+              parsed = JSON.parse(raw);
+            } catch {
+              continue;
+            }
+            const snapshot = adminOrderStreamSnapshotSchema.safeParse(parsed);
+            if (snapshot.success) {
+              onEvent({ type: "snapshot", orders: filterVisibleOrders(snapshot.data.orders as unknown as OperatorOrder[]) });
+              continue;
+            }
+            const update = adminOrderStreamUpdateSchema.safeParse(parsed);
+            if (update.success) {
+              onEvent({ type: "order_update", order: update.data.order as unknown as OperatorOrder });
+            }
+          }
+        }
+      })
+      .catch(() => {
+        if (closed) {
+          return;
+        }
+        onError();
+      });
+  };
+
+  connect();
+
+  return () => {
+    closed = true;
+    abortController.abort();
+  };
+}

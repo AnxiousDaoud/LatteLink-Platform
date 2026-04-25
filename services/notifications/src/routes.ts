@@ -6,6 +6,7 @@ import {
   pushTokenUpsertResponseSchema,
   pushTokenUpsertSchema
 } from "@lattelink/contracts-notifications";
+import { EventBusSubscriber, type OrderEvent } from "@lattelink/event-bus";
 import { z } from "zod";
 import { createNotificationsRepository, type OutboxEntry } from "./repository.js";
 
@@ -290,6 +291,7 @@ export async function registerRoutes(app: FastifyInstance) {
   const gatewayApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
   const notificationsInternalApiToken = trimToUndefined(process.env.NOTIFICATIONS_INTERNAL_API_TOKEN);
   const notificationProviderMode = resolveNotificationProviderMode();
+  const valkeyUrl = trimToUndefined(process.env.VALKEY_URL);
   const repository = await createNotificationsRepository(app.log);
   const notificationsRateLimitWindowMs = toPositiveInteger(
     process.env.NOTIFICATIONS_RATE_LIMIT_WINDOW_MS,
@@ -317,8 +319,42 @@ export async function registerRoutes(app: FastifyInstance) {
     timeWindow: notificationsRateLimitWindowMs
   };
 
+  let eventBusSubscriber: EventBusSubscriber | undefined;
+  if (valkeyUrl) {
+    eventBusSubscriber = new EventBusSubscriber(valkeyUrl);
+    await eventBusSubscriber.subscribeToAllOrderEvents(async (event: OrderEvent) => {
+      const notificationPayload = orderStateNotificationSchema.safeParse({
+        userId: event.userId,
+        orderId: event.orderId,
+        status: event.status,
+        pickupCode: event.pickupCode,
+        locationId: event.locationId,
+        occurredAt: event.occurredAt,
+        note: event.note
+      });
+      if (!notificationPayload.success) {
+        app.log.warn({ event, errors: notificationPayload.error.flatten() }, "event-bus order event failed schema validation");
+        return;
+      }
+      const dispatchKey = `${event.userId}:${event.orderId}:${event.status}`;
+      try {
+        const isNewDispatch = await repository.markOrderStateDispatchIfNew({
+          dispatchKey,
+          payload: notificationPayload.data
+        });
+        if (isNewDispatch) {
+          await repository.enqueueOrderStateOutbox(notificationPayload.data);
+        }
+      } catch (error) {
+        app.log.warn({ error, orderId: event.orderId, status: event.status }, "failed to enqueue order-state notification from event bus");
+      }
+    });
+    app.log.info("subscribed to order events via event bus");
+  }
+
   app.addHook("onClose", async () => {
     await repository.close();
+    await eventBusSubscriber?.close();
   });
 
   app.get("/health", async () => ({ status: "ok", service: "notifications" }));
