@@ -24,6 +24,7 @@ import {
   useStoreConfigQuery
 } from "../src/menu/catalog";
 import { useCancelOrderMutation } from "../src/account/data";
+import { mergeOrderIntoHistory, orderHistoryQueryKey, type OrderHistoryEntry } from "../src/account/data";
 import {
   CheckoutSubmissionError,
   quoteItemsEqual,
@@ -128,6 +129,31 @@ function resolveStripeReturnUrl(): string | undefined {
     Constants.appOwnership === "expo" ? Linking.createURL(`/--/${path}`) : Linking.createURL(path),
     resolveStripeUrlScheme()
   );
+}
+
+function buildCheckoutOrderHistoryEntry(params: {
+  order: {
+    id: string;
+    pickupCode: string;
+    items: OrderHistoryEntry["items"];
+    total: OrderHistoryEntry["total"];
+  };
+  status: OrderHistoryEntry["status"];
+  occurredAt: string;
+}): OrderHistoryEntry {
+  return {
+    id: params.order.id,
+    pickupCode: params.order.pickupCode,
+    status: params.status,
+    items: params.order.items,
+    total: params.order.total,
+    timeline: [
+      {
+        status: params.status,
+        occurredAt: params.occurredAt
+      }
+    ]
+  };
 }
 
 export default function CheckoutScreen() {
@@ -332,13 +358,22 @@ export default function CheckoutScreen() {
         finalizedOrderStatus = "PENDING_PAYMENT";
       }
 
+      const occurredAt = new Date().toISOString();
+      const nextOrder = buildCheckoutOrderHistoryEntry({
+        order: preparedCheckout.order,
+        status: finalizedOrderStatus,
+        occurredAt
+      });
+      queryClient.setQueryData<OrderHistoryEntry[] | undefined>(orderHistoryQueryKey, (currentOrders) =>
+        mergeOrderIntoHistory(currentOrders, nextOrder)
+      );
       setConfirmation({
         orderId: preparedCheckout.order.id,
         pickupCode: preparedCheckout.order.pickupCode,
         status: finalizedOrderStatus,
         total: preparedCheckout.order.total,
         items: preparedCheckout.order.items,
-        occurredAt: new Date().toISOString()
+        occurredAt
       });
       clear();
       setStatusMessage("");

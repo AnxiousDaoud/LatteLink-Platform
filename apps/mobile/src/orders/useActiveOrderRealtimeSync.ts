@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { findActiveOrder, orderHistoryQueryKey, sortOrdersByLatestActivity, type OrderHistoryEntry, useOrderHistoryQuery } from "../account/data";
+import { findActiveOrder, mergeOrderIntoHistory, orderHistoryQueryKey, type OrderHistoryEntry, useOrderHistoryQuery } from "../account/data";
 import { apiClient } from "../api/client";
 
 export function useActiveOrderRealtimeSync(isAuthenticated: boolean) {
@@ -18,18 +18,9 @@ export function useActiveOrderRealtimeSync(isAuthenticated: boolean) {
       (updatedOrder) => {
         const nextOrder = updatedOrder as OrderHistoryEntry;
 
-        queryClient.setQueryData<OrderHistoryEntry[] | undefined>(orderHistoryQueryKey, (currentOrders) => {
-          if (!currentOrders) {
-            return currentOrders;
-          }
-
-          const hasExistingOrder = currentOrders.some((order) => order.id === nextOrder.id);
-          const nextOrders = hasExistingOrder
-            ? currentOrders.map((order) => (order.id === nextOrder.id ? nextOrder : order))
-            : [nextOrder, ...currentOrders];
-
-          return sortOrdersByLatestActivity(nextOrders);
-        });
+        queryClient.setQueryData<OrderHistoryEntry[] | undefined>(orderHistoryQueryKey, (currentOrders) =>
+          mergeOrderIntoHistory(currentOrders, nextOrder)
+        );
       },
       (error) => {
         if (__DEV__) {

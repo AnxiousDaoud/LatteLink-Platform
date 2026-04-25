@@ -2187,9 +2187,11 @@ export async function registerRoutes(app: FastifyInstance) {
       }
 
       // This is SSE backed by gateway polling rather than a dedicated websocket/event bus. The stream keeps
-      // client integration simple today while the gateway re-reads order state on an interval behind the scenes.
+      // client integration simple today while the gateway can either subscribe to Valkey-backed order events
+      // or fall back to interval polling when the event bus is unavailable.
       let closed = false;
       let pollTimeout: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribeFromOrderEvents: (() => void) | null = null;
       let lastSeenStatus = initialOrderResult.order.status;
       let lastSeenRevision = buildOrderStreamRevision(initialOrderResult.order);
 
@@ -2198,6 +2200,8 @@ export async function registerRoutes(app: FastifyInstance) {
           clearTimeout(pollTimeout);
           pollTimeout = undefined;
         }
+        unsubscribeFromOrderEvents?.();
+        unsubscribeFromOrderEvents = null;
         if (closed) {
           return;
         }
@@ -2219,7 +2223,7 @@ export async function registerRoutes(app: FastifyInstance) {
         cleanup();
       };
 
-      const pollForUpdates = async () => {
+      const refreshOrderSnapshot = async () => {
         if (closed) {
           return;
         }
@@ -2260,6 +2264,15 @@ export async function registerRoutes(app: FastifyInstance) {
 
         if (isTerminalOrderStatus(lastSeenStatus)) {
           cleanup();
+          return false;
+        }
+
+        return true;
+      };
+
+      const pollForUpdates = async () => {
+        const shouldContinue = await refreshOrderSnapshot();
+        if (!shouldContinue || closed) {
           return;
         }
 
@@ -2273,6 +2286,13 @@ export async function registerRoutes(app: FastifyInstance) {
 
       if (isTerminalOrderStatus(lastSeenStatus)) {
         cleanup();
+        return;
+      }
+
+      if (eventBusSubscriber) {
+        unsubscribeFromOrderEvents = await eventBusSubscriber.subscribeToOrderStatus(orderId, () => {
+          void refreshOrderSnapshot();
+        });
         return;
       }
 

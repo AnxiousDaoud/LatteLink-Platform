@@ -106,6 +106,19 @@ function filterVisibleOrderHistory(orders: OrderHistoryEntry[]) {
   return orders.filter((order) => !isAbortedCheckoutOrder(order));
 }
 
+export function mergeOrderIntoHistory(
+  currentOrders: OrderHistoryEntry[] | undefined,
+  order: OrderHistoryEntry
+) {
+  const baseOrders = currentOrders ?? [];
+  const hasExistingOrder = baseOrders.some((entry) => entry.id === order.id);
+  const nextOrders = hasExistingOrder
+    ? baseOrders.map((entry) => (entry.id === order.id ? order : entry))
+    : [order, ...baseOrders];
+
+  return sortOrdersByLatestActivity(filterVisibleOrderHistory(nextOrders));
+}
+
 export function useOrderHistoryQuery(enabled = true) {
   return useQuery({
     queryKey: orderHistoryQueryKey,
@@ -122,18 +135,9 @@ export function useCancelOrderMutation() {
     mutationFn: async (input: CancelOrderInput) =>
       orderSchema.parse(await apiClient.cancelOrder(input.orderId, { reason: input.reason })),
     onSuccess: async (order) => {
-      queryClient.setQueryData<OrderHistoryEntry[] | undefined>(orderHistoryQueryKey, (currentOrders) => {
-        if (!currentOrders) {
-          return currentOrders;
-        }
-
-        const hasExistingOrder = currentOrders.some((entry) => entry.id === order.id);
-        const nextOrders = hasExistingOrder
-          ? currentOrders.map((entry) => (entry.id === order.id ? order : entry))
-          : [order, ...currentOrders];
-
-        return sortOrdersByLatestActivity(filterVisibleOrderHistory(nextOrders));
-      });
+      queryClient.setQueryData<OrderHistoryEntry[] | undefined>(orderHistoryQueryKey, (currentOrders) =>
+        mergeOrderIntoHistory(currentOrders, order)
+      );
 
       await Promise.allSettled([
         queryClient.invalidateQueries({ queryKey: orderHistoryQueryKey }),

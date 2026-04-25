@@ -18,12 +18,7 @@ export function startAutoRefresh(loadDashboard: (options?: { silent?: boolean })
   if (typeof window === "undefined") {
     return;
   }
-  if (
-    !state.session ||
-    state.section !== "orders" ||
-    state.loading ||
-    !canAccessCapability(state.session.operator, "orders:read")
-  ) {
+  if (!state.session || state.loading || !canAccessCapability(state.session.operator, "orders:read")) {
     return;
   }
 
@@ -38,7 +33,7 @@ export function startAutoRefresh(loadDashboard: (options?: { silent?: boolean })
     session,
     locationId,
     onEvent: (event: AdminOrderStreamEvent) => {
-      if (state.section !== "orders" || !state.session) {
+      if (!state.session) {
         return;
       }
       if (event.type === "snapshot") {
@@ -62,9 +57,9 @@ export function startAutoRefresh(loadDashboard: (options?: { silent?: boolean })
       if (state.orderStreamUnsubscribe !== null) {
         state.orderStreamUnsubscribe = null;
       }
-      if (state.autoRefreshHandle === null && state.section === "orders" && state.session) {
+      if (state.autoRefreshHandle === null && state.session) {
         state.autoRefreshHandle = setInterval(() => {
-          if (state.section === "orders" && state.session && !state.loading) {
+          if (state.session && !state.loading) {
             void loadDashboard({ silent: true });
           }
         }, ordersRefreshIntervalMs);
