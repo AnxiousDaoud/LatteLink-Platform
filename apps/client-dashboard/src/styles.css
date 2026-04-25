@@ -1801,6 +1801,11 @@ label.field > span {
   border-color: #d4d4d8;
 }
 
+.dash-ticket-card--canceled {
+  --ticket-header-bg: #dc2626;
+  border-color: #fecaca;
+}
+
 .dash-ticket-card__band {
   display: flex;
   align-items: stretch;

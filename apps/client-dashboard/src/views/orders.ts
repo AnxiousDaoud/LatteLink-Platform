@@ -20,7 +20,7 @@ import {
 import { getSelectedOrder, getVisibleOrders } from "../orders-runtime.js";
 import { renderLocationSelectionNotice, renderOrderStatusBadge, renderSectionHeading } from "./common.js";
 
-type StoreLaneTone = "needs-action" | "in-progress" | "ready" | "closed";
+type StoreLaneTone = "needs-action" | "in-progress" | "ready" | "closed" | "canceled";
 type StoreTicketFilter = "all" | "needs_action" | "in_progress" | "ready" | "closed";
 
 function renderOrderFilterRow(activeOrderCount: number, completedOrderCount: number) {
@@ -87,8 +87,9 @@ function getStoreLaneTone(status: OperatorOrder["status"]): StoreLaneTone {
     case "READY":
       return "ready";
     case "COMPLETED":
-    case "CANCELED":
       return "closed";
+    case "CANCELED":
+      return "canceled";
     case "PAID":
     default:
       return "needs-action";
@@ -171,9 +172,11 @@ function getStoreTicketPriority(order: OperatorOrder) {
 
 function sortStoreTickets(orders: readonly OperatorOrder[], filter: StoreTicketFilter) {
   return [...orders].sort((left, right) => {
-    const priorityDelta = getStoreTicketPriority(left) - getStoreTicketPriority(right);
-    if (priorityDelta !== 0) {
-      return priorityDelta;
+    if (filter !== "closed") {
+      const priorityDelta = getStoreTicketPriority(left) - getStoreTicketPriority(right);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
     }
 
     const leftTime = Date.parse(left.timeline[0]?.occurredAt ?? "") || 0;
