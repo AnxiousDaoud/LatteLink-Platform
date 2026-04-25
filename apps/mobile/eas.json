@@ -42,7 +42,9 @@
   },
   "submit": {
     "beta": {
-      "ios": {}
+      "ios": {
+        "ascAppId": "$ASC_APP_ID"
+      }
     },
     "production": {
       "ios": {}
