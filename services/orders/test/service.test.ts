@@ -1150,6 +1150,90 @@ describe("orders service layer", () => {
     });
   });
 
+  it("allows staff to cancel a paid order when fulfillment mode is staff", async () => {
+    const { deps } = await createTestDeps(repositories, { fulfillmentMode: "staff" });
+    const { order } = await createQuotedOrder(deps, {
+      userId: "123e4567-e89b-12d3-a456-426614174333"
+    });
+
+    const paymentResult = await processPayment({
+      orderId: order.id,
+      input: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "service-staff-cancel-paid-pay"
+      },
+      requestId: "service-staff-cancel-paid-pay",
+      deps
+    });
+    if ("error" in paymentResult) {
+      throw new Error(`Expected payment success, received ${paymentResult.error.code}`);
+    }
+
+    const result = await cancelOrder({
+      orderId: order.id,
+      input: { reason: "operator canceled paid order" },
+      cancelSource: "staff",
+      requestId: "service-staff-cancel-paid",
+      deps
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      throw new Error(result.error.code);
+    }
+
+    expect(result.order.status).toBe("CANCELED");
+    expect(result.order.timeline.at(-1)).toMatchObject({
+      status: "CANCELED",
+      source: "staff"
+    });
+  });
+
+  it("cancelOrder accepts provider-style payment ids for paid refunds", async () => {
+    const { deps } = await createTestDeps(repositories, { fulfillmentMode: "staff" });
+    const { order } = await createQuotedOrder(deps, {
+      userId: "123e4567-e89b-12d3-a456-426614174334"
+    });
+
+    const paymentResult = await processPayment({
+      orderId: order.id,
+      input: {
+        applePayToken: "apple-pay-success-token",
+        idempotencyKey: "service-provider-payment-id-pay"
+      },
+      requestId: "service-provider-payment-id-pay",
+      deps
+    });
+    if ("error" in paymentResult) {
+      throw new Error(`Expected payment success, received ${paymentResult.error.code}`);
+    }
+
+    vi.spyOn(deps.repository, "getPaymentId").mockResolvedValue("pi_live_provider_payment_id");
+
+    const result = await cancelOrder({
+      orderId: order.id,
+      input: { reason: "operator canceled paid order with provider payment id" },
+      cancelSource: "staff",
+      requestId: "service-provider-payment-id-cancel",
+      deps
+    });
+
+    expect("error" in result).toBe(false);
+    if ("error" in result) {
+      throw new Error(result.error.code);
+    }
+
+    const refundCalls = fetchMock.mock.calls.filter(([input]) =>
+      (typeof input === "string" ? input : input.toString()).endsWith("/v1/payments/refunds")
+    );
+    expect(refundCalls).toHaveLength(1);
+    expect(JSON.parse(String(refundCalls[0]?.[1]?.body))).toMatchObject({
+      orderId: order.id,
+      paymentId: "pi_live_provider_payment_id"
+    });
+    expect(result.order.status).toBe("CANCELED");
+  });
+
   it("rejects createOrder when request user context is missing", async () => {
     const { deps } = await createTestDeps(repositories);
     const quoteResult = await createQuote({

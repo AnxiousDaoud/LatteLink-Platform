@@ -1349,6 +1349,34 @@ describe("payments service", () => {
     await app.close();
   });
 
+  it("accepts provider-style payment ids on refund requests", async () => {
+    const app = await buildApp();
+
+    const refund = await app.inject({
+      method: "POST",
+      url: "/v1/payments/refunds",
+      headers: internalHeaders(),
+      payload: {
+        orderId: "123e4567-e89b-12d3-a456-426614174028",
+        paymentId: "pi_provider_payment_id",
+        amountCents: 1295,
+        currency: "USD",
+        reason: "store canceled order",
+        idempotencyKey: "refund-provider-payment-id"
+      }
+    });
+
+    expect(refund.statusCode).toBe(404);
+    expect(refund.json()).toMatchObject({
+      code: "PAYMENT_NOT_FOUND",
+      details: {
+        orderId: "123e4567-e89b-12d3-a456-426614174028",
+        paymentId: "pi_provider_payment_id"
+      }
+    });
+    await app.close();
+  });
+
   it("rejects charge idempotency key reuse when the payload changes", async () => {
     const app = await buildApp();
     const orderId = "123e4567-e89b-12d3-a456-426614174099";

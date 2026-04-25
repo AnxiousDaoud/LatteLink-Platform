@@ -103,7 +103,7 @@ const chargeRequestSchema = z.object({
 const chargeStatusSchema = z.enum(["SUCCEEDED", "DECLINED", "TIMEOUT"]);
 
 const chargeResponseSchema = z.object({
-  paymentId: z.string().uuid(),
+  paymentId: z.string().min(1),
   provider: z.literal("CLOVER"),
   orderId: z.string().uuid(),
   status: chargeStatusSchema,
@@ -117,7 +117,7 @@ const chargeResponseSchema = z.object({
 
 const refundRequestSchema = z.object({
   orderId: z.string().uuid(),
-  paymentId: z.string().uuid(),
+  paymentId: z.string().min(1),
   amountCents: z.number().int().positive(),
   currency: z.literal("USD"),
   reason: z.string().min(1),
@@ -131,7 +131,7 @@ const refundResponseSchema = z.object({
   refundId: z.string().uuid(),
   provider: z.literal("CLOVER"),
   orderId: z.string().uuid(),
-  paymentId: z.string().uuid(),
+  paymentId: z.string().min(1),
   status: refundStatusSchema,
   amountCents: z.number().int().positive(),
   currency: z.literal("USD"),

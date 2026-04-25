@@ -106,7 +106,7 @@ const paymentsChargeResponseSchema = z.object({
 
 const paymentsRefundRequestSchema = z.object({
   orderId: z.string().uuid(),
-  paymentId: z.string().uuid(),
+  paymentId: z.string().min(1),
   amountCents: z.number().int().positive(),
   currency: z.literal("USD"),
   reason: z.string().min(1),
