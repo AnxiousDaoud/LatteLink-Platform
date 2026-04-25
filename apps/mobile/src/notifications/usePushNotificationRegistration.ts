@@ -1,4 +1,5 @@
 import * as Crypto from "expo-crypto";
+import Constants from "expo-constants";
 import * as Notifications from "expo-notifications";
 import * as SecureStore from "expo-secure-store";
 import { AppState, Platform } from "react-native";
@@ -20,6 +21,20 @@ Notifications.setNotificationHandler({
 
 const DEVICE_ID_KEY = "lattelink.device_id";
 
+function resolveExpoProjectId() {
+  const expoConfigProjectId = Constants.expoConfig?.extra?.eas?.projectId;
+  if (typeof expoConfigProjectId === "string" && expoConfigProjectId.trim().length > 0) {
+    return expoConfigProjectId;
+  }
+
+  const easConfigProjectId = Constants.easConfig?.projectId;
+  if (typeof easConfigProjectId === "string" && easConfigProjectId.trim().length > 0) {
+    return easConfigProjectId;
+  }
+
+  return undefined;
+}
+
 async function getOrCreateDeviceId(): Promise<string> {
   const existing = await SecureStore.getItemAsync(DEVICE_ID_KEY);
   if (existing) {
@@ -35,7 +50,12 @@ export function usePushNotificationRegistration(isAuthenticated: boolean) {
   const registeredRef = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated || registeredRef.current) {
+    if (!isAuthenticated) {
+      registeredRef.current = false;
+      return;
+    }
+
+    if (registeredRef.current) {
       return;
     }
 
@@ -54,7 +74,10 @@ export function usePushNotificationRegistration(isAuthenticated: boolean) {
 
       let tokenData: Notifications.ExpoPushToken;
       try {
-        tokenData = await Notifications.getExpoPushTokenAsync();
+        const projectId = resolveExpoProjectId();
+        tokenData = projectId
+          ? await Notifications.getExpoPushTokenAsync({ projectId })
+          : await Notifications.getExpoPushTokenAsync();
       } catch {
         return;
       }
@@ -62,8 +85,12 @@ export function usePushNotificationRegistration(isAuthenticated: boolean) {
       const platform = Platform.OS === "ios" ? "ios" : "android";
       const deviceId = await getOrCreateDeviceId();
 
-      mutation.mutate({ deviceId, platform, expoPushToken: tokenData.data });
-      registeredRef.current = true;
+      try {
+        await mutation.mutateAsync({ deviceId, platform, expoPushToken: tokenData.data });
+        registeredRef.current = true;
+      } catch {
+        registeredRef.current = false;
+      }
     }
 
     void register();
