@@ -1689,6 +1689,11 @@ label.field > span {
   align-items: stretch;
   min-height: 0;
   padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.dash-store-ticket-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .dash-store-ticket-strip--empty {

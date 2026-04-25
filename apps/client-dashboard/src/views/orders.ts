@@ -169,7 +169,7 @@ function getStoreTicketPriority(order: OperatorOrder) {
   }
 }
 
-function sortStoreTickets(orders: readonly OperatorOrder[]) {
+function sortStoreTickets(orders: readonly OperatorOrder[], filter: StoreTicketFilter) {
   return [...orders].sort((left, right) => {
     const priorityDelta = getStoreTicketPriority(left) - getStoreTicketPriority(right);
     if (priorityDelta !== 0) {
@@ -178,7 +178,7 @@ function sortStoreTickets(orders: readonly OperatorOrder[]) {
 
     const leftTime = Date.parse(left.timeline[0]?.occurredAt ?? "") || 0;
     const rightTime = Date.parse(right.timeline[0]?.occurredAt ?? "") || 0;
-    return leftTime - rightTime;
+    return filter === "closed" ? rightTime - leftTime : leftTime - rightTime;
   });
 }
 
@@ -400,7 +400,7 @@ function renderStoreTicket(order: OperatorOrder, appConfig: AppConfig | null) {
 function renderStoreModeBoard(appConfig: AppConfig | null) {
   const storeOrders = [...state.orders];
   const completedOrders = storeOrders.filter((order) => order.status === "COMPLETED" || order.status === "CANCELED");
-  const orderedTickets = sortStoreTickets(filterStoreTickets(storeOrders, state.storeTicketFilter));
+  const orderedTickets = sortStoreTickets(filterStoreTickets(storeOrders, state.storeTicketFilter), state.storeTicketFilter);
 
   return `
     <section class="dash-section dash-section--store-mode">
