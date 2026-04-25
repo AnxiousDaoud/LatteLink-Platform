@@ -372,11 +372,13 @@ function renderStoreTicket(order: OperatorOrder, appConfig: AppConfig | null) {
         </div>
       </div>
 
-      <div class="dash-ticket-items">
-        ${renderOrderItems(order, "ticket")}
-      </div>
+      <div class="dash-ticket-body">
+        <div class="dash-ticket-items">
+          ${renderOrderItems(order, "ticket")}
+        </div>
 
-      ${noteMarkup ? `<div class="dash-ticket-callouts">${noteMarkup}</div>` : ""}
+        ${noteMarkup ? `<div class="dash-ticket-callouts">${noteMarkup}</div>` : ""}
+      </div>
 
       <div class="dash-ticket-footer">${controls ? `<div class="dash-ticket-actions">${controls}</div>` : ""}</div>
     </article>
@@ -386,35 +388,16 @@ function renderStoreTicket(order: OperatorOrder, appConfig: AppConfig | null) {
 function renderStoreModeBoard(appConfig: AppConfig | null) {
   const storeOrders = [...state.orders];
   const completedOrders = storeOrders.filter((order) => order.status === "COMPLETED" || order.status === "CANCELED");
-  const selectedLocation = getSelectedLocation();
   const orderedTickets = sortStoreTickets(filterStoreTickets(storeOrders, state.storeTicketFilter));
-  const storeHeading = isAllLocationsSelected()
-    ? state.storeConfig?.storeName ?? state.appConfig?.brand.brandName ?? "Store mode"
-    : state.storeConfig?.storeName ??
-      state.appConfig?.brand.brandName ??
-      selectedLocation?.locationName ??
-      state.appConfig?.brand.locationName ??
-      "Store mode";
-  const locationHeading = isAllLocationsSelected()
-    ? `${state.availableLocations.length} locations`
-    : state.storeConfig?.locationName ??
-      selectedLocation?.locationName ??
-      state.appConfig?.brand.locationName ??
-      "Live ticket board";
 
   return `
     <section class="dash-section dash-section--store-mode">
-      ${renderSectionHeading({
-        eyebrow: storeHeading,
-        title: locationHeading,
-        description: "A horizontally scrolling prep board for active tickets, modifiers, and handoff actions.",
-        actions: `
-          ${renderStoreModeSummary(storeOrders, completedOrders)}
-          <button class="button button--ghost" type="button" data-action="refresh" ${state.loading ? "disabled" : ""}>
-            ${state.loading ? '<span class="spinner"></span>' : "Refresh"}
-          </button>
-        `
-      })}
+      <div class="dash-store-board__toolbar">
+        ${renderStoreModeSummary(storeOrders, completedOrders)}
+        <button class="button button--ghost" type="button" data-action="refresh" ${state.loading ? "disabled" : ""}>
+          ${state.loading ? '<span class="spinner"></span>' : "Refresh"}
+        </button>
+      </div>
       <div class="dash-store-board">
         <div class="dash-store-board__meta">
           <div>
