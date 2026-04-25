@@ -34,7 +34,7 @@ export function isSessionAuthFailure(error: unknown) {
   );
 }
 
-export async function signOut(message = "Signed out of the client dashboard.") {
+export async function signOut(message = "") {
   const currentSession = state.session;
   clearStoredSession();
   state.session = null;

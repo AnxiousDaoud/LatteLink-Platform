@@ -1280,7 +1280,7 @@ label.field > span {
 
 .dash-bars {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   gap: 6px;
   height: 120px;
   padding-bottom: 22px;
@@ -1293,7 +1293,7 @@ label.field > span {
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  position: relative;
 }
 
 .dash-bar {
@@ -1309,6 +1309,8 @@ label.field > span {
 }
 
 .dash-bar-label {
+  position: absolute;
+  bottom: -18px;
   font-size: 10px;
   color: var(--color-text-3);
   white-space: nowrap;

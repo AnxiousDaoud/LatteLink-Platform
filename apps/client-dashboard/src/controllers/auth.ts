@@ -58,7 +58,7 @@ export async function handlePasswordSignIn(form: HTMLFormElement) {
     setError(null);
     render();
     const session = await signInOperatorWithPassword({ apiBaseUrl, email, password });
-    await applyVerifiedSession(session, `Signed in as ${session.operator.displayName}.`);
+    await applyVerifiedSession(session, "");
   } catch (error) {
     setError(error instanceof Error ? error.message : "Unable to sign in.");
   } finally {
@@ -134,7 +134,7 @@ export async function handleGoogleCallback() {
     });
     clearGoogleCallbackParams();
     state.signingIn = false;
-    await applyVerifiedSession(session, `Signed in with Google as ${session.operator.displayName}.`);
+    await applyVerifiedSession(session, "");
   } catch (error) {
     clearGoogleCallbackParams();
     state.signingIn = false;
