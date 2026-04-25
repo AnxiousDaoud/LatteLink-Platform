@@ -61,22 +61,6 @@ function getOrderElapsedLabel(order: OperatorOrder) {
   return `${Math.floor(deltaMinutes / 60)}h ago`;
 }
 
-function formatOrderTimeLabel(value: string | undefined) {
-  if (!value) {
-    return "Just now";
-  }
-
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  }).format(new Date(parsed));
-}
-
 function getOrderItemCount(order: OperatorOrder) {
   return order.items.reduce((count, item) => count + item.quantity, 0);
 }
