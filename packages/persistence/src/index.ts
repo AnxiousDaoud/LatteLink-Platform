@@ -26,7 +26,7 @@ export interface PaymentsRefundTable {
   order_id: string;
   payment_id: string;
   idempotency_key: string;
-  provider: "CLOVER";
+  provider: "CLOVER" | "STRIPE";
   status: "REFUNDED" | "REJECTED";
   amount_cents: number;
   currency: "USD";
