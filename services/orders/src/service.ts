@@ -1158,9 +1158,20 @@ export async function createOrder(params: {
     deps
   });
   if (activeOrder) {
-    return {
-      error: buildActiveOrderExistsError(activeOrder)
-    };
+    if (activeOrder.status === "PENDING_PAYMENT") {
+      // The customer started a checkout but never completed payment (e.g. app was
+      // force-closed). Silently cancel the stale record so they can check out again.
+      // No notification is sent — the order was never confirmed to the customer.
+      const staleCancellation = transitionOrderStatus(activeOrder, "CANCELED", {
+        note: "Superseded by a new checkout attempt.",
+        source: "customer"
+      });
+      await deps.repository.updateOrder(activeOrder.id, staleCancellation.order);
+    } else {
+      return {
+        error: buildActiveOrderExistsError(activeOrder)
+      };
+    }
   }
 
   const storeAvailability = await ensureStoreIsOpen(deps);

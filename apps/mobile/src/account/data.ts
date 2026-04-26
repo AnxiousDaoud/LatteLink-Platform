@@ -67,7 +67,7 @@ const pushTokenUpsertResponseSchema = z.object({
 
 const orderListSchema = z.array(orderSchema);
 const loyaltyLedgerSchema = z.array(loyaltyLedgerEntrySchema);
-const activeOrderStatusSchema = orderStatusSchema.exclude(["CANCELED", "COMPLETED"]);
+const activeOrderStatusSchema = orderStatusSchema.exclude(["CANCELED", "COMPLETED", "PENDING_PAYMENT"]);
 export const orderHistoryQueryKey = ["account", "orders"] as const;
 
 export type OrderHistoryEntry = z.output<typeof orderSchema>;
@@ -103,7 +103,7 @@ export function isAbortedCheckoutOrder(order: OrderHistoryEntry) {
 }
 
 function filterVisibleOrderHistory(orders: OrderHistoryEntry[]) {
-  return orders.filter((order) => !isAbortedCheckoutOrder(order));
+  return orders.filter((order) => order.status !== "PENDING_PAYMENT" && !isAbortedCheckoutOrder(order));
 }
 
 export function normalizeOrderHistory(orders: OrderHistoryEntry[]) {

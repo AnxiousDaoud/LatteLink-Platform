@@ -337,6 +337,10 @@ export async function registerRoutes(app: FastifyInstance) {
         app.log.warn({ event, errors: notificationPayload.error.flatten() }, "event-bus order event failed schema validation");
         return;
       }
+      // PENDING_PAYMENT is an unconfirmed checkout state — suppress push notifications.
+      if (notificationPayload.data.status === "PENDING_PAYMENT") {
+        return;
+      }
       const dispatchKey = `${event.userId}:${event.order.id}:${notificationPayload.data.status}`;
       try {
         const isNewDispatch = await repository.markOrderStateDispatchIfNew({
@@ -422,6 +426,17 @@ export async function registerRoutes(app: FastifyInstance) {
       }
 
       const input = orderStateNotificationSchema.parse(request.body);
+
+      // PENDING_PAYMENT is an unconfirmed checkout state — never push-notify for it.
+      // The first customer-facing notification must be PAID ("Order confirmed").
+      if (input.status === "PENDING_PAYMENT") {
+        return orderStateDispatchResponseSchema.parse({
+          accepted: true,
+          enqueued: 0,
+          deduplicated: false
+        });
+      }
+
       const dispatchKey = `${input.userId}:${input.orderId}:${input.status}`;
 
       const isNewDispatch = await repository.markOrderStateDispatchIfNew({
