@@ -510,7 +510,6 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 10,
     paddingHorizontal: 20,
-    paddingBottom: 12,
     backgroundColor: uiPalette.background,
     overflow: "hidden",
     justifyContent: "flex-end"
