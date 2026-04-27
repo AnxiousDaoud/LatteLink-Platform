@@ -126,7 +126,7 @@ export function AccountScreen() {
     });
   }
 
-  function openAccountRoute(pathname: "/account/rewards" | "/account/alerts" | "/account/session" | "/account/settings") {
+  function openAccountRoute(pathname: "/account/rewards" | "/account/alerts" | "/account/settings") {
     if (!isAuthenticated) {
       router.push({ pathname: "/auth", params: { returnTo: "/(tabs)/account" } });
       return;
@@ -185,7 +185,6 @@ export function AccountScreen() {
           <View style={styles.pageList}>
             <AccountPageRow label="Rewards activity" onPress={() => openAccountRoute("/account/rewards")} />
             <AccountPageRow label="Profile" onPress={() => openAccountRoute("/account/alerts")} />
-            <AccountPageRow label="Session" onPress={() => openAccountRoute("/account/session")} />
             <AccountPageRow label="Settings" isLast onPress={() => openAccountRoute("/account/settings")} />
           </View>
         </View>

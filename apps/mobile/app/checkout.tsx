@@ -185,21 +185,10 @@ export default function CheckoutScreen() {
             ? "No supported mobile payment methods are enabled for this store."
       : storeClosedMessage;
   const checkoutReady = checkoutUnavailableMessage === null;
-  const applePayCapabilityEnabled = Boolean(appConfig?.paymentCapabilities.applePay);
-  const cardCapabilityEnabled = Boolean(appConfig?.paymentCapabilities.card);
   const quoteItems = useMemo(() => toQuoteItems(items), [items]);
   const retryableOrder = retryOrder && quoteItemsEqual(quoteItems, retryOrder.quoteItems) ? retryOrder : undefined;
   const itemCount = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
   const applePayMerchantIdentifier = resolveConfiguredApplePayMerchantIdentifier();
-  const applePayAvailableInSheet = Boolean(applePayCapabilityEnabled && applePayMerchantIdentifier);
-  const supportedPaymentMethodsLabel =
-    cardCapabilityEnabled && applePayAvailableInSheet
-      ? "Apple Pay and cards"
-      : cardCapabilityEnabled
-        ? "Cards"
-        : applePayAvailableInSheet
-          ? "Apple Pay"
-          : "Payment methods";
   const brandName = appConfig?.brand.brandName ?? "Your order";
   const storeStatusLabel = storeConfig ? (storeConfig.isOpen ? "Open now" : "Closed right now") : "Store unavailable";
   const etaLabel = storeConfig ? `${storeConfig.prepEtaMinutes} min pickup` : "ETA unavailable";
@@ -501,14 +490,6 @@ export default function CheckoutScreen() {
               <SummaryRow label="Total" value={formatUsd(pricingSummary.totalCents)} emphasized />
             </Card>
 
-            <View style={styles.paymentSummaryBlock}>
-              <Text style={styles.paymentSummaryEyebrow}>Payment</Text>
-              <Text style={styles.paymentSummaryTitle}>Secure Stripe checkout</Text>
-              <Text style={styles.paymentSummaryBody}>
-                {supportedPaymentMethodsLabel} are collected inside Stripe PaymentSheet. Your order appears only after
-                Stripe confirms the payment.
-              </Text>
-            </View>
           </>
         )}
       </ScrollView>
@@ -524,11 +505,6 @@ export default function CheckoutScreen() {
               ) : null}
             </View>
           ) : null}
-
-          <View style={styles.bottomActionMetaRow}>
-            <Text style={styles.bottomActionMetaLabel}>{supportedPaymentMethodsLabel}</Text>
-            <Text style={styles.bottomActionMetaValue}>{formatUsd(pricingSummary.totalCents)}</Text>
-          </View>
 
           <GlassActionPill
             label={payActionLabel}
@@ -788,32 +764,6 @@ const styles = StyleSheet.create({
   bottomStatusStack: {
     gap: 12
   },
-  paymentSummaryBlock: {
-    paddingHorizontal: 2,
-    paddingTop: 4,
-    gap: 8
-  },
-  paymentSummaryEyebrow: {
-    fontSize: 11,
-    lineHeight: 14,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-    color: uiPalette.textSecondary,
-    fontWeight: "700"
-  },
-  paymentSummaryTitle: {
-    fontSize: 22,
-    lineHeight: 26,
-    color: uiPalette.text,
-    fontFamily: uiTypography.displayFamily,
-    fontWeight: "700"
-  },
-  paymentSummaryBody: {
-    maxWidth: 340,
-    fontSize: 13,
-    lineHeight: 19,
-    color: uiPalette.textSecondary
-  },
   bottomDock: {
     position: "absolute",
     left: 0,
@@ -822,26 +772,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     gap: 12
-  },
-  bottomActionMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 8
-  },
-  bottomActionMetaLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: uiPalette.textSecondary,
-    fontWeight: "700"
-  },
-  bottomActionMetaValue: {
-    fontSize: 15,
-    lineHeight: 18,
-    color: uiPalette.text,
-    fontWeight: "700"
   },
   applePayPressable: {
     width: "100%"

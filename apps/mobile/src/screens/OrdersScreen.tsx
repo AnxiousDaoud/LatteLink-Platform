@@ -28,8 +28,7 @@ import { useCheckoutFlow } from "../orders/flow";
 import {
   findLatestOrderTime,
   formatOrderDateTime,
-  formatOrderReference,
-  getLatestOrderTimelineNote
+  formatOrderReference
 } from "../orders/history";
 import { OrdersLoadingState } from "../orders/OrdersLoadingState";
 import { Button, ScreenScroll, ScreenStatic, uiPalette, uiTypography } from "../ui/system";
@@ -582,8 +581,6 @@ export function OrdersScreen() {
 
               <OrderProgress status={activeOrderStatus ?? activeOrder.status} />
 
-              <Text style={styles.activeStatusNote}>{getLatestOrderTimelineNote(activeOrder)}</Text>
-
               {(activeOrderStatus ?? activeOrder.status) === "PENDING_PAYMENT" ? (
                 <View style={styles.paymentActionGroup}>
                   <Button
@@ -951,12 +948,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: uiPalette.danger
-  },
-  activeStatusNote: {
-    marginTop: 16,
-    fontSize: 14,
-    lineHeight: 21,
-    color: uiPalette.textSecondary
   },
   sectionMessage: {
     marginTop: 18,
