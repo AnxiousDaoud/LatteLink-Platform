@@ -1,0 +1,43 @@
+# Product Stage
+
+Last verified: 2026-04-27 (from code)
+
+## Classification: Commercial MVP (pre-production)
+
+The platform has all the technical pieces required for one merchant to accept real orders and real payments from real customers. It has never done so in a live production environment.
+
+## What "commercial MVP" means here
+
+- The customer ordering flow (browse → cart → checkout → order history) is fully implemented and type-safe.
+- Stripe Connect payments (including Apple Pay) are wired end-to-end.
+- The merchant operator dashboard covers orders, menu management, store config, and team management.
+- An internal admin console exists to onboard merchants via bootstrap + owner provisioning.
+- Loyalty (fixed points program) is implemented.
+- Push notifications are wired via Expo push.
+- CI passes lint, typecheck, unit tests, and contract drift checks.
+
+## What prevents it from being "early SaaS platform"
+
+1. **Never processed a real live payment.** The platform exists but has not run a real pilot.
+2. **Time-based fulfillment is the default.** Orders auto-progress without staff confirmation. Real merchants need staff-driven transitions.
+3. **Loyalty is cross-merchant.** The `loyalty_balances` table has no `location_id`. A second merchant would share the same loyalty pool as the first. This is a data integrity bug.
+4. **Single-host deployment.** One Docker Compose host with no failover.
+5. **No observability.** No error aggregation, no alerting, no metrics beyond `/health`.
+6. **Mobile app is one app per merchant.** Separate EAS build profile per merchant required.
+7. **Media upload incomplete.** Operators cannot upload menu item images from the dashboard.
+
+## One-sentence honest summary
+
+The platform is a solid, well-typed commercial MVP that could support one merchant in a controlled pilot today if three specific data and configuration issues are fixed first (fulfillment mode, loyalty scoping, media upload).
+
+## Path to next classification
+
+**Early SaaS platform** requires:
+- 2+ merchants processing real orders simultaneously
+- Loyalty correctly scoped per merchant
+- No hardcoded tenant defaults
+- Structured logging and basic alerting
+- Multi-host or managed container deployment
+- SaaS billing per merchant
+
+Estimated timeline: Phase 0 + Phase 1 from ROADMAP.md (~10–14 weeks of focused engineering).

@@ -1,47 +1,33 @@
 # Architecture Overview
 
-## Public API
+> **Note**: This file is superseded by [ARCHITECTURE.md](../../ARCHITECTURE.md) at the repo root, which was written from code on 2026-04-27.  
+> The content below was previously inaccurate (wrong domain name, non-existent `/metrics` route, outdated notifications description). It has been replaced with a pointer to the authoritative document.
 
-- Base URL: `https://api.gazellecoffee.com/v1`
-- Entry point: `services/gateway`
-- Contract source of truth: `packages/contracts/*`
+See [ARCHITECTURE.md](../../ARCHITECTURE.md) for the current architecture.
 
-## Services
+---
 
-- `gateway`: public API gateway, auth enforcement, rate-limiting boundary
-- `identity`: Apple auth, passkeys, operator auth, and internal admin auth
-- `catalog`: menu + store config
-- `orders`: quote/create/cancel/order history/status
-- `payments`: Apple Pay + Clover orchestration
-- `loyalty`: points ledger and balances
-- `notifications`: push token registration and notification dispatch
-- `workers/menu-sync`: synchronization from existing `WebApp` content API
-- `workers/notifications-dispatch`: drains notifications outbox and simulates provider dispatch
+## Quick Reference (accurate as of 2026-04-27)
 
-## Shared Packages
+**Public API entry point**: `services/gateway` — routes all customer and operator traffic.
 
-- `contracts/*`: domain request/response schemas (Zod)
-- `persistence`: shared persistence bootstrap and table provisioning helpers
-- `design-tokens`: Gazelle design language tokens
-- `sdk-mobile`: generated typed SDK for mobile app
-- `config-eslint`, `config-typescript`: shared tooling
+**Service ports (internal)**:
+- gateway: 8080
+- identity: 3000
+- orders: 3001
+- catalog: 3002
+- payments: 3003
+- loyalty: 3004
+- notifications: 3005
 
-## Data Ownership
+**Deployment**: Docker Compose on single host (`infra/free/docker-compose.yml`) + Caddy TLS.
 
-Single Postgres instance with schema-per-service:
+**Frontends on Vercel**: admin-console, client-dashboard, lattelink-web.
 
-- `identity_*`
-- `catalog_*`
-- `orders_*`
-- `payments_*`
-- `loyalty_*`
-- `notifications_*`
+**Contracts source of truth**: `packages/contracts/*` (Zod schemas, OpenAPI generated from these).
 
-## Observability Baseline
+**Data stores**:
+- Postgres (single shared instance, table-prefix namespacing per service)
+- Valkey / Redis-compatible (event bus + gateway rate limiting)
 
-Every service exposes:
-
-- `GET /health`
-- `GET /ready`
-- `GET /metrics` (service-level request counters)
-- structured request logs with request IDs
+**Observability**: `/health` and `/ready` on every service. No metrics endpoint. No log aggregation yet.
