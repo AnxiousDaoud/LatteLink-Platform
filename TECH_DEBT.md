@@ -19,19 +19,19 @@ Location: `loyalty_balances` table (migration 0001), `services/loyalty/src/route
 Description: `loyalty_balances` PK is `user_id` with no `location_id`. Loyalty is shared across all merchants on the platform. A second merchant's customers can redeem points earned elsewhere.  
 Resolution: Migration to add `location_id` and change PK to `(user_id, location_id)`. See ROADMAP Phase 1.
 
-**TD-03** — Media upload pipeline is incomplete  
+**TD-03** — Media upload pipeline is implemented but not yet proven in deployment  
 Location: `services/catalog/src/media-storage.ts`, `services/catalog/src/routes.ts`  
-Description: The catalog contract and docker-compose env vars reference R2 presigned uploads, but the upload handler in the service routes is not fully implemented. Operators cannot upload menu images.  
-Resolution: Complete R2 presigned URL flow. See ROADMAP Phase 0.
+Description: The catalog service, gateway, and client dashboard already implement the R2 presigned upload flow, but it still needs staging verification with real bucket credentials, public asset URLs, and end-to-end image persistence.  
+Resolution: Validate the existing R2 flow in staging, document required env/bucket setup, and harden any deployment-specific gaps. See ROADMAP Phase 0.
 
 ---
 
 ## High (breaks trust or creates risk at scale)
 
-**TD-04** — Order SSE stream is polling-backed, not event-driven  
+**TD-04** — Order SSE stream still polls even when event-bus subscription succeeds  
 Location: `services/gateway/src/routes.ts` (stream route)  
-Description: `GET /v1/orders/:orderId/stream` re-polls the orders service on a timer instead of subscribing to the event bus (which already publishes order events correctly via `packages/event-bus`). Carries an explicit TODO in the code.  
-Resolution: Subscribe to `EventBusSubscriber.subscribeToOrderStatus` in the stream handler. See ROADMAP Phase 0.
+Description: `GET /v1/orders/:orderId/stream` already subscribes to `EventBusSubscriber.subscribeToOrderStatus`, but it also keeps a polling loop active as a safety net. That means the event bus is not yet the sole steady-state transport.  
+Resolution: Keep polling only as fallback when subscription setup fails, not in parallel with a healthy event-bus stream. See ROADMAP Phase 0.
 
 **TD-05** — No structured error logging or alerting  
 Location: All services  

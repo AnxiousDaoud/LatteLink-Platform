@@ -15,7 +15,7 @@ LatteLink begins as a branded mobile ordering platform for independent coffee sh
 - Merchant dashboard functional for orders, menu, store config, team
 - Internal admin console for merchant onboarding
 - Single-host Docker Compose deployment
-- Three blocking issues before any live pilot: fulfillment mode, loyalty scoping, media upload
+- Three blocking issues before any live pilot: fulfillment mode, loyalty scoping, stale payment reconciliation
 
 ---
 
@@ -25,16 +25,16 @@ LatteLink begins as a branded mobile ordering platform for independent coffee sh
 
 ### Scope
 - Set `staff` fulfillment mode as the documented default for all real deployments (not `time_based`)
-- Complete the R2 media upload pipeline for menu images
-- Replace polling-backed SSE order stream with event-bus-backed stream
+- Validate and harden the existing R2 media upload pipeline in a deployed environment
+- Remove unconditional order-stream polling when event-bus SSE subscription succeeds
 - Add structured JSON logging with request IDs to gateway and orders service
 - Fix customer session absolute TTL (currently idle-timeout only)
 - Remove fallback hardcoded menu/config data from mobile `catalog.ts`
 
 ### Success metrics
 - End-to-end checkout demo passes QA with no time-based auto-progression
-- Operator can upload a menu image from the dashboard
-- Order status updates arrive in <2s via event bus (no polling)
+- Operator can upload a menu image from the dashboard in staging with real R2 credentials
+- Order status updates arrive in <2s via event bus without parallel steady-state polling
 - All critical paths produce structured logs
 
 ### Not in scope

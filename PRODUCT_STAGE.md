@@ -21,14 +21,14 @@ The platform has all the technical pieces required for one merchant to accept re
 1. **Never processed a real live payment.** The platform exists but has not run a real pilot.
 2. **Time-based fulfillment is the default.** Orders auto-progress without staff confirmation. Real merchants need staff-driven transitions.
 3. **Loyalty is cross-merchant.** The `loyalty_balances` table has no `location_id`. A second merchant would share the same loyalty pool as the first. This is a data integrity bug.
-4. **Single-host deployment.** One Docker Compose host with no failover.
-5. **No observability.** No error aggregation, no alerting, no metrics beyond `/health`.
-6. **Mobile app is one app per merchant.** Separate EAS build profile per merchant required.
-7. **Media upload incomplete.** Operators cannot upload menu item images from the dashboard.
+4. **Stripe reconciliation has no stale-order recovery.** If a webhook is missed or delayed, an order can remain stuck in `PENDING_PAYMENT` indefinitely.
+5. **Single-host deployment.** One Docker Compose host with no failover.
+6. **No observability.** No error aggregation, no alerting, no metrics beyond `/health`.
+7. **Mobile app is one app per merchant.** Separate EAS build profile per merchant required.
 
 ## One-sentence honest summary
 
-The platform is a solid, well-typed commercial MVP that could support one merchant in a controlled pilot today if three specific data and configuration issues are fixed first (fulfillment mode, loyalty scoping, media upload).
+The platform is a solid, well-typed commercial MVP that could support one merchant in a controlled pilot today if three specific issues are fixed first (fulfillment mode, loyalty scoping, stale payment reconciliation).
 
 ## Path to next classification
 
