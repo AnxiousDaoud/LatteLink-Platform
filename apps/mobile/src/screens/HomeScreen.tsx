@@ -82,32 +82,6 @@ function HomeNewsTag({ label }: { label: NewsLabel }) {
   );
 }
 
-function formatNextOpenLabel(nextOpenAt: string | null): string | null {
-  if (!nextOpenAt) return null;
-
-  const reopenAt = new Date(nextOpenAt);
-  if (Number.isNaN(reopenAt.getTime())) return null;
-
-  const now = new Date();
-  const isSameDay =
-    reopenAt.getFullYear() === now.getFullYear() &&
-    reopenAt.getMonth() === now.getMonth() &&
-    reopenAt.getDate() === now.getDate();
-
-  if (isSameDay) {
-    return reopenAt.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit"
-    });
-  }
-
-  return reopenAt.toLocaleString([], {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit"
-  });
-}
-
 export function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -128,7 +102,6 @@ export function HomeScreen() {
     [appConfigQuery.error, homeNewsCardsQuery.error, storeConfigQuery.error].some(isBackendReachabilityError)
       ? "Unable to reach backend. Pull to refresh or try again in a moment."
       : "We couldn’t load the live store details. Pull to refresh or try again in a moment.";
-  const nextOpenLabel = formatNextOpenLabel(storeConfig.nextOpenAt);
   const scrollViewRef = useRef<ScrollView | null>(null);
   const scrollY = useSharedValue(0);
   const dockBottom = getTabBarBottomOffset(insets.bottom > 0);
@@ -163,12 +136,6 @@ export function HomeScreen() {
 
   const headerContentStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: interpolate(scrollY.value, [0, headerCollapseDistance], [-8, 0], Extrapolation.CLAMP) }]
-  }));
-
-  const pickupMetaStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 20, 48], [1, 0.28, 0], Extrapolation.CLAMP),
-    height: interpolate(scrollY.value, [0, 48], [18, 0], Extrapolation.CLAMP),
-    marginBottom: interpolate(scrollY.value, [0, 48], [6, 0], Extrapolation.CLAMP)
   }));
 
   const menuLinkStyle = useAnimatedStyle(() => ({
@@ -309,15 +276,6 @@ export function HomeScreen() {
 
           <Animated.View style={[styles.storeRail, storeRailStyle]}>
             <View style={styles.storeCopy}>
-              <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>
-                <Text style={[styles.storeMeta, !storeConfig.isOpen ? styles.storeMetaClosed : null, { color: headerForegroundColor }]}>
-                  {storeConfig.isOpen
-                    ? `Estimated pick-up is ${storeConfig.prepEtaMinutes} mins`
-                    : nextOpenLabel
-                      ? `Closed now · Opens ${nextOpenLabel}`
-                      : "Closed now"}
-                </Text>
-              </Animated.View>
               <Animated.Text style={[styles.storeTitle, storeTitleStyle, { color: headerForegroundColor }]}>{appConfig.brand.locationName}</Animated.Text>
             </View>
 
@@ -376,17 +334,6 @@ const styles = StyleSheet.create({
   },
   storeCopy: {
     flex: 1
-  },
-  pickupMetaWrap: {
-    overflow: "hidden"
-  },
-  storeMeta: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: uiPalette.textSecondary
-  },
-  storeMetaClosed: {
-    color: uiPalette.warning
   },
   storeTitle: {
     marginTop: 2,
