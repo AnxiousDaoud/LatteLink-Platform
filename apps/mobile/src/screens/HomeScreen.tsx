@@ -357,7 +357,7 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   cardGrid: {
-    paddingTop: 24,
+    paddingTop: 12,
     gap: 14
   },
   errorShell: {
