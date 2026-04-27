@@ -19,6 +19,7 @@ import {
   useOrderHistoryQuery,
   type OrderHistoryEntry
 } from "../account/data";
+import { resolveAppConfigData, useAppConfigQuery } from "../menu/catalog";
 import { OrderStatusPill, SectionHeader } from "../components";
 import { getOrdersRecoveryCopy } from "../auth/recovery";
 import { useAuthSession } from "../auth/session";
@@ -421,16 +422,18 @@ function HistoryRow({
 }
 
 function OrdersHeader({
-  title
+  title,
+  foregroundColor
 }: {
   title: string;
+  foregroundColor?: string;
 }) {
   return (
     <>
       <View style={styles.pageHeader}>
         <View style={styles.pageCopy}>
           <View style={styles.pageMetaSpacer} />
-          <Text style={styles.pageTitle}>{title}</Text>
+          <Text style={[styles.pageTitle, foregroundColor ? { color: foregroundColor } : null]}>{title}</Text>
         </View>
       </View>
       <View style={styles.pageTabsSpacer} />
@@ -442,6 +445,7 @@ export function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, isHydrating, authRecoveryState } = useAuthSession();
+  const appConfig = resolveAppConfigData(useAppConfigQuery().data);
   const { clearFailure, clearRetryOrder } = useCheckoutFlow();
   const ordersQuery = useOrderHistoryQuery(isAuthenticated);
   const cancelOrderMutation = useCancelOrderMutation();
@@ -540,8 +544,8 @@ export function OrdersScreen() {
           </View>
         </ScreenStatic>
 
-        <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT }]}>
-          <OrdersHeader title="Orders" />
+        <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: appConfig.header.background }]}>
+          <OrdersHeader title="Orders" foregroundColor={appConfig.header.foreground} />
         </View>
 
         {showLoadingOverlay ? (
@@ -644,8 +648,8 @@ export function OrdersScreen() {
         </View>
       </ScreenScroll>
 
-      <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT }]}>
-        <OrdersHeader title={activeOrder ? "Track your order" : "Past Orders"} />
+      <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: appConfig.header.background }]}>
+        <OrdersHeader title={activeOrder ? "Track your order" : "Past Orders"} foregroundColor={appConfig.header.foreground} />
       </View>
 
       {showLoadingOverlay ? (
@@ -678,7 +682,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 20,
-    backgroundColor: uiPalette.background,
     overflow: "hidden",
     justifyContent: "flex-end",
     zIndex: 10

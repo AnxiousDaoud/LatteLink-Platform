@@ -403,7 +403,8 @@ export const appConfigThemeSchema = z.object({
 });
 
 export const appConfigHeaderSchema = z.object({
-  background: z.string().min(1)
+  background: z.string().min(1),
+  foreground: z.string().min(1).optional()
 });
 
 export const appConfigBrandSchema = z.object({
@@ -567,7 +568,8 @@ function normalizeAppConfig(input: {
 }) {
   const storeCapabilities = resolveAppConfigStoreCapabilities(input);
   const header = appConfigHeaderSchema.parse({
-    background: input.header?.background ?? input.theme.backgroundAlt
+    background: input.header?.background ?? input.theme.backgroundAlt,
+    foreground: input.header?.foreground ?? input.theme.foreground
   });
 
   return {

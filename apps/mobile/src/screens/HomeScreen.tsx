@@ -117,6 +117,7 @@ export function HomeScreen() {
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const appConfig = resolveAppConfigData(appConfigQuery.data);
   const headerBackgroundColor = appConfig.header.background || uiPalette.background;
+  const headerForegroundColor = appConfig.header.foreground ?? uiPalette.text;
   const homeNewsCards = homeNewsCardsQuery.data?.cards ?? [];
   const storeConfig = resolveStoreConfigData(storeConfigQuery.data);
   const hasBlockingHomeError =
@@ -303,13 +304,13 @@ export function HomeScreen() {
       >
         <Animated.View style={headerContentStyle}>
           <View style={styles.hero}>
-            <Animated.Text style={[styles.title, titleStyle]}>{appConfig.brand.brandName}</Animated.Text>
+            <Animated.Text style={[styles.title, titleStyle, { color: headerForegroundColor }]}>{appConfig.brand.brandName}</Animated.Text>
           </View>
 
           <Animated.View style={[styles.storeRail, storeRailStyle]}>
             <View style={styles.storeCopy}>
               <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>
-                <Text style={[styles.storeMeta, !storeConfig.isOpen ? styles.storeMetaClosed : null]}>
+                <Text style={[styles.storeMeta, !storeConfig.isOpen ? styles.storeMetaClosed : null, { color: headerForegroundColor, opacity: 0.65 }]}>
                   {storeConfig.isOpen
                     ? `Estimated pick-up is ${storeConfig.prepEtaMinutes} mins`
                     : nextOpenLabel
@@ -317,13 +318,13 @@ export function HomeScreen() {
                       : "Closed now"}
                 </Text>
               </Animated.View>
-              <Animated.Text style={[styles.storeTitle, storeTitleStyle]}>{appConfig.brand.locationName}</Animated.Text>
+              <Animated.Text style={[styles.storeTitle, storeTitleStyle, { color: headerForegroundColor }]}>{appConfig.brand.locationName}</Animated.Text>
             </View>
 
             <Animated.View style={menuLinkStyle}>
               <Pressable onPress={() => router.push("/(tabs)/menu")} style={styles.inlineLink}>
-                <Text style={styles.inlineLinkText}>Menu</Text>
-                <Ionicons name="chevron-forward" size={16} color={uiPalette.text} />
+                <Text style={[styles.inlineLinkText, { color: headerForegroundColor }]}>Menu</Text>
+                <Ionicons name="chevron-forward" size={16} color={headerForegroundColor} />
               </Pressable>
             </Animated.View>
           </Animated.View>

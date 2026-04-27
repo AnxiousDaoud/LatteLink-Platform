@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated as RNAnimated,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -194,6 +195,41 @@ function buildSections(categories: MenuCategory[]): MenuSection[] {
   ];
 }
 
+function CollapsibleSectionHeader({
+  label,
+  collapsed,
+  onPress
+}: {
+  label: string;
+  collapsed: boolean;
+  onPress: () => void;
+}) {
+  const rotation = useSharedValue(collapsed ? 1 : 0);
+
+  useEffect(() => {
+    rotation.value = withTiming(collapsed ? 1 : 0, { duration: 240, easing: Easing.out(Easing.cubic) });
+  }, [collapsed, rotation]);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${interpolate(rotation.value, [0, 1], [0, 180])}deg` }]
+  }));
+
+  return (
+    <Pressable onPress={onPress} style={styles.sectionStickyHeader}>
+      <View style={styles.sectionHeader}>
+        <SectionHeader
+          label={label}
+          action={
+            <Animated.View style={chevronStyle}>
+              <Ionicons name="chevron-up-outline" size={16} color={uiPalette.textMuted} />
+            </Animated.View>
+          }
+        />
+      </View>
+    </Pressable>
+  );
+}
+
 export function MenuScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -203,6 +239,7 @@ export function MenuScreen() {
   const isInitialLoading = menuQuery.isLoading && !menuQuery.data;
   const appConfig = appConfigQuery.data ? resolveAppConfigData(appConfigQuery.data) : null;
   const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
   const storeConfig = storeConfigQuery.data ? resolveStoreConfigData(storeConfigQuery.data) : null;
   const hasBlockingConfigError =
     (!!appConfigQuery.error && !appConfigQuery.data) || (!!storeConfigQuery.error && !storeConfigQuery.data);
@@ -223,6 +260,19 @@ export function MenuScreen() {
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(true);
   const [didFinishInitialReveal, setDidFinishInitialReveal] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  }, []);
 
   const sections = useMemo(() => buildSections(menu?.categories ?? []), [menu?.categories]);
   const shouldShowInitialLoading = !didFinishInitialReveal && (isInitialLoading || !menu);
@@ -383,26 +433,32 @@ export function MenuScreen() {
           }
         ]}
       >
-        {sections.flatMap((section) => [
-          <View key={`${section.id}-header`} style={styles.sectionStickyHeader}>
-            <View style={styles.sectionHeader}>
-              <SectionHeader label={section.label} action={<Ionicons name="chevron-up-outline" size={16} color={uiPalette.textMuted} />} />
-            </View>
-          </View>,
-          <View key={`${section.id}-list`} style={styles.sectionListBlock}>
-            <View style={styles.sectionList}>
-              {section.items.map((item, index) => (
-                <MenuItemRow
-                  key={item.id}
-                  item={item}
-                  isLast={index === section.items.length - 1}
-                  onPress={(selectedItem) => router.push({ pathname: "/menu-customize", params: { itemId: selectedItem.id } })}
-                />
-              ))}
-              {section.items.length === 0 ? <Text style={styles.emptyText}>Nothing matches that search right now.</Text> : null}
-            </View>
-          </View>
-        ])}
+        {sections.flatMap((section) => {
+          const isCollapsed = collapsedSections.has(section.id);
+          return [
+            <CollapsibleSectionHeader
+              key={`${section.id}-header`}
+              label={section.label}
+              collapsed={isCollapsed}
+              onPress={() => toggleSection(section.id)}
+            />,
+            isCollapsed ? null : (
+              <View key={`${section.id}-list`} style={styles.sectionListBlock}>
+                <View style={styles.sectionList}>
+                  {section.items.map((item, index) => (
+                    <MenuItemRow
+                      key={item.id}
+                      item={item}
+                      isLast={index === section.items.length - 1}
+                      onPress={(selectedItem) => router.push({ pathname: "/menu-customize", params: { itemId: selectedItem.id } })}
+                    />
+                  ))}
+                  {section.items.length === 0 ? <Text style={styles.emptyText}>Nothing matches that search right now.</Text> : null}
+                </View>
+              </View>
+            )
+          ];
+        })}
       </Animated.ScrollView>
 
       <Animated.View
@@ -411,11 +467,11 @@ export function MenuScreen() {
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Animated.View style={[styles.pickupMetaWrap, pickupMetaStyle]}>
-              <Text style={styles.pickupMeta}>
+              <Text style={[styles.pickupMeta, { color: headerForegroundColor, opacity: 0.65 }]}>
                 {storeConfig ? `Estimated pick-up is ${storeConfig.prepEtaMinutes} min` : "Estimated pick-up unavailable"}
               </Text>
             </Animated.View>
-            <Animated.Text style={[styles.locationText, locationStyle]}>
+            <Animated.Text style={[styles.locationText, locationStyle, { color: headerForegroundColor }]}>
               {appConfig?.brand.locationName ?? "Store info unavailable"}
             </Animated.Text>
           </View>
@@ -423,7 +479,7 @@ export function MenuScreen() {
 
         <Animated.View style={[styles.tabsWrap, tabsStyle]}>
           <View style={styles.tabRow}>
-            <Text style={styles.activeTab}>Menu</Text>
+            <Text style={[styles.activeTab, { color: headerForegroundColor }]}>Menu</Text>
           </View>
         </Animated.View>
       </Animated.View>

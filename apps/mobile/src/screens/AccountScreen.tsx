@@ -150,7 +150,7 @@ export function AccountScreen() {
           />
         </ScreenStatic>
 
-        <AccountFloatingHeader title="Account" insetTop={insets.top} />
+        <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
       </View>
     );
   }
@@ -190,7 +190,7 @@ export function AccountScreen() {
         </View>
       </ScreenScroll>
 
-      <AccountFloatingHeader title="Account" insetTop={insets.top} />
+      <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
     </View>
   );
 }

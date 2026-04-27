@@ -7,16 +7,23 @@ export const ACCOUNT_HEADER_HEIGHT = 52;
 export function AccountFloatingHeader({
   title,
   insetTop,
-  onBack
+  onBack,
+  backgroundColor,
+  foregroundColor
 }: {
   title: string;
   insetTop: number;
   onBack?: () => void;
+  backgroundColor?: string;
+  foregroundColor?: string;
 }) {
+  const bg = backgroundColor ?? uiPalette.background;
+  const fg = foregroundColor ?? uiPalette.text;
+
   return (
     <View
       pointerEvents={onBack ? "auto" : "none"}
-      style={[styles.pageHeaderFloating, { paddingTop: insetTop, height: insetTop + ACCOUNT_HEADER_HEIGHT }]}
+      style={[styles.pageHeaderFloating, { paddingTop: insetTop, height: insetTop + ACCOUNT_HEADER_HEIGHT, backgroundColor: bg }]}
     >
       <View style={styles.pageHeader}>
         <View style={styles.pageCopy}>
@@ -24,10 +31,10 @@ export function AccountFloatingHeader({
           <View style={styles.pageTitleRow}>
             {onBack ? (
               <Pressable onPress={onBack} style={({ pressed }) => [styles.backButton, pressed ? styles.backButtonPressed : null]}>
-                <Ionicons name="arrow-back" size={16} color={uiPalette.text} />
+                <Ionicons name="arrow-back" size={16} color={fg} />
               </Pressable>
             ) : null}
-            <Text style={styles.pageTitle}>{title}</Text>
+            <Text style={[styles.pageTitle, { color: fg }]}>{title}</Text>
           </View>
         </View>
       </View>
