@@ -617,6 +617,29 @@ export async function registerRoutes(app: FastifyInstance) {
     }
   );
 
+  app.get(
+    "/v1/catalog/internal/locations/:locationId/menu",
+    {
+      preHandler: [app.rateLimit(gatewayReadRateLimit), requireGatewayAccess]
+    },
+    async (request, reply) => {
+      const { locationId } = internalLocationParamsSchema.parse(request.params);
+      const summary = await repository.getInternalLocationSummary(locationId);
+      if (!summary) {
+        return reply.status(404).send(
+          serviceErrorSchema.parse({
+            code: "LOCATION_NOT_FOUND",
+            message: "Location not found",
+            requestId: request.id,
+            details: { locationId }
+          })
+        );
+      }
+
+      return menuResponseSchema.parse(await repository.getMenu(locationId));
+    }
+  );
+
   app.put(
     "/v1/catalog/internal/locations/:locationId/payment-profile",
     {

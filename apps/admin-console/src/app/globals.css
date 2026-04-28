@@ -588,6 +588,37 @@ select {
   border-color: rgba(245, 158, 11, 0.22);
 }
 
+.launch-checklist {
+  display: grid;
+  gap: 20px;
+}
+
+.launch-checklist__summary,
+.check-item__heading,
+.manual-check {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.manual-check {
+  justify-content: flex-start;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.manual-check input {
+  width: 18px;
+  height: 18px;
+}
+
+.primary-button:disabled,
+.primary-button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .status-pill,
 .status-badge,
 .menu-badge {

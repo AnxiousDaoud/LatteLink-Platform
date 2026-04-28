@@ -9,6 +9,7 @@ import type {
   InternalLocationBootstrap,
   InternalLocationListResponse,
   InternalLocationSummary,
+  LaunchReadinessResponse,
   StripeConnectLinkResponse
 } from "@lattelink/contracts-catalog";
 import { requireAdminSession } from "@/lib/auth";
@@ -88,6 +89,10 @@ export async function getInternalLocation(locationId: string) {
 
 export async function getInternalLocationPaymentProfile(locationId: string) {
   return requestInternalApi<ClientPaymentProfile>(`/v1/internal/locations/${locationId}/payment-profile`);
+}
+
+export async function getInternalLocationReadiness(locationId: string) {
+  return requestInternalApi<LaunchReadinessResponse>(`/v1/internal/locations/${locationId}/readiness`);
 }
 
 export async function getInternalLocationOwner(locationId: string) {

@@ -57,6 +57,7 @@ import {
   internalLocationPaymentProfileUpdateSchema,
   internalLocationParamsSchema,
   internalLocationSummarySchema,
+  launchReadinessResponseSchema,
   stripeConnectDashboardLinkRequestSchema,
   stripeConnectLinkResponseSchema,
   stripeConnectOnboardingLinkRequestSchema,
@@ -146,6 +147,20 @@ type StreamOrdersFetchError = {
   error: z.output<typeof apiErrorSchema>;
 };
 
+class UpstreamHttpError extends Error {
+  serviceLabel: string;
+  statusCode: number;
+  body: unknown;
+
+  constructor(serviceLabel: string, statusCode: number, body: unknown) {
+    super(`${serviceLabel} request failed with status ${statusCode}`);
+    this.name = "UpstreamHttpError";
+    this.serviceLabel = serviceLabel;
+    this.statusCode = statusCode;
+    this.body = body;
+  }
+}
+
 function unauthorized(requestId: string) {
   return apiErrorSchema.parse({
     code: "UNAUTHORIZED",
@@ -196,6 +211,28 @@ function invalidRequest(requestId: string, message: string, details?: unknown) {
     message,
     requestId,
     ...(details === undefined ? {} : { details })
+  });
+}
+
+function resourceNotFound(requestId: string, message: string, details?: unknown) {
+  return apiErrorSchema.parse({
+    code: "NOT_FOUND",
+    message,
+    requestId,
+    ...(details === undefined ? {} : { details })
+  });
+}
+
+function upstreamFailure(requestId: string, serviceLabel: string, statusCode: number, body?: unknown) {
+  const upstreamError = apiErrorSchema.safeParse(body);
+  if (upstreamError.success) {
+    return upstreamError.data;
+  }
+
+  return apiErrorSchema.parse({
+    code: "UPSTREAM_ERROR",
+    message: `${serviceLabel} request failed with status ${statusCode}`,
+    requestId
   });
 }
 
@@ -3643,6 +3680,149 @@ export async function registerRoutes(app: FastifyInstance) {
         forwardUserIdHeader: false,
         responseSchema: internalLocationSummarySchema
       });
+    }
+  );
+
+  app.get(
+    "/v1/internal/locations/:locationId/readiness",
+    {
+      preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
+    },
+    async (request, reply) => {
+      const { locationId } = internalLocationParamsSchema.parse(request.params);
+      const internalHeaders = {
+        "x-gateway-token": gatewayInternalApiToken ?? ""
+      };
+
+      const fetchInternalJson = async <TSchema extends z.ZodTypeAny>(params: {
+        baseUrl: string;
+        path: string;
+        schema: TSchema;
+        serviceLabel: string;
+        allowNotFound?: boolean;
+      }): Promise<z.output<TSchema> | undefined> => {
+        const response = await fetch(`${params.baseUrl}${params.path}`, {
+          method: "GET",
+          headers: internalHeaders
+        });
+        const body = parseJsonSafely(await response.text());
+
+        if (response.status === 404 && params.allowNotFound) {
+          return undefined;
+        }
+
+        if (!response.ok) {
+          throw new UpstreamHttpError(params.serviceLabel, response.status, body);
+        }
+
+        return params.schema.parse(body);
+      };
+
+      try {
+        const location = await fetchInternalJson({
+          baseUrl: catalogBaseUrl,
+          path: `/v1/catalog/internal/locations/${locationId}`,
+          schema: internalLocationSummarySchema,
+          serviceLabel: "Catalog"
+        });
+        if (!location) {
+          return reply.status(404).send(resourceNotFound(request.id, "Location not found", { locationId }));
+        }
+
+        const [ownerSummary, paymentProfile, menu] = await Promise.all([
+          fetchInternalJson({
+            baseUrl: identityBaseUrl,
+            path: `/v1/identity/internal/locations/${locationId}/owner`,
+            schema: internalOwnerSummarySchema,
+            serviceLabel: "Identity"
+          }),
+          fetchInternalJson({
+            baseUrl: catalogBaseUrl,
+            path: `/v1/catalog/internal/locations/${locationId}/payment-profile`,
+            schema: clientPaymentProfileSchema,
+            serviceLabel: "Catalog",
+            allowNotFound: true
+          }),
+          fetchInternalJson({
+            baseUrl: catalogBaseUrl,
+            path: `/v1/catalog/internal/locations/${locationId}/menu`,
+            schema: menuResponseSchema,
+            serviceLabel: "Catalog"
+          })
+        ]);
+
+        const visibleItemCount =
+          menu?.categories.reduce(
+            (count, category) => count + category.items.filter((item) => item.visible).length,
+            0
+          ) ?? 0;
+
+        const checks = [
+          {
+            id: "owner_provisioned" as const,
+            label: "Owner account provisioned",
+            passed: Boolean(ownerSummary?.owner?.active),
+            detail: ownerSummary?.owner ? ownerSummary.owner.email : "No active owner account is provisioned."
+          },
+          {
+            id: "stripe_onboarded" as const,
+            label: "Stripe payment account connected",
+            passed: paymentProfile?.stripeOnboardingStatus === "completed" && paymentProfile.stripeChargesEnabled,
+            detail: paymentProfile?.stripeAccountId
+              ? `${paymentProfile.stripeAccountId} · ${paymentProfile.stripeOnboardingStatus}`
+              : "No Stripe Connect account is linked."
+          },
+          {
+            id: "menu_has_items" as const,
+            label: "At least 1 visible menu item",
+            passed: visibleItemCount > 0,
+            detail: `${visibleItemCount} visible item${visibleItemCount === 1 ? "" : "s"} found.`
+          },
+          {
+            id: "fulfillment_mode_set" as const,
+            label: "Fulfillment mode set to staff",
+            passed: location.capabilities.operations.fulfillmentMode === "staff",
+            detail: `Current mode: ${location.capabilities.operations.fulfillmentMode}.`
+          },
+          {
+            id: "hours_configured" as const,
+            label: "Store hours configured",
+            passed: location.hours.trim().length > 0,
+            detail: location.hours
+          },
+          {
+            id: "tax_configured" as const,
+            label: "Tax rate configured",
+            passed: location.taxRateBasisPoints > 0,
+            detail: `${(location.taxRateBasisPoints / 100).toFixed(2)}%`
+          },
+          {
+            id: "test_order_confirmed" as const,
+            label: "Test order completed (manual)",
+            passed: false,
+            manual: true,
+            detail: "Confirm this from the admin console after a successful test order."
+          }
+        ];
+        const nonManualChecks = checks.filter((check) => !check.manual);
+        const passedCount = checks.filter((check) => check.passed).length;
+
+        return launchReadinessResponseSchema.parse({
+          locationId,
+          ready: nonManualChecks.every((check) => check.passed),
+          passedCount,
+          totalCount: checks.length,
+          checks
+        });
+      } catch (error) {
+        if (error instanceof UpstreamHttpError) {
+          return reply.status(error.statusCode).send(
+            upstreamFailure(request.id, error.serviceLabel, error.statusCode, error.body)
+          );
+        }
+
+        throw error;
+      }
     }
   );
 

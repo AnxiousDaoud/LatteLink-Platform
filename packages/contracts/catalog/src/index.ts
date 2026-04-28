@@ -723,6 +723,30 @@ export const internalLocationListResponseSchema = z.object({
   locations: z.array(internalLocationSummarySchema)
 });
 
+export const launchReadinessCheckSchema = z.object({
+  id: z.enum([
+    "owner_provisioned",
+    "stripe_onboarded",
+    "menu_has_items",
+    "fulfillment_mode_set",
+    "hours_configured",
+    "tax_configured",
+    "test_order_confirmed"
+  ]),
+  label: z.string().min(1),
+  passed: z.boolean(),
+  manual: z.boolean().default(false),
+  detail: z.string().min(1).optional()
+});
+
+export const launchReadinessResponseSchema = z.object({
+  locationId: z.string().min(1),
+  ready: z.boolean(),
+  passedCount: z.number().int().min(0),
+  totalCount: z.number().int().min(0),
+  checks: z.array(launchReadinessCheckSchema)
+});
+
 export type MenuItemCustomizationOption = z.output<typeof menuItemCustomizationOptionSchema>;
 export type MenuItemCustomizationGroup = z.output<typeof menuItemCustomizationGroupSchema>;
 export type MenuItemCustomizationSelection = z.output<typeof menuItemCustomizationSelectionSchema>;
@@ -766,6 +790,8 @@ export type StripeConnectLinkResponse = z.output<typeof stripeConnectLinkRespons
 export type InternalLocationBootstrap = z.output<typeof internalLocationBootstrapSchema>;
 export type InternalLocationSummary = z.output<typeof internalLocationSummarySchema>;
 export type InternalLocationListResponse = z.output<typeof internalLocationListResponseSchema>;
+export type LaunchReadinessCheck = z.output<typeof launchReadinessCheckSchema>;
+export type LaunchReadinessResponse = z.output<typeof launchReadinessResponseSchema>;
 
 export type CustomizationValidationIssueCode =
   | "unknown_group"

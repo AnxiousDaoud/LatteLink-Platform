@@ -1199,6 +1199,36 @@ let previousFreeClientDashboardDomain: string | undefined;
         );
       }
 
+      const internalLocationMenuMatch = url.match(/\/v1\/catalog\/internal\/locations\/([^/]+)\/menu$/);
+      if (internalLocationMenuMatch && method === "GET") {
+        const locationId = internalLocationMenuMatch[1];
+
+        return new Response(
+          JSON.stringify({
+            locationId,
+            currency: "USD",
+            categories: [
+              {
+                id: "espresso",
+                title: "Espresso Bar",
+                items: [
+                  {
+                    id: "latte",
+                    name: "Honey Oat Latte",
+                    description: "Espresso with steamed oat milk and honey.",
+                    priceCents: 675,
+                    visible: true,
+                    sortOrder: 0,
+                    customizationGroups: []
+                  }
+                ]
+              }
+            ]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       const internalLocationPaymentProfileMatch = url.match(/\/v1\/catalog\/internal\/locations\/([^/]+)\/payment-profile$/);
       if (internalLocationPaymentProfileMatch && method === "GET") {
         const locationId = internalLocationPaymentProfileMatch[1];
@@ -2964,6 +2994,24 @@ let previousFreeClientDashboardDomain: string | undefined;
     expect(summaryResponse.json()).toMatchObject({
       locationId: "northside-01",
       marketLabel: "Detroit, MI"
+    });
+
+    const readinessResponse = await app.inject({
+      method: "GET",
+      url: "/v1/internal/locations/northside-01/readiness",
+      headers: ownerInternalAdminHeaders
+    });
+    expect(readinessResponse.statusCode, readinessResponse.body).toBe(200);
+    expect(readinessResponse.json()).toMatchObject({
+      locationId: "northside-01",
+      ready: true,
+      checks: expect.arrayContaining([
+        expect.objectContaining({ id: "owner_provisioned", passed: true }),
+        expect.objectContaining({ id: "stripe_onboarded", passed: true }),
+        expect.objectContaining({ id: "menu_has_items", passed: true }),
+        expect.objectContaining({ id: "fulfillment_mode_set", passed: true }),
+        expect.objectContaining({ id: "test_order_confirmed", manual: true, passed: false })
+      ])
     });
 
     const paymentProfileResponse = await app.inject({
