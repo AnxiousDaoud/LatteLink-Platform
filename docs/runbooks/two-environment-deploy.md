@@ -66,7 +66,7 @@ Recommended values:
   - `CLIENT_DASHBOARD_DOMAIN=app-dev.nomly.us`
   - `COMPOSE_PROJECT_NAME=lattelink-dev`
   - `DEPLOY_ENABLED=false` until the dev droplet is provisioned and reachable
-  - `APPLE_SIGN_IN_ENABLED=false`
+  - `APPLE_SIGN_IN_ENABLED=true`
   - `PAYMENTS_PROVIDER_MODE=simulated`
   - `ALLOW_DEV_CUSTOMER_LOGIN=true`
 
@@ -75,7 +75,7 @@ Recommended values:
   - `CLIENT_DASHBOARD_DOMAIN=app.nomly.us`
   - `COMPOSE_PROJECT_NAME=lattelink-prod`
   - `DEPLOY_ENABLED=false` until the production droplet is provisioned and reachable
-  - `APPLE_SIGN_IN_ENABLED=false` until you intentionally configure Apple auth for production
+  - `APPLE_SIGN_IN_ENABLED=true`
   - `PAYMENTS_PROVIDER_MODE=live`
   - `ALLOW_DEV_CUSTOMER_LOGIN=false`
 
@@ -91,17 +91,16 @@ Recommended values:
 - `LOYALTY_INTERNAL_API_TOKEN`
 - `NOTIFICATIONS_INTERNAL_API_TOKEN`
 - `JWT_SECRET`
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_STATE_SECRET`
+- `APPLE_TEAM_ID` or legacy repo secret `FREE_APPLE_TEAM_ID`
+- `APPLE_KEY_ID`
+- `APPLE_PRIVATE_KEY`
+- `APPLE_CLIENT_ID` or `APPLE_ALLOWED_CLIENT_IDS`
 
 Optional secrets depending on enabled features:
 
-- `APPLE_TEAM_ID`
-- `APPLE_KEY_ID`
-- `APPLE_PRIVATE_KEY`
-- `APPLE_CLIENT_ID`
-- `APPLE_ALLOWED_CLIENT_IDS`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `GOOGLE_OAUTH_STATE_SECRET`
 - `CLOVER_APP_ID`
 - `CLOVER_APP_SECRET`
 - `CLOVER_OAUTH_REDIRECT_URI`
