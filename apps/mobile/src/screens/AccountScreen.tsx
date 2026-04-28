@@ -110,7 +110,10 @@ export function AccountScreen() {
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
   const contentBottomInset = Math.max(getTabBarBottomOffset(insets.bottom > 0) + TAB_BAR_HEIGHT + 24 - insets.bottom, 24);
   const staticBottomInset = getTabBarBottomOffset(insets.bottom > 0) + TAB_BAR_HEIGHT + 12;
-  const recoveryCopy = getAccountRecoveryCopy(authRecoveryState, appConfig.brand.locationName);
+  const locationName = appConfig?.brand.locationName ?? "this store";
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
+  const recoveryCopy = getAccountRecoveryCopy(authRecoveryState, locationName);
 
   function handleRefresh() {
     if (isManualRefresh) return;
@@ -150,7 +153,7 @@ export function AccountScreen() {
           />
         </ScreenStatic>
 
-        <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+        <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       </View>
     );
   }
@@ -190,7 +193,7 @@ export function AccountScreen() {
         </View>
       </ScreenScroll>
 
-      <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+      <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
     </View>
   );
 }

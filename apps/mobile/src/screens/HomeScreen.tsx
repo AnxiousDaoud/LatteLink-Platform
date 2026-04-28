@@ -89,8 +89,8 @@ export function HomeScreen() {
   const storeConfigQuery = useStoreConfigQuery();
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const appConfig = resolveAppConfigData(appConfigQuery.data);
-  const headerBackgroundColor = appConfig.header.background || uiPalette.background;
-  const headerForegroundColor = appConfig.header.foreground ?? uiPalette.text;
+  const headerBackgroundColor = appConfig?.header.background || uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
   const homeNewsCards = homeNewsCardsQuery.data?.cards ?? [];
   const hasBlockingHomeError =
     (!!appConfigQuery.error && !appConfigQuery.data) ||
@@ -100,6 +100,8 @@ export function HomeScreen() {
     [appConfigQuery.error, homeNewsCardsQuery.error, storeConfigQuery.error].some(isBackendReachabilityError)
       ? "Unable to reach backend. Pull to refresh or try again in a moment."
       : "We couldn’t load the live store details. Pull to refresh or try again in a moment.";
+  const brandName = appConfig?.brand.brandName ?? "Store";
+  const locationName = appConfig?.brand.locationName ?? "Location unavailable";
   const scrollViewRef = useRef<ScrollView | null>(null);
   const scrollY = useSharedValue(0);
   const dockBottom = getTabBarBottomOffset(insets.bottom > 0);
@@ -269,12 +271,12 @@ export function HomeScreen() {
       >
         <Animated.View style={headerContentStyle}>
           <View style={styles.hero}>
-            <Animated.Text style={[styles.title, titleStyle, { color: headerForegroundColor }]}>{appConfig.brand.brandName}</Animated.Text>
+            <Animated.Text style={[styles.title, titleStyle, { color: headerForegroundColor }]}>{brandName}</Animated.Text>
           </View>
 
           <Animated.View style={[styles.storeRail, storeRailStyle]}>
             <View style={styles.storeCopy}>
-              <Animated.Text style={[styles.storeTitle, storeTitleStyle, { color: headerForegroundColor }]}>{appConfig.brand.locationName}</Animated.Text>
+              <Animated.Text style={[styles.storeTitle, storeTitleStyle, { color: headerForegroundColor }]}>{locationName}</Animated.Text>
             </View>
 
             <Animated.View style={menuLinkStyle}>

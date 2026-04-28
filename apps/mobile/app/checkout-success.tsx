@@ -184,8 +184,8 @@ export default function CheckoutSuccessScreen() {
   const menuQuery = useMenuQuery();
   const menu = resolveMenuData(menuQuery.data);
   const menuItemsById = useMemo(
-    () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item] as const)),
-    [menu.categories]
+    () => new Map((menu?.categories ?? []).flatMap((category) => category.items).map((item) => [item.id, item] as const)),
+    [menu?.categories]
   );
   const resolvedItems = resolvedConfirmation?.items ?? [];
   const earnedPoints = resolvedConfirmation?.total.amountCents ?? 0;

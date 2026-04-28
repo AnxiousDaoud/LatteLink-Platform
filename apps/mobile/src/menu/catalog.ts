@@ -226,142 +226,6 @@ export const exampleCustomizationByItemId: Record<string, MenuItemCustomizationG
   croissant: []
 };
 
-const fallbackMenu = menuResponseSchema.parse({
-  locationId: "rawaqcoffee01",
-  currency: "USD",
-  categories: [
-    {
-      id: "espresso",
-      title: "Espresso Bar",
-      items: [
-        {
-          id: "latte",
-          name: "Honey Oat Latte",
-          description: "Espresso with steamed oat milk and a warm honey finish.",
-          priceCents: 675,
-          badgeCodes: ["popular"],
-          visible: true,
-          customizationGroups: exampleCustomizationByItemId.latte
-        }
-      ]
-    },
-    {
-      id: "matcha",
-      title: "Matcha",
-      items: [
-        {
-          id: "matcha",
-          name: "Ceremonial Matcha",
-          description: "Stone-ground matcha whisked to order with milk of your choice.",
-          priceCents: 725,
-          badgeCodes: ["new"],
-          visible: true,
-          customizationGroups: exampleCustomizationByItemId.matcha
-        }
-      ]
-    },
-    {
-      id: "pastry",
-      title: "Pastries",
-      items: [
-        {
-          id: "croissant",
-          name: "Butter Croissant",
-          description: "Flaky, laminated, and baked fresh each morning.",
-          priceCents: 425,
-          badgeCodes: [],
-          visible: true,
-          customizationGroups: exampleCustomizationByItemId.croissant
-        }
-      ]
-    }
-  ]
-});
-
-const fallbackStoreConfig = storeConfigResponseSchema.parse({
-  locationId: "rawaqcoffee01",
-  hoursText: "Daily · 7:00 AM - 6:00 PM",
-  isOpen: true,
-  nextOpenAt: null,
-  prepEtaMinutes: 12,
-  taxRateBasisPoints: 600,
-  pickupInstructions: "Pickup at the flagship order counter."
-});
-
-const fallbackAppConfig = appConfigSchema.parse({
-  brand: {
-    brandId: "rawaqcoffee",
-    brandName: "Rawaq Coffee",
-    locationId: "rawaqcoffee01",
-    locationName: "Rawaq Coffee Flagship",
-    marketLabel: "Ann Arbor, MI"
-  },
-  theme: {
-    background: "#F7F4ED",
-    backgroundAlt: "#F0ECE4",
-    surface: "#FFFDF8",
-    surfaceMuted: "#F3EFE7",
-    foreground: "#171513",
-    foregroundMuted: "#605B55",
-    muted: "#9B9389",
-    border: "rgba(23, 21, 19, 0.08)",
-    primary: "#1E1B18",
-    accent: "#2D2823",
-    fontFamily: "System",
-    displayFontFamily: "Fraunces"
-  },
-  header: {
-    background: "#F0ECE4",
-    foreground: "#171513"
-  },
-  enabledTabs: ["home", "menu", "orders", "account"],
-  featureFlags: {
-    loyalty: true,
-    pushNotifications: true,
-    refunds: true,
-    orderTracking: true,
-    staffDashboard: false,
-    menuEditing: false
-  },
-  loyaltyEnabled: true,
-  paymentCapabilities: {
-    applePay: true,
-    card: true,
-    cash: false,
-    refunds: true,
-    stripe: {
-      enabled: true,
-      onboarded: true,
-      dashboardEnabled: true
-    },
-    clover: {
-      enabled: true,
-      merchantRef: "rawaqcoffee01"
-    }
-  },
-  fulfillment: {
-    mode: "time_based",
-    timeBasedScheduleMinutes: {
-      inPrep: 5,
-      ready: 10,
-      completed: 15
-    }
-  },
-  storeCapabilities: {
-    menu: {
-      source: "platform_managed"
-    },
-    operations: {
-      fulfillmentMode: "time_based",
-      liveOrderTrackingEnabled: true,
-      dashboardEnabled: false
-    },
-    loyalty: {
-      visible: true
-    }
-  }
-});
-
 function filterVisibleCategories(menu: MenuResponse): MenuCategory[] {
   return menu.categories
     .map((category) => ({
@@ -398,10 +262,7 @@ async function fetchAppConfig(): Promise<AppConfig> {
     try {
       return await catalogApiClient.appConfig();
     } catch {
-      if (!__DEV__) {
-        throw primaryError;
-      }
-      return fallbackAppConfig;
+      throw primaryError;
     }
   }
 }
@@ -463,28 +324,30 @@ export function useAppConfigQuery() {
   });
 }
 
-export function resolveMenuData(menu: MenuResponse | undefined): MenuResponse {
+export function resolveMenuData(menu: MenuResponse | undefined): MenuResponse | undefined {
   if (!menu || menu.categories.length === 0) {
-    return fallbackMenu;
+    return undefined;
   }
 
   return menu;
 }
 
-export function resolveStoreConfigData(config: StoreConfigResponse | undefined): StoreConfigResponse {
-  return config ?? fallbackStoreConfig;
+export function resolveStoreConfigData(config: StoreConfigResponse | undefined): StoreConfigResponse | undefined {
+  return config;
 }
 
-export function resolveAppConfigData(config: AppConfig | undefined): AppConfig {
-  return config ? appConfigSchema.parse(config) : fallbackAppConfig;
+export function resolveAppConfigData(config: AppConfig | undefined): AppConfig | undefined {
+  return config ? appConfigSchema.parse(config) : undefined;
 }
 
 export function isMobileLoyaltyVisible(config: AppConfig | undefined) {
-  return isLoyaltyVisible(resolveAppConfigData(config));
+  const resolvedConfig = resolveAppConfigData(config);
+  return resolvedConfig ? isLoyaltyVisible(resolvedConfig) : false;
 }
 
 export function isMobileOrderTrackingEnabled(config: AppConfig | undefined) {
-  return isOrderTrackingEnabled(resolveAppConfigData(config));
+  const resolvedConfig = resolveAppConfigData(config);
+  return resolvedConfig ? isOrderTrackingEnabled(resolvedConfig) : false;
 }
 
 export function createEmptyCustomizationInput(): MenuItemCustomizationInput {

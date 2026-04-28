@@ -36,8 +36,9 @@ describe("gateway", () => {
   let previousOrdersInternalToken: string | undefined;
   let previousGatewayOrderStreamPollMs: string | undefined;
   let previousValkeyUrl: string | undefined;
-  let previousCorsAllowedOrigins: string | undefined;
-  let previousFreeClientDashboardDomain: string | undefined;
+let previousCorsAllowedOrigins: string | undefined;
+let previousCorsAllowedOriginHostSuffixes: string | undefined;
+let previousFreeClientDashboardDomain: string | undefined;
   let previousNodeEnv: string | undefined;
   let queuedOrderStatuses: Map<string, Array<"PENDING_PAYMENT" | "PAID" | "IN_PREP" | "READY" | "COMPLETED" | "CANCELED">>;
   let queuedOrderPayloads: Map<string, Array<ReturnType<typeof buildOrderPayload>>>;
@@ -109,6 +110,7 @@ describe("gateway", () => {
     previousGatewayOrderStreamPollMs = process.env.GATEWAY_ORDER_STREAM_POLL_MS;
     previousValkeyUrl = process.env.VALKEY_URL;
     previousCorsAllowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
+    previousCorsAllowedOriginHostSuffixes = process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES;
     previousFreeClientDashboardDomain = process.env.FREE_CLIENT_DASHBOARD_DOMAIN;
     previousNodeEnv = process.env.NODE_ENV;
     queuedOrderStatuses = new Map();
@@ -1625,6 +1627,12 @@ describe("gateway", () => {
       process.env.CORS_ALLOWED_ORIGINS = previousCorsAllowedOrigins;
     }
 
+    if (previousCorsAllowedOriginHostSuffixes === undefined) {
+      delete process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES;
+    } else {
+      process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = previousCorsAllowedOriginHostSuffixes;
+    }
+
     if (previousFreeClientDashboardDomain === undefined) {
       delete process.env.FREE_CLIENT_DASHBOARD_DOMAIN;
     } else {
@@ -1704,6 +1712,41 @@ describe("gateway", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBe("https://client.example.com");
+    await app.close();
+  });
+
+  it("allows Vercel preview origins when an allowed host suffix is configured", async () => {
+    delete process.env.CORS_ALLOWED_ORIGINS;
+    process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = "vercel.app";
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: {
+        origin: "https://client-dashboard-git-develop-nomlyus-projects.vercel.app"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBe(
+      "https://client-dashboard-git-develop-nomlyus-projects.vercel.app"
+    );
+    await app.close();
+  });
+
+  it("rejects non-matching origins when an allowed host suffix is configured", async () => {
+    delete process.env.CORS_ALLOWED_ORIGINS;
+    process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = "vercel.app";
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: {
+        origin: "https://malicious-example.com"
+      }
+    });
+
+    expect(response.statusCode).toBe(500);
     await app.close();
   });
 

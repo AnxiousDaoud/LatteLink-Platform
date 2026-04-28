@@ -39,6 +39,32 @@ function parseOriginCandidate(value: string | undefined) {
     });
 }
 
+function parseOriginHostSuffixCandidate(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  return trimmed
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => entry.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^\*\./, "").replace(/^\./, ""))
+    .filter((entry) => entry.length > 0);
+}
+
+function originMatchesAllowedHostSuffix(origin: string, allowedHostSuffixes: string[]) {
+  let hostname: string;
+
+  try {
+    hostname = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+
+  return allowedHostSuffixes.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`));
+}
+
 function resolveAllowedCorsOrigins() {
   return new Set([
     ...defaultCorsAllowedOrigins,
@@ -51,9 +77,14 @@ function resolveAllowedCorsOrigins() {
   ]);
 }
 
+function resolveAllowedCorsOriginHostSuffixes() {
+  return parseOriginHostSuffixCandidate(process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES);
+}
+
 export async function buildApp() {
   const publicApiBaseUrl = process.env.PUBLIC_API_BASE_URL ?? "http://localhost:8080/v1";
   const allowedCorsOrigins = resolveAllowedCorsOrigins();
+  const allowedCorsOriginHostSuffixes = resolveAllowedCorsOriginHostSuffixes();
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
@@ -76,7 +107,11 @@ export async function buildApp() {
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin || allowedCorsOrigins.has(origin)) {
+      if (
+        !origin ||
+        allowedCorsOrigins.has(origin) ||
+        originMatchesAllowedHostSuffix(origin, allowedCorsOriginHostSuffixes)
+      ) {
         cb(null, true);
       } else {
         cb(new Error("Not allowed by CORS"), false);

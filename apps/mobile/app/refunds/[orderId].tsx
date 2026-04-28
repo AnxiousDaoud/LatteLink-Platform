@@ -270,8 +270,8 @@ export default function RefundDetailScreen() {
   const menuQuery = useMenuQuery();
   const menu = resolveMenuData(menuQuery.data);
   const menuItemsById = useMemo(
-    () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item] as const)),
-    [menu.categories]
+    () => new Map((menu?.categories ?? []).flatMap((category) => category.items).map((item) => [item.id, item] as const)),
+    [menu?.categories]
   );
 
   const order = isDevPreview ? DEV_REFUND_PREVIEW_ORDER : (ordersQuery.data ?? []).find((entry) => entry.id === orderId);

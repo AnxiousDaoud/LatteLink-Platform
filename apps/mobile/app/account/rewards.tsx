@@ -66,6 +66,8 @@ export default function RewardsPage() {
   const appConfigQuery = useAppConfigQuery();
   const appConfig = resolveAppConfigData(appConfigQuery.data);
   const loyaltyEnabled = isMobileLoyaltyVisible(appConfigQuery.data);
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
   const loyaltyBalanceQuery = useLoyaltyBalanceQuery(isAuthenticated && loyaltyEnabled);
   const loyaltyLedgerQuery = useLoyaltyLedgerQuery(isAuthenticated && loyaltyEnabled);
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
@@ -98,7 +100,7 @@ export default function RewardsPage() {
           </GlassCard>
         </ScreenScroll>
 
-        <AccountFloatingHeader title="Rewards" insetTop={insets.top} onBack={goBack} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+        <AccountFloatingHeader title="Rewards" insetTop={insets.top} onBack={goBack} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       </View>
     );
   }
@@ -134,7 +136,7 @@ export default function RewardsPage() {
         </Card>
       </ScreenScroll>
 
-      <AccountFloatingHeader title="Rewards" insetTop={insets.top} onBack={goBack} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+      <AccountFloatingHeader title="Rewards" insetTop={insets.top} onBack={goBack} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
     </View>
   );
 }

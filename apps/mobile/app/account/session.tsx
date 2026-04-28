@@ -41,6 +41,7 @@ export default function SessionPage() {
   const appConfig = resolveAppConfigData(useAppConfigQuery().data);
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
   const recoveryCopy = getSessionRecoveryCopy(authRecoveryState);
+  const locationName = appConfig?.brand.locationName ?? "Location unavailable";
 
   function goBack() {
     if (router.canGoBack()) {
@@ -81,7 +82,7 @@ export default function SessionPage() {
             <View style={styles.heroCopy}>
               <SectionLabel label="Secure session" />
               <Text style={styles.heroTitle}>{`Member ${session?.userId.slice(0, 8).toUpperCase()}`}</Text>
-              <Text style={styles.heroBody}>{appConfig.brand.locationName}</Text>
+              <Text style={styles.heroBody}>{locationName}</Text>
             </View>
             <Chip label="Secure" active />
           </View>
@@ -92,7 +93,7 @@ export default function SessionPage() {
           <View style={styles.detailGroup}>
             <DetailRow label="User ID" value={session?.userId.slice(0, 8).toUpperCase() ?? "--"} />
             <DetailRow label="Expires" value={formatDateTime(session?.expiresAt ?? "")} />
-            <DetailRow label="Location" value={appConfig.brand.locationName} />
+            <DetailRow label="Location" value={locationName} />
           </View>
         </Card>
       </ScreenScroll>
