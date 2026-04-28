@@ -81,19 +81,16 @@ Each environment should define its own vars and secrets. See [two-environment-de
 - [ ] `NOTIFICATIONS_INTERNAL_API_TOKEN`
 - [ ] `JWT_SECRET`
 - [ ] `LETSENCRYPT_EMAIL`
-- [ ] `GOOGLE_OAUTH_CLIENT_ID`
-- [ ] `GOOGLE_OAUTH_CLIENT_SECRET`
-- [ ] `GOOGLE_OAUTH_STATE_SECRET`
-- [ ] `GHCR_USERNAME` if GHCR images are private
-- [ ] `GHCR_TOKEN` if GHCR images are private
+- [ ] `APPLE_TEAM_ID` or legacy repo secret `FREE_APPLE_TEAM_ID`
+- [ ] `APPLE_KEY_ID`
+- [ ] `APPLE_PRIVATE_KEY`
+- [ ] `APPLE_CLIENT_ID` or `APPLE_ALLOWED_CLIENT_IDS`
 
 ## Optional Secrets
 
-- [ ] `APPLE_TEAM_ID`
-- [ ] `APPLE_KEY_ID`
-- [ ] `APPLE_PRIVATE_KEY`
-- [ ] `APPLE_CLIENT_ID`
-- [ ] `APPLE_ALLOWED_CLIENT_IDS`
+- [ ] `GOOGLE_OAUTH_CLIENT_ID`
+- [ ] `GOOGLE_OAUTH_CLIENT_SECRET`
+- [ ] `GOOGLE_OAUTH_STATE_SECRET`
 - [ ] `CLOVER_APP_ID`
 - [ ] `CLOVER_APP_SECRET`
 - [ ] `CLOVER_OAUTH_REDIRECT_URI`
