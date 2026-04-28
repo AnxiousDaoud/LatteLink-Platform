@@ -295,6 +295,57 @@ describe("identity service", () => {
     await app.close();
   });
 
+  it("rejects customer refresh after absolute session TTL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    vi.stubEnv("CUSTOMER_SESSION_ABSOLUTE_TTL_DAYS", "1");
+    const app = await buildApp();
+
+    const exchange = await app.inject({
+      method: "POST",
+      url: "/v1/auth/apple/exchange",
+      payload: {
+        identityToken: createAppleIdentityToken("absolute-ttl", {
+          sub: "apple-user-absolute-ttl",
+          email: "absolute@example.com"
+        }),
+        authorizationCode: "auth-code",
+        nonce: "absolute-ttl"
+      }
+    });
+    expect(exchange.statusCode).toBe(200);
+    const session = exchange.json();
+
+    vi.setSystemTime(new Date("2030-01-02T00:00:01.000Z"));
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/v1/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+
+    expect(refresh.statusCode).toBe(401);
+    expect(refresh.json()).toMatchObject({
+      code: "SESSION_EXPIRED",
+      message: "Your session has expired. Please sign in again."
+    });
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/v1/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+    expect(retry.statusCode).toBe(401);
+    expect(retry.json()).toMatchObject({
+      code: "INVALID_REFRESH_TOKEN"
+    });
+
+    await app.close();
+  });
+
   it("deletes the authenticated customer account and invalidates the session", async () => {
     const app = await buildApp();
     const exchange = await app.inject({

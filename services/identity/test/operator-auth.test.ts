@@ -52,6 +52,7 @@ async function provisionStore(repository: ReturnType<typeof createInMemoryIdenti
 
 describe("operator auth", () => {
   const previousGatewayToken = process.env.GATEWAY_INTERNAL_API_TOKEN;
+  const previousOperatorAbsoluteTtlDays = process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS;
 
   afterEach(() => {
     vi.useRealTimers();
@@ -59,6 +60,11 @@ describe("operator auth", () => {
       delete process.env.GATEWAY_INTERNAL_API_TOKEN;
     } else {
       process.env.GATEWAY_INTERNAL_API_TOKEN = previousGatewayToken;
+    }
+    if (previousOperatorAbsoluteTtlDays === undefined) {
+      delete process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS;
+    } else {
+      process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS = previousOperatorAbsoluteTtlDays;
     }
   });
 
@@ -139,6 +145,46 @@ describe("operator auth", () => {
     });
     expect(invalidRefresh.statusCode).toBe(401);
     expect(invalidRefresh.json()).toMatchObject({
+      code: "INVALID_REFRESH_TOKEN"
+    });
+
+    await app.close();
+  });
+
+  it("rejects operator refresh after absolute session TTL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS = "1";
+    const repository = createInMemoryIdentityRepository();
+    await provisionOwner(repository);
+    const app = await buildApp({ repository });
+
+    const session = await signInOperator(app, ownerEmail, ownerPassword);
+
+    vi.setSystemTime(new Date("2030-01-02T00:00:01.000Z"));
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+
+    expect(refresh.statusCode).toBe(401);
+    expect(refresh.json()).toMatchObject({
+      code: "SESSION_EXPIRED",
+      message: "Your session has expired. Please sign in again."
+    });
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+    expect(retry.statusCode).toBe(401);
+    expect(retry.json()).toMatchObject({
       code: "INVALID_REFRESH_TOKEN"
     });
 

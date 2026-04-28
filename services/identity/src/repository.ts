@@ -31,6 +31,7 @@ type PersistedSessionRow = {
   access_expires_at: string | Date | null;
   expires_at: string | Date;
   revoked_at: string | Date | null;
+  created_at: string | Date;
 };
 
 type PersistedIdentityUserRow = {
@@ -50,6 +51,7 @@ type PersistedIdentityUserRow = {
 
 type StoredSession = AuthSession & {
   refreshExpiresAt: string;
+  createdAt: string;
 };
 
 type StoredOperatorSession = {
@@ -59,6 +61,7 @@ type StoredOperatorSession = {
   activeLocationId?: string;
   expiresAt: string;
   refreshExpiresAt: string;
+  createdAt: string;
 };
 
 type StoredInternalAdminSession = {
@@ -67,6 +70,7 @@ type StoredInternalAdminSession = {
   internalAdminUserId: string;
   expiresAt: string;
   refreshExpiresAt: string;
+  createdAt: string;
 };
 
 type PersistedPasskeyChallengeRow = {
@@ -116,6 +120,7 @@ type PersistedOperatorSessionRow = {
   access_expires_at: string | Date | null;
   expires_at: string | Date;
   revoked_at: string | Date | null;
+  created_at: string | Date;
 };
 
 type PersistedInternalAdminUserRow = {
@@ -136,6 +141,7 @@ type PersistedInternalAdminSessionRow = {
   access_expires_at: string | Date | null;
   expires_at: string | Date;
   revoked_at: string | Date | null;
+  created_at: string | Date;
 };
 
 export type PasskeyChallengeRecord = {
@@ -210,7 +216,7 @@ export type IdentityRepository = {
     authMethod: "refresh"
   ): Promise<AuthSession | undefined>;
   getSessionByAccessToken(accessToken: string): Promise<AuthSession | undefined>;
-  getSessionByRefreshToken(refreshToken: string): Promise<AuthSession | undefined>;
+  getSessionByRefreshToken(refreshToken: string): Promise<StoredSession | undefined>;
   revokeByRefreshToken(refreshToken: string): Promise<void>;
   savePasskeyChallenge(input: PasskeyChallengeRecord): Promise<void>;
   getPasskeyChallenge(flow: "register" | "auth", challenge: string): Promise<PasskeyChallengeRecord | undefined>;
@@ -494,7 +500,8 @@ function toStoredOperatorSession(row: PersistedOperatorSessionRow): StoredOperat
     operatorUserId: row.operator_user_id,
     activeLocationId: row.active_location_id ?? undefined,
     expiresAt: parseIsoDate(row.access_expires_at ?? row.expires_at),
-    refreshExpiresAt: parseIsoDate(row.expires_at)
+    refreshExpiresAt: parseIsoDate(row.expires_at),
+    createdAt: parseIsoDate(row.created_at)
   };
 }
 
@@ -504,7 +511,8 @@ function toStoredInternalAdminSession(row: PersistedInternalAdminSessionRow): St
     refreshToken: row.refresh_token,
     internalAdminUserId: row.internal_admin_user_id,
     expiresAt: parseIsoDate(row.access_expires_at ?? row.expires_at),
-    refreshExpiresAt: parseIsoDate(row.expires_at)
+    refreshExpiresAt: parseIsoDate(row.expires_at),
+    createdAt: parseIsoDate(row.created_at)
   };
 }
 
@@ -1302,7 +1310,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: session.expiresAt,
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: session.createdAt
           } as never)
           .execute();
         return;
@@ -1316,6 +1325,7 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
             auth_method: authMethod,
+            created_at: session.createdAt,
             updated_at: new Date().toISOString()
           } as never)
           .where("access_token", "=", session.accessToken)
@@ -1599,7 +1609,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: nextSession.expiresAt,
             expires_at: nextSession.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: parseIsoDate(persisted.created_at)
           } as never)
           .execute();
 
@@ -1749,9 +1760,9 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
       const session = authSessionSchema.parse({
         accessToken: persisted.access_token,
         refreshToken: persisted.refresh_token,
-        userId: persisted.user_id,
-        expiresAt: parseIsoDate(persisted.access_expires_at ?? persisted.expires_at)
-      });
+            userId: persisted.user_id,
+            expiresAt: parseIsoDate(persisted.access_expires_at ?? persisted.expires_at)
+          });
 
       if (!isAccessSessionActive(session, persisted.revoked_at ? parseIsoDate(persisted.revoked_at) : undefined)) {
         return undefined;
@@ -1771,12 +1782,16 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
       }
 
       const persisted = row as unknown as PersistedSessionRow;
-      const session = authSessionSchema.parse({
-        accessToken: persisted.access_token,
-        refreshToken: persisted.refresh_token,
-        userId: persisted.user_id,
-        expiresAt: parseIsoDate(persisted.access_expires_at ?? persisted.expires_at)
-      });
+      const session: StoredSession = {
+        ...authSessionSchema.parse({
+          accessToken: persisted.access_token,
+          refreshToken: persisted.refresh_token,
+          userId: persisted.user_id,
+          expiresAt: parseIsoDate(persisted.access_expires_at ?? persisted.expires_at)
+        }),
+        refreshExpiresAt: parseIsoDate(persisted.expires_at),
+        createdAt: parseIsoDate(persisted.created_at)
+      };
 
       if (!isRefreshSessionActive(parseIsoDate(persisted.expires_at), persisted.revoked_at ? parseIsoDate(persisted.revoked_at) : undefined)) {
         return undefined;
@@ -2199,7 +2214,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: session.expiresAt,
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: session.createdAt
           })
           .execute();
         return;
@@ -2214,6 +2230,7 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
             auth_method: authMethod,
+            created_at: session.createdAt,
             updated_at: new Date().toISOString()
           })
           .where("access_token", "=", session.accessToken)
@@ -2259,7 +2276,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: nextSession.expiresAt,
             expires_at: nextSession.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: parseIsoDate(persisted.created_at)
           })
           .execute();
 
@@ -2375,7 +2393,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: session.expiresAt,
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: session.createdAt
           })
           .execute();
         return;
@@ -2389,6 +2408,7 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             expires_at: session.refreshExpiresAt,
             revoked_at: null,
             auth_method: authMethod,
+            created_at: session.createdAt,
             updated_at: new Date().toISOString()
           })
           .where("access_token", "=", session.accessToken)
@@ -2433,7 +2453,8 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
             access_expires_at: nextSession.expiresAt,
             expires_at: nextSession.refreshExpiresAt,
             revoked_at: null,
-            auth_method: authMethod
+            auth_method: authMethod,
+            created_at: parseIsoDate(persisted.created_at)
           })
           .execute();
 

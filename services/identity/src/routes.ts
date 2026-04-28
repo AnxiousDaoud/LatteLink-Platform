@@ -93,8 +93,10 @@ const defaultAccessTokenTtlMs = 30 * 60 * 1000;
 const defaultInternalAdminAccessTokenTtlMs = 12 * 60 * 60 * 1000;
 const defaultGoogleOAuthStateTtlMs = 10 * 60 * 1000;
 // Successful refresh rotation extends the session's idle lifetime by issuing a new refresh token.
-// We intentionally keep this as an idle timeout for now; absolute session caps are a future policy choice.
 const defaultRefreshSessionTtlMs = 30 * 24 * 60 * 60 * 1000;
+const defaultCustomerAbsoluteSessionTtlDays = 90;
+const defaultOperatorAbsoluteSessionTtlDays = 30;
+const defaultInternalAdminAbsoluteSessionTtlDays = 14;
 
 function parseCommaSeparatedEnv(value: string | undefined) {
   return (value ?? "")
@@ -110,6 +112,15 @@ function toPositiveInteger(value: string | undefined, fallback: number) {
   }
 
   return Math.floor(parsed);
+}
+
+function daysToMs(days: number) {
+  return days * 24 * 60 * 60 * 1000;
+}
+
+function isPastAbsoluteSessionTtl(createdAt: string, absoluteTtlMs: number) {
+  const createdAtMs = Date.parse(createdAt);
+  return !Number.isFinite(createdAtMs) || Date.now() - createdAtMs > absoluteTtlMs;
 }
 
 function buildCustomerMeResponse(input: {
@@ -374,6 +385,7 @@ function buildStoredSession(seed: string, userId: string) {
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
   const jwtSecret = loadJwtSecret();
   // JWT access tokens are opt-in for rollout compatibility. Refresh/logout semantics remain DB-backed
   // either way because the refresh token and session record are still persisted. The opaque path stays
@@ -387,7 +399,8 @@ function buildStoredSession(seed: string, userId: string) {
       expiresAt: accessExpiresAt,
       userId
     }),
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
@@ -395,6 +408,7 @@ function buildStoredOperatorSession(seed: string, operatorUserId: string, active
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
 
   return {
     accessToken: `operator-access-${tokenSuffix}`,
@@ -402,7 +416,8 @@ function buildStoredOperatorSession(seed: string, operatorUserId: string, active
     operatorUserId,
     activeLocationId,
     expiresAt: accessExpiresAt,
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
@@ -410,13 +425,15 @@ function buildStoredInternalAdminSession(seed: string, internalAdminUserId: stri
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultInternalAdminAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
 
   return {
     accessToken: `internal-admin-access-${tokenSuffix}`,
     refreshToken: `internal-admin-refresh-${tokenSuffix}`,
     internalAdminUserId,
     expiresAt: accessExpiresAt,
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
@@ -713,6 +730,18 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_PASSKEY_VERIFY_MAX, defaultPasskeyVerifyRateLimitMax),
     timeWindow: rateLimitWindowMs
   };
+  const customerAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(process.env.CUSTOMER_SESSION_ABSOLUTE_TTL_DAYS, defaultCustomerAbsoluteSessionTtlDays)
+  );
+  const operatorAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS, defaultOperatorAbsoluteSessionTtlDays)
+  );
+  const internalAdminAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(
+      process.env.INTERNAL_ADMIN_SESSION_ABSOLUTE_TTL_DAYS,
+      defaultInternalAdminAbsoluteSessionTtlDays
+    )
+  );
 
   const requireCustomerAuth = async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await getAuthenticatedCustomerSession({ request, reply, repository });
@@ -1171,9 +1200,24 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getSessionByRefreshToken(input.refreshToken);
+      if (currentSession && isPastAbsoluteSessionTtl(currentSession.createdAt, customerAbsoluteSessionTtlMs)) {
+        await repository.revokeByRefreshToken(input.refreshToken);
+        return reply.status(401).send(
+          apiErrorSchema.parse({
+            code: "SESSION_EXPIRED",
+            message: "Your session has expired. Please sign in again.",
+            requestId: request.id
+          })
+        );
+      }
+
       const rotatedSession = await repository.rotateRefreshSession(
         input.refreshToken,
-        (userId) => buildStoredSession(input.refreshToken, userId),
+        (userId) => ({
+          ...buildStoredSession(input.refreshToken, userId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
       if (!rotatedSession) {
@@ -1619,9 +1663,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getOperatorSessionByRefreshToken(input.refreshToken);
+      if (currentSession && isPastAbsoluteSessionTtl(currentSession.createdAt, operatorAbsoluteSessionTtlMs)) {
+        await repository.revokeOperatorByRefreshToken(input.refreshToken);
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "SESSION_EXPIRED", "Your session has expired. Please sign in again."));
+      }
+
       const rotatedSession = await repository.rotateOperatorRefreshSession(
         input.refreshToken,
-        (operatorUserId) => buildStoredOperatorSession(input.refreshToken, operatorUserId),
+        (operatorUserId, activeLocationId) => ({
+          ...buildStoredOperatorSession(input.refreshToken, operatorUserId, activeLocationId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
 
@@ -1726,9 +1781,23 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getInternalAdminSessionByRefreshToken(input.refreshToken);
+      if (
+        currentSession &&
+        isPastAbsoluteSessionTtl(currentSession.createdAt, internalAdminAbsoluteSessionTtlMs)
+      ) {
+        await repository.revokeInternalAdminByRefreshToken(input.refreshToken);
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "SESSION_EXPIRED", "Your session has expired. Please sign in again."));
+      }
+
       const rotatedSession = await repository.rotateInternalAdminRefreshSession(
         input.refreshToken,
-        (internalAdminUserId) => buildStoredInternalAdminSession(input.refreshToken, internalAdminUserId),
+        (internalAdminUserId) => ({
+          ...buildStoredInternalAdminSession(input.refreshToken, internalAdminUserId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
 
