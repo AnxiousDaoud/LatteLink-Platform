@@ -77,11 +77,11 @@ Optional values:
 
 Run from `apps/mobile` or use `pnpm --filter @lattelink/mobile exec ...`.
 
-Before starting a build, run the release preflight for the intended profile:
+Before starting a build, run the release preflight with the same EAS environment the build/update will use:
 
 ```bash
-pnpm --filter @lattelink/mobile release:check -- beta
-pnpm --filter @lattelink/mobile release:check -- production
+pnpm --filter @lattelink/mobile exec eas env:exec preview "pnpm release:check -- beta" --non-interactive
+pnpm --filter @lattelink/mobile exec eas env:exec production "pnpm release:check -- production" --non-interactive
 ```
 
 The preflight validates that the env is complete and catches common mistakes such as:
@@ -92,12 +92,20 @@ The preflight validates that the env is complete and catches common mistakes suc
 - `beta` or `production` pointing to localhost or non-HTTPS API URLs
 - malformed Apple Pay merchant identifiers
 - missing or invalid in-app privacy policy URLs
+- missing Sentry DSN or org/project slug
+
+`SENTRY_AUTH_TOKEN` should exist as an EAS `secret` variable. EAS does not expose secret values to `eas env:exec`, so
+the preflight warns when it cannot see the token. Verify the secret exists before building:
+
+```bash
+pnpm --filter @lattelink/mobile exec eas env:list preview --format long
+```
 
 Then run the actual EAS build:
 
 ```bash
-eas build --platform ios --profile beta
-eas build --platform ios --profile production
+eas build --platform ios --profile beta --environment preview
+eas build --platform ios --profile production --environment production
 ```
 
 For OTA updates, use the matching channel and EAS environment. The beta channel uses EAS's default `preview`
@@ -112,9 +120,10 @@ eas update --channel production --environment production --message "<release not
 
 Before creating a `beta` or `production` build:
 
-- run `pnpm --filter @lattelink/mobile release:check -- <profile>`
+- run the matching EAS env-backed release preflight
 - confirm the target API base URL is correct
 - confirm the Apple Pay merchant identifier matches the target environment
+- confirm Sentry is configured and `SENTRY_AUTH_TOKEN` is present as an EAS secret
 - confirm the privacy policy URL is live and public
 - confirm the bundle identifier matches the provisioning target
 - confirm the app display name matches the intended lane

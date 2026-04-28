@@ -10,7 +10,10 @@ const REQUIRED_KEYS = [
   "EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER",
   "EXPO_PUBLIC_API_BASE_URL",
   "EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID",
-  "EXPO_PUBLIC_BRAND_NAME"
+  "EXPO_PUBLIC_BRAND_NAME",
+  "EXPO_PUBLIC_SENTRY_DSN",
+  "SENTRY_ORG",
+  "SENTRY_PROJECT"
 ];
 
 const cliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -165,6 +168,54 @@ if (privacyPolicyUrl) {
       errors.push(`EXPO_PUBLIC_PRIVACY_POLICY_URL cannot use placeholder example.com. Received: ${privacyPolicyUrl}`);
     }
   }
+}
+
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() ?? "";
+if (sentryDsn) {
+  let parsedSentryDsn;
+
+  try {
+    parsedSentryDsn = new URL(sentryDsn);
+  } catch {
+    errors.push(`EXPO_PUBLIC_SENTRY_DSN must be a valid URL. Received: ${sentryDsn}`);
+  }
+
+  if (parsedSentryDsn) {
+    const hostname = parsedSentryDsn.hostname.toLowerCase();
+    const isSentryIngestHost =
+      hostname === "sentry.io" ||
+      hostname.endsWith(".sentry.io") ||
+      hostname.endsWith(".ingest.sentry.io") ||
+      hostname.endsWith(".ingest.us.sentry.io");
+
+    if (parsedSentryDsn.protocol !== "https:") {
+      errors.push(`EXPO_PUBLIC_SENTRY_DSN must use https. Received: ${sentryDsn}`);
+    }
+
+    if (!isSentryIngestHost) {
+      warnings.push(`EXPO_PUBLIC_SENTRY_DSN does not look like a Sentry ingest DSN. Host: ${hostname}`);
+    }
+  }
+}
+
+const sentryOrg = process.env.SENTRY_ORG?.trim() ?? "";
+if (sentryOrg && !/^[a-z0-9_-]+$/i.test(sentryOrg)) {
+  errors.push(`SENTRY_ORG must be a Sentry slug. Received: ${sentryOrg}`);
+}
+
+const sentryProject = process.env.SENTRY_PROJECT?.trim() ?? "";
+if (sentryProject && !/^[a-z0-9_-]+$/i.test(sentryProject)) {
+  errors.push(`SENTRY_PROJECT must be a Sentry project slug. Received: ${sentryProject}`);
+}
+
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim() ?? "";
+if (sentryAuthToken && sentryAuthToken.length < 20) {
+  errors.push("SENTRY_AUTH_TOKEN is present but looks too short to be valid.");
+}
+if (!sentryAuthToken) {
+  warnings.push(
+    "SENTRY_AUTH_TOKEN is not visible to this preflight. Confirm it exists as an EAS secret before building so source maps can upload."
+  );
 }
 
 const associatedDomains = (process.env.IOS_ASSOCIATED_DOMAINS ?? "")
