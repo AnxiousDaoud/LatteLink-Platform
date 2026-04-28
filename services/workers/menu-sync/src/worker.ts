@@ -57,7 +57,6 @@ export type MenuSyncLoopHandle = {
 const DEFAULT_INTERVAL_MS = 300_000;
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 2_000;
-const DEFAULT_LOCATION_ID = "rawaqcoffee01";
 const DEFAULT_DEAD_LETTER_PATH = "./dead-letter/menu-sync.jsonl";
 const DEFAULT_CATALOG_BASE_URL = "http://127.0.0.1:3002";
 
@@ -115,7 +114,7 @@ export function buildMenuSyncConfig(env: NodeJS.ProcessEnv = process.env): MenuS
   const sourceUrl = trimToUndefined(env.WEBAPP_MENU_SOURCE_URL) ?? "";
   const enabled = sourceUrl.length > 0;
   const catalogBaseUrl = trimToUndefined(env.CATALOG_SERVICE_BASE_URL) ?? DEFAULT_CATALOG_BASE_URL;
-  const locationId = trimToUndefined(env.MENU_SYNC_LOCATION_ID) ?? DEFAULT_LOCATION_ID;
+  const locationId = trimToUndefined(env.MENU_SYNC_LOCATION_ID);
   const deadLetterPath = trimToUndefined(env.MENU_SYNC_DEAD_LETTER_PATH) ?? DEFAULT_DEAD_LETTER_PATH;
   const gatewayApiToken = trimToUndefined(env.GATEWAY_INTERNAL_API_TOKEN) ?? "";
 
@@ -126,13 +125,16 @@ export function buildMenuSyncConfig(env: NodeJS.ProcessEnv = process.env): MenuS
   if (enabled && !gatewayApiToken) {
     throw new Error("GATEWAY_INTERNAL_API_TOKEN must be set");
   }
+  if (enabled && !locationId) {
+    throw new Error("MENU_SYNC_LOCATION_ID must be set when menu sync is enabled");
+  }
 
   return {
     enabled,
     sourceUrl,
     catalogBaseUrl,
     gatewayApiToken,
-    locationId,
+    locationId: locationId ?? "",
     deadLetterPath,
     intervalMs: parseIntegerEnv({
       name: "MENU_SYNC_INTERVAL_MS",

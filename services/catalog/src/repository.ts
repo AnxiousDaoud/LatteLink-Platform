@@ -43,6 +43,7 @@ import {
   DEFAULT_BRAND_NAME,
   DEFAULT_LOCATION_ID,
   DEFAULT_STORE_HOURS,
+  resolveDefaultLocationId,
   resolveDefaultAppConfigPayload,
   resolveProvisionedAppConfigPayload
 } from "./tenant.js";
@@ -1197,7 +1198,9 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
   const db = createPostgresDb(connectionString);
   const defaultAppConfigPayload = resolveDefaultAppConfigPayload();
   await runMigrations(db);
-  await seedCatalogDefaults(db);
+  if (resolveDefaultLocationId()) {
+    await seedCatalogDefaults(db);
+  }
 
   return {
     backend: "postgres",
