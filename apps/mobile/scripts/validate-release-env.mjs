@@ -1,14 +1,19 @@
 const VALID_VARIANTS = new Set(["beta", "production"]);
 const REQUIRED_KEYS = [
   "APP_VARIANT",
+  "EXPO_PUBLIC_APP_VARIANT",
   "APP_DISPLAY_NAME_BASE",
   "APP_VERSION",
   "EXPO_SLUG",
   "EXPO_SCHEME",
   "IOS_BUNDLE_IDENTIFIER",
+  "EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER",
   "EXPO_PUBLIC_API_BASE_URL",
   "EXPO_PUBLIC_APPLE_PAY_MERCHANT_ID",
-  "EXPO_PUBLIC_BRAND_NAME"
+  "EXPO_PUBLIC_BRAND_NAME",
+  "EXPO_PUBLIC_SENTRY_DSN",
+  "SENTRY_ORG",
+  "SENTRY_PROJECT"
 ];
 
 const cliArgs = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -36,6 +41,11 @@ if (variant && variant !== profile) {
   errors.push(`APP_VARIANT must match the target profile. Expected ${profile}, received ${variant}.`);
 }
 
+const publicVariant = process.env.EXPO_PUBLIC_APP_VARIANT?.trim();
+if (publicVariant && publicVariant !== profile) {
+  errors.push(`EXPO_PUBLIC_APP_VARIANT must match the target profile. Expected ${profile}, received ${publicVariant}.`);
+}
+
 const appVersion = process.env.APP_VERSION?.trim() ?? "";
 if (appVersion && !/^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$/.test(appVersion)) {
   errors.push(`APP_VERSION must look like a semantic version. Received: ${appVersion}`);
@@ -52,6 +62,13 @@ if (scheme && !/^[a-z][a-z0-9+.-]*$/i.test(scheme)) {
 }
 
 const bundleIdentifier = process.env.IOS_BUNDLE_IDENTIFIER?.trim() ?? "";
+const publicBundleIdentifier = process.env.EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER?.trim() ?? "";
+if (bundleIdentifier && publicBundleIdentifier && bundleIdentifier !== publicBundleIdentifier) {
+  errors.push(
+    `EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER must match IOS_BUNDLE_IDENTIFIER. Expected ${bundleIdentifier}, received ${publicBundleIdentifier}.`
+  );
+}
+
 if (bundleIdentifier) {
   if (!/^[A-Za-z0-9.-]+$/.test(bundleIdentifier)) {
     errors.push(`IOS_BUNDLE_IDENTIFIER contains invalid characters. Received: ${bundleIdentifier}`);
@@ -106,6 +123,14 @@ if (apiBaseUrl) {
     if ((profile === "beta" || profile === "production") && hostname === "example.com") {
       errors.push(`${profile} builds cannot use placeholder example.com URLs. Received: ${apiBaseUrl}`);
     }
+
+    if (profile === "beta" && hostname !== "api-dev.nomly.us") {
+      errors.push(`Beta builds must use api-dev.nomly.us. Received: ${hostname}`);
+    }
+
+    if (profile === "production" && hostname !== "api.nomly.us") {
+      errors.push(`Production builds must use api.nomly.us. Received: ${hostname}`);
+    }
   }
 }
 
@@ -143,6 +168,54 @@ if (privacyPolicyUrl) {
       errors.push(`EXPO_PUBLIC_PRIVACY_POLICY_URL cannot use placeholder example.com. Received: ${privacyPolicyUrl}`);
     }
   }
+}
+
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() ?? "";
+if (sentryDsn) {
+  let parsedSentryDsn;
+
+  try {
+    parsedSentryDsn = new URL(sentryDsn);
+  } catch {
+    errors.push(`EXPO_PUBLIC_SENTRY_DSN must be a valid URL. Received: ${sentryDsn}`);
+  }
+
+  if (parsedSentryDsn) {
+    const hostname = parsedSentryDsn.hostname.toLowerCase();
+    const isSentryIngestHost =
+      hostname === "sentry.io" ||
+      hostname.endsWith(".sentry.io") ||
+      hostname.endsWith(".ingest.sentry.io") ||
+      hostname.endsWith(".ingest.us.sentry.io");
+
+    if (parsedSentryDsn.protocol !== "https:") {
+      errors.push(`EXPO_PUBLIC_SENTRY_DSN must use https. Received: ${sentryDsn}`);
+    }
+
+    if (!isSentryIngestHost) {
+      warnings.push(`EXPO_PUBLIC_SENTRY_DSN does not look like a Sentry ingest DSN. Host: ${hostname}`);
+    }
+  }
+}
+
+const sentryOrg = process.env.SENTRY_ORG?.trim() ?? "";
+if (sentryOrg && !/^[a-z0-9_-]+$/i.test(sentryOrg)) {
+  errors.push(`SENTRY_ORG must be a Sentry slug. Received: ${sentryOrg}`);
+}
+
+const sentryProject = process.env.SENTRY_PROJECT?.trim() ?? "";
+if (sentryProject && !/^[a-z0-9_-]+$/i.test(sentryProject)) {
+  errors.push(`SENTRY_PROJECT must be a Sentry project slug. Received: ${sentryProject}`);
+}
+
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim() ?? "";
+if (sentryAuthToken && sentryAuthToken.length < 20) {
+  errors.push("SENTRY_AUTH_TOKEN is present but looks too short to be valid.");
+}
+if (!sentryAuthToken) {
+  warnings.push(
+    "SENTRY_AUTH_TOKEN is not visible to this preflight. Confirm it exists as an EAS secret before building so source maps can upload."
+  );
 }
 
 const associatedDomains = (process.env.IOS_ASSOCIATED_DOMAINS ?? "")

@@ -83,12 +83,13 @@ describe("menu-sync worker", () => {
     expect(config.intervalMs).toBe(300000);
     expect(config.maxRetries).toBe(3);
     expect(config.retryDelayMs).toBe(2000);
-    expect(config.locationId).toBe("rawaqcoffee01");
+    expect(config.locationId).toBe("");
   });
 
   it("builds enabled config when a source url is provided", () => {
     const config = buildMenuSyncConfig({
       GATEWAY_INTERNAL_API_TOKEN: "test-gateway-token",
+      MENU_SYNC_LOCATION_ID: "rawaqcoffee01",
       WEBAPP_MENU_SOURCE_URL: "https://webapp.gazellecoffee.com/api/content/public"
     } as NodeJS.ProcessEnv);
 
@@ -100,6 +101,15 @@ describe("menu-sync worker", () => {
     expect(config.maxRetries).toBe(3);
     expect(config.retryDelayMs).toBe(2000);
     expect(config.locationId).toBe("rawaqcoffee01");
+  });
+
+  it("requires an explicit location id when enabled", () => {
+    expect(() =>
+      buildMenuSyncConfig({
+        GATEWAY_INTERNAL_API_TOKEN: "test-gateway-token",
+        WEBAPP_MENU_SOURCE_URL: "https://webapp.gazellecoffee.com/api/content/public"
+      } as NodeJS.ProcessEnv)
+    ).toThrow("MENU_SYNC_LOCATION_ID must be set");
   });
 
   it("retries failed sync once and then succeeds", async () => {

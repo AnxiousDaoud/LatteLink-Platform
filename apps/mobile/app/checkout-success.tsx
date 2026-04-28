@@ -11,35 +11,6 @@ import { useCheckoutFlow, type CheckoutConfirmation } from "../src/orders/flow";
 import { formatOrderDateTime } from "../src/orders/history";
 import { uiPalette, uiTypography } from "../src/ui/system";
 
-const DEV_PREVIEW_CONFIRMATION: CheckoutConfirmation = {
-  orderId: "dev-order-confirmation-preview",
-  pickupCode: "47311C",
-  status: "PAID",
-  total: { amountCents: 795, currency: "USD" },
-  items: [
-    {
-      itemId: "iced-maple-latte",
-      itemName: "Iced Maple Latte",
-      quantity: 1,
-      unitPriceCents: 725,
-      lineTotalCents: 805,
-      customization: {
-        notes: "Light ice",
-        selectedOptions: [
-          {
-            groupId: "milk",
-            groupLabel: "Milk",
-            optionId: "oat",
-            optionLabel: "Oat",
-            priceDeltaCents: 80
-          }
-        ]
-      }
-    }
-  ],
-  occurredAt: "2026-03-20T09:15:00.000Z"
-};
-
 function resolveOrderItemIcon(name: string) {
   const haystack = name.toLowerCase();
   if (haystack.includes("tea") || haystack.includes("matcha")) return "leaf-outline" as const;
@@ -179,13 +150,12 @@ export default function CheckoutSuccessScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { confirmation, clearConfirmation } = useCheckoutFlow();
-  const isDevPreview = !confirmation && __DEV__;
-  const resolvedConfirmation = confirmation ?? (isDevPreview ? DEV_PREVIEW_CONFIRMATION : null);
+  const resolvedConfirmation = confirmation;
   const menuQuery = useMenuQuery();
   const menu = resolveMenuData(menuQuery.data);
   const menuItemsById = useMemo(
-    () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item] as const)),
-    [menu.categories]
+    () => new Map((menu?.categories ?? []).flatMap((category) => category.items).map((item) => [item.id, item] as const)),
+    [menu?.categories]
   );
   const resolvedItems = resolvedConfirmation?.items ?? [];
   const earnedPoints = resolvedConfirmation?.total.amountCents ?? 0;

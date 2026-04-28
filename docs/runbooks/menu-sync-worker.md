@@ -14,7 +14,7 @@ The worker now includes:
 ## Environment Variables
 
 - `WEBAPP_MENU_SOURCE_URL`
-  - default: `https://webapp.gazellecoffee.com/api/content/public`
+  - no default; leaving it blank keeps the worker deployed but disabled
 - `MENU_SYNC_INTERVAL_MS`
   - default: `300000` (5 minutes)
 - `MENU_SYNC_MAX_RETRIES`
@@ -22,7 +22,8 @@ The worker now includes:
 - `MENU_SYNC_RETRY_DELAY_MS`
   - default: `2000` (first retry delay, doubles per attempt)
 - `MENU_SYNC_LOCATION_ID`
-  - default: legacy dev placeholder in code; set this explicitly for any real deployment
+  - required when `WEBAPP_MENU_SOURCE_URL` is set
+  - no code default; set this explicitly for the merchant being synced
 - `MENU_SYNC_DEAD_LETTER_PATH`
   - default: `./dead-letter/menu-sync.jsonl`
 

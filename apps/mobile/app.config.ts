@@ -84,6 +84,17 @@ const stripePlugin = [
   "@stripe/stripe-react-native",
   { merchantIdentifier: applePayMerchantIdentifiers }
 ] as [string, { merchantIdentifier: string[] }];
+const sentryPlugin =
+  process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+    ? ([
+        "@sentry/react-native/expo",
+        {
+          url: process.env.SENTRY_URL ?? "https://sentry.io/",
+          organization: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT
+        }
+      ] as [string, { url: string; organization: string; project: string }])
+    : null;
 
 const config: ExpoConfig = {
   name: resolveDisplayName(variant),
@@ -132,6 +143,7 @@ const config: ExpoConfig = {
     appVariant: variant,
     easBuildProfile: process.env.EAS_BUILD_PROFILE ?? null,
     apiBaseUrl: releaseApiBaseUrl,
+    locationId: process.env.EXPO_PUBLIC_LOCATION_ID?.trim() ?? null,
     applePayMerchantIdentifier,
     privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ?? DEFAULT_PRIVACY_POLICY_URL,
     eas: {
@@ -149,7 +161,8 @@ const config: ExpoConfig = {
       {
         iosDisplayInForeground: true
       }
-    ]
+    ],
+    ...(sentryPlugin ? [sentryPlugin] : [])
   ]
 };
 

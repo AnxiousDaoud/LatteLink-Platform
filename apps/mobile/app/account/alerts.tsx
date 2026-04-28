@@ -163,6 +163,8 @@ export default function ProfilePage() {
   const { isAuthenticated } = useAuthSession();
   const appConfigQuery = useAppConfigQuery();
   const appConfig = resolveAppConfigData(appConfigQuery.data);
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
   const profileQuery = useCustomerProfileQuery(isAuthenticated);
   const profile = profileQuery.data;
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
@@ -227,7 +229,7 @@ export default function ProfilePage() {
             />
           </GlassCard>
         </ScreenScroll>
-        <AccountFloatingHeader title="Profile" insetTop={insets.top} onBack={goBack} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+        <AccountFloatingHeader title="Profile" insetTop={insets.top} onBack={goBack} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       </View>
     );
   }

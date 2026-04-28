@@ -1,34 +1,14 @@
 import Link from "next/link";
-import { getInternalLocationOwner, listInternalLocations } from "@/lib/internal-api";
+import { getInternalLocationReadiness, listInternalLocations } from "@/lib/internal-api";
 
 type LaunchState = "healthy" | "warning" | "critical";
 
-function getLaunchState(input: {
-  hasOwner: boolean;
-  dashboardEnabled: boolean;
-  liveTrackingEnabled: boolean;
-}): LaunchState {
-  let issues = 0;
-
-  if (!input.hasOwner) {
-    issues += 1;
-  }
-  if (!input.dashboardEnabled) {
-    issues += 1;
-  }
-  if (!input.liveTrackingEnabled) {
-    issues += 1;
-  }
-
-  if (issues === 0) {
+function getLaunchState(input: { ready: boolean; passedCount: number; totalCount: number }): LaunchState {
+  if (input.ready) {
     return "healthy";
   }
 
-  if (issues === 1) {
-    return "warning";
-  }
-
-  return "critical";
+  return input.passedCount >= Math.max(input.totalCount - 2, 0) ? "warning" : "critical";
 }
 
 function getLaunchLabel(state: LaunchState) {
@@ -45,47 +25,14 @@ function getLaunchLabel(state: LaunchState) {
 function getActivityFeed(rows: Array<{
   brandName: string;
   locationId: string;
-  hasOwner: boolean;
-  dashboardEnabled: boolean;
-  liveTrackingEnabled: boolean;
-  menuSource: "platform_managed" | "external_sync";
+  failedChecks: string[];
 }>) {
   const items = rows.flatMap((row) => {
-    const nextItems = [];
-
-    if (!row.hasOwner) {
-      nextItems.push({
+    return row.failedChecks.slice(0, 3).map((label) => ({
         severity: "danger" as const,
-        label: `${row.brandName} is missing owner access`,
-        detail: `${row.locationId} needs the first dashboard owner provisioned before handoff.`
-      });
-    }
-
-    if (!row.dashboardEnabled) {
-      nextItems.push({
-        severity: "warning" as const,
-        label: `${row.brandName} has the client dashboard disabled`,
-        detail: `Operators will not be able to use the dashboard until the location capabilities are updated.`
-      });
-    }
-
-    if (!row.liveTrackingEnabled) {
-      nextItems.push({
-        severity: "warning" as const,
-        label: `${row.brandName} has live order tracking disabled`,
-        detail: `The launch baseline is incomplete for this location's operations setup.`
-      });
-    }
-
-    if (row.menuSource === "external_sync") {
-      nextItems.push({
-        severity: "info" as const,
-        label: `${row.brandName} is using an external menu source`,
-        detail: `Dashboard editing will stay constrained until the menu source returns to platform managed.`
-      });
-    }
-
-    return nextItems;
+        label: `${row.brandName}: ${label}`,
+        detail: `${row.locationId} needs this launch gate completed before pilot handoff.`
+      }));
   });
 
   if (items.length > 0) {
@@ -95,37 +42,33 @@ function getActivityFeed(rows: Array<{
   return [
     {
       severity: "info" as const,
-      label: "All visible clients meet the current launch baseline",
-      detail: "Owner access, dashboard availability, and live order tracking are all configured."
+      label: "All visible clients pass automated launch checks",
+      detail: "Confirm manual test orders before the final go-live handoff."
     }
   ];
 }
 
 export default async function DashboardPage() {
   const locations = (await listInternalLocations()).locations;
-  const ownerSummaries = await Promise.all(
+  const readinessSummaries = await Promise.all(
     locations.map(async (location) => ({
       locationId: location.locationId,
-      ownerSummary: await getInternalLocationOwner(location.locationId).catch(() => ({
-        locationId: location.locationId,
-        owner: null
-      }))
+      readiness: await getInternalLocationReadiness(location.locationId)
     }))
   );
 
-  const ownerByLocationId = new Map(ownerSummaries.map((summary) => [summary.locationId, summary.ownerSummary.owner]));
+  const readinessByLocationId = new Map(readinessSummaries.map((summary) => [summary.locationId, summary.readiness]));
 
   const rows = locations.map((location) => {
-    const owner = ownerByLocationId.get(location.locationId) ?? null;
-    const launchState = getLaunchState({
-      hasOwner: Boolean(owner),
-      dashboardEnabled: location.capabilities.operations.dashboardEnabled,
-      liveTrackingEnabled: location.capabilities.operations.liveOrderTrackingEnabled
-    });
+    const readiness = readinessByLocationId.get(location.locationId);
+    if (!readiness) {
+      throw new Error(`Missing readiness summary for ${location.locationId}`);
+    }
+    const launchState = getLaunchState(readiness);
 
     return {
       location,
-      owner,
+      readiness,
       launchState
     };
   });
@@ -133,15 +76,14 @@ export default async function DashboardPage() {
   const readyCount = rows.filter((row) => row.launchState === "healthy").length;
   const warningCount = rows.filter((row) => row.launchState === "warning").length;
   const criticalCount = rows.filter((row) => row.launchState === "critical").length;
-  const dashboardEnabledCount = rows.filter((row) => row.location.capabilities.operations.dashboardEnabled).length;
+  const ownerAccessCount = rows.filter((row) =>
+    row.readiness.checks.find((check) => check.id === "owner_provisioned")?.passed
+  ).length;
   const activityFeed = getActivityFeed(
     rows.map((row) => ({
       brandName: row.location.brandName,
       locationId: row.location.locationId,
-      hasOwner: Boolean(row.owner),
-      dashboardEnabled: row.location.capabilities.operations.dashboardEnabled,
-      liveTrackingEnabled: row.location.capabilities.operations.liveOrderTrackingEnabled,
-      menuSource: row.location.capabilities.menu.source
+      failedChecks: row.readiness.checks.filter((check) => !check.passed && !check.manual).map((check) => check.label)
     }))
   );
 
@@ -172,7 +114,7 @@ export default async function DashboardPage() {
         <article className="stat-card">
           <span className="eyebrow">Launch Ready</span>
           <strong>{readyCount}</strong>
-          <p>Clients with owner access, dashboard access, and live tracking configured.</p>
+          <p>Clients passing all automated go-live checks.</p>
           <span className={readyCount === locations.length ? "metric-delta is-positive" : "metric-delta"}>
             {locations.length === 0 ? "No clients yet" : `${readyCount} of ${locations.length} ready`}
           </span>
@@ -186,9 +128,9 @@ export default async function DashboardPage() {
           </span>
         </article>
         <article className="stat-card">
-          <span className="eyebrow">Dashboard Enabled</span>
-          <strong>{dashboardEnabledCount}</strong>
-          <p>Locations where the client dashboard can be handed off today.</p>
+          <span className="eyebrow">Owner Access</span>
+          <strong>{ownerAccessCount}</strong>
+          <p>Locations with active owner access provisioned.</p>
         </article>
       </div>
 
@@ -215,9 +157,9 @@ export default async function DashboardPage() {
                 <tr>
                   <th>Client</th>
                   <th>Market</th>
-                  <th>Owner</th>
+                  <th>Readiness</th>
                   <th>Menu</th>
-                  <th>Dashboard</th>
+                  <th>Payment</th>
                   <th>Launch State</th>
                 </tr>
               </thead>
@@ -229,13 +171,13 @@ export default async function DashboardPage() {
                       <span>{row.location.locationName}</span>
                     </td>
                     <td>{row.location.marketLabel}</td>
-                    <td>{row.owner ? row.owner.email : "Missing owner"}</td>
+                    <td>{row.readiness.passedCount}/{row.readiness.totalCount}</td>
                     <td>
                       <span className={row.location.capabilities.menu.source === "platform_managed" ? "menu-badge" : "menu-badge is-external"}>
                         {row.location.capabilities.menu.source === "platform_managed" ? "Platform" : "External"}
                       </span>
                     </td>
-                    <td>{row.location.capabilities.operations.dashboardEnabled ? "Enabled" : "Disabled"}</td>
+                    <td>{row.readiness.checks.find((check) => check.id === "stripe_onboarded")?.passed ? "Ready" : "Needs setup"}</td>
                     <td>
                       <div className={`status-badge is-${row.launchState}`}>
                         {getLaunchLabel(row.launchState)}

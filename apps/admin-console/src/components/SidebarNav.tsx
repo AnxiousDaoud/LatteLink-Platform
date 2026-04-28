@@ -8,6 +8,7 @@ const navItems = [
   { href: "/clients", label: "Clients" },
   { href: "/clients/new", label: "New Client" },
   { href: "/launch-readiness", label: "Launch Readiness" },
+  { href: "/support", label: "Support" },
   { href: "/settings", label: "Settings" }
 ] as const;
 

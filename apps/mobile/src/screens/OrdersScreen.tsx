@@ -459,8 +459,8 @@ export function OrdersScreen() {
   const orders = ordersQuery.data ?? [];
   const menu = resolveMenuData(menuQuery.data);
   const menuItemsById = useMemo(
-    () => new Map(menu.categories.flatMap((category) => category.items).map((item) => [item.id, item])),
-    [menu.categories]
+    () => new Map((menu?.categories ?? []).flatMap((category) => category.items).map((item) => [item.id, item])),
+    [menu?.categories]
   );
   const realActiveOrder = findActiveOrder(orders);
   const activeOrder = realActiveOrder;
@@ -472,6 +472,8 @@ export function OrdersScreen() {
   const isInitialOrdersLoading = isAuthenticated && ordersQuery.isLoading && !ordersQuery.data;
   const shouldShowInitialLoading = !didFinishInitialReveal && (isHydrating || isInitialOrdersLoading);
   const recoveryCopy = getOrdersRecoveryCopy(authRecoveryState);
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
 
   useEffect(() => {
     if (didFinishInitialReveal) return;
@@ -544,8 +546,8 @@ export function OrdersScreen() {
           </View>
         </ScreenStatic>
 
-        <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: appConfig.header.background }]}>
-          <OrdersHeader title="Orders" foregroundColor={appConfig.header.foreground} />
+        <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: headerBackgroundColor }]}>
+          <OrdersHeader title="Orders" foregroundColor={headerForegroundColor} />
         </View>
 
         {showLoadingOverlay ? (
@@ -648,8 +650,8 @@ export function OrdersScreen() {
         </View>
       </ScreenScroll>
 
-      <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: appConfig.header.background }]}>
-        <OrdersHeader title={activeOrder ? "Track your order" : "Past Orders"} foregroundColor={appConfig.header.foreground} />
+      <View pointerEvents="none" style={[styles.pageHeaderFloating, { paddingTop: insets.top, height: insets.top + ORDERS_HEADER_HEIGHT, backgroundColor: headerBackgroundColor }]}>
+        <OrdersHeader title={activeOrder ? "Track your order" : "Past Orders"} foregroundColor={headerForegroundColor} />
       </View>
 
       {showLoadingOverlay ? (

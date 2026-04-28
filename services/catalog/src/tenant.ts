@@ -7,16 +7,24 @@ import {
   type AppConfig
 } from "@lattelink/contracts-catalog";
 
-export const DEFAULT_BRAND_ID = "rawaqcoffee";
-export const DEFAULT_LOCATION_ID = "rawaqcoffee01";
-export const DEFAULT_BRAND_NAME = "Rawaq Coffee";
-export const DEFAULT_LOCATION_NAME = "Rawaq Coffee Flagship";
-export const DEFAULT_MARKET_LABEL = "Ann Arbor, MI";
+export const DEFAULT_BRAND_ID = "demo-brand";
+export const DEFAULT_LOCATION_ID = "demo-location";
+export const DEFAULT_BRAND_NAME = "Demo Coffee";
+export const DEFAULT_LOCATION_NAME = "Demo Coffee Flagship";
+export const DEFAULT_MARKET_LABEL = "Pilot Market";
 export const DEFAULT_STORE_HOURS = "Daily · 7:00 AM - 6:00 PM";
 
 function trimToUndefined(value: string | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
+}
+
+export function resolveDefaultLocationId(env: Record<string, string | undefined> = process.env): string | undefined {
+  return trimToUndefined(env.CATALOG_DEFAULT_LOCATION_ID);
+}
+
+function resolveSeedLocationId(env: Record<string, string | undefined>) {
+  return resolveDefaultLocationId(env) ?? DEFAULT_LOCATION_ID;
 }
 
 function resolveConfiguredFulfillmentMode(value: string | undefined) {
@@ -34,11 +42,11 @@ export function resolveDefaultAppConfigPayload(
 ): AppConfig {
   return appConfigSchema.parse({
     brand: {
-      brandId: DEFAULT_BRAND_ID,
-      brandName: DEFAULT_BRAND_NAME,
-      locationId: DEFAULT_LOCATION_ID,
-      locationName: DEFAULT_LOCATION_NAME,
-      marketLabel: DEFAULT_MARKET_LABEL
+      brandId: trimToUndefined(env.CATALOG_DEFAULT_BRAND_ID) ?? DEFAULT_BRAND_ID,
+      brandName: trimToUndefined(env.CATALOG_DEFAULT_BRAND_NAME) ?? DEFAULT_BRAND_NAME,
+      locationId: resolveSeedLocationId(env),
+      locationName: trimToUndefined(env.CATALOG_DEFAULT_LOCATION_NAME) ?? DEFAULT_LOCATION_NAME,
+      marketLabel: trimToUndefined(env.CATALOG_DEFAULT_MARKET_LABEL) ?? DEFAULT_MARKET_LABEL
     },
     theme: {
       background: "#F7F4ED",

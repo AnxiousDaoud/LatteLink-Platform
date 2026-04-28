@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Sentry from "@sentry/react-native";
 import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import { useQuery } from "@tanstack/react-query";
@@ -6,9 +7,9 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLoyaltyBalanceQuery, useLoyaltyLedgerQuery } from "../account/data";
+import { getLoyaltyQueryErrorMessage, useLoyaltyBalanceQuery, useLoyaltyLedgerQuery } from "../account/data";
 import { AccountFloatingHeader, ACCOUNT_HEADER_HEIGHT } from "../account/AccountFloatingHeader";
-import { apiClient } from "../api/client";
+import { MOBILE_API_ENVIRONMENT, apiClient } from "../api/client";
 import { customerProfileQueryKey } from "../auth/profile";
 import { getAccountRecoveryCopy } from "../auth/recovery";
 import { useAuthSession } from "../auth/session";
@@ -100,8 +101,10 @@ export function AccountScreen() {
   const loyaltyBalanceQuery = useLoyaltyBalanceQuery(isAuthenticated && loyaltyEnabled);
   const loyaltyLedgerQuery = useLoyaltyLedgerQuery(isAuthenticated && loyaltyEnabled);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
+  const [sentryDiagnosticState, setSentryDiagnosticState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
 
   const loyaltyBalance = loyaltyBalanceQuery.data;
+  const loyaltyError = loyaltyBalanceQuery.error ?? loyaltyLedgerQuery.error;
   const identity = identityQuery.data;
   const accountGreeting =
     identity?.name?.trim() ||
@@ -110,7 +113,10 @@ export function AccountScreen() {
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
   const contentBottomInset = Math.max(getTabBarBottomOffset(insets.bottom > 0) + TAB_BAR_HEIGHT + 24 - insets.bottom, 24);
   const staticBottomInset = getTabBarBottomOffset(insets.bottom > 0) + TAB_BAR_HEIGHT + 12;
-  const recoveryCopy = getAccountRecoveryCopy(authRecoveryState, appConfig.brand.locationName);
+  const locationName = appConfig?.brand.locationName ?? "this store";
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
+  const recoveryCopy = getAccountRecoveryCopy(authRecoveryState, locationName);
 
   function handleRefresh() {
     if (isManualRefresh) return;
@@ -135,6 +141,27 @@ export function AccountScreen() {
     router.push(pathname);
   }
 
+  function sendSentryDiagnosticEvent() {
+    if (sentryDiagnosticState === "sending") return;
+
+    setSentryDiagnosticState("sending");
+    Sentry.withScope((scope) => {
+      scope.setTag("diagnostic", "mobile-sentry-validation");
+      scope.setTag("app_variant", MOBILE_API_ENVIRONMENT.variant ?? "unknown");
+      scope.setContext("mobile_environment", {
+        apiBaseUrl: MOBILE_API_ENVIRONMENT.apiBaseUrl,
+        bundleIdentifier: MOBILE_API_ENVIRONMENT.bundleIdentifier,
+        locationId: MOBILE_API_ENVIRONMENT.locationId
+      });
+      Sentry.captureException(new Error("LatteLink mobile Sentry diagnostic event"));
+    });
+
+    void Sentry.flush().then(
+      () => setSentryDiagnosticState("sent"),
+      () => setSentryDiagnosticState("failed")
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <View style={styles.screenShell}>
@@ -150,7 +177,7 @@ export function AccountScreen() {
           />
         </ScreenStatic>
 
-        <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+        <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       </View>
     );
   }
@@ -174,10 +201,25 @@ export function AccountScreen() {
 
           <View style={styles.pointsWrap}>
             <Text style={styles.pointsLabel}>Available points</Text>
-            <Text style={styles.pointsValue}>{loyaltyEnabled ? (loyaltyBalance ? `${loyaltyBalance.availablePoints}` : "…") : "Off"}</Text>
+            <Text style={styles.pointsValue}>
+              {loyaltyEnabled ? (loyaltyBalance ? `${loyaltyBalance.availablePoints}` : loyaltyError ? "--" : "…") : "Off"}
+            </Text>
             <View style={styles.pointsMetaRow}>
               <Text style={styles.pointsMeta}>{loyaltyEnabled ? `Lifetime ${loyaltyBalance ? loyaltyBalance.lifetimeEarned : "--"} pts` : "Loyalty unavailable"}</Text>
             </View>
+            {loyaltyEnabled && loyaltyError ? (
+              <View style={styles.pointsErrorWrap}>
+                <Text style={styles.pointsError}>{getLoyaltyQueryErrorMessage(loyaltyError)}</Text>
+                <Pressable
+                  onPress={() => {
+                    void Promise.allSettled([loyaltyBalanceQuery.refetch(), loyaltyLedgerQuery.refetch()]);
+                  }}
+                  style={({ pressed }) => [styles.pointsRetry, pressed ? styles.pointsRetryPressed : null]}
+                >
+                  <Text style={styles.pointsRetryLabel}>Retry rewards</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </GlassCard>
 
@@ -187,10 +229,30 @@ export function AccountScreen() {
             <AccountPageRow label="Profile" onPress={() => openAccountRoute("/account/alerts")} />
             <AccountPageRow label="Settings" isLast onPress={() => openAccountRoute("/account/settings")} />
           </View>
+          {MOBILE_API_ENVIRONMENT.variant === "beta" ? (
+            <Pressable
+              onPress={sendSentryDiagnosticEvent}
+              disabled={sentryDiagnosticState === "sending"}
+              style={({ pressed }) => [
+                styles.diagnosticButton,
+                pressed && sentryDiagnosticState !== "sending" ? styles.diagnosticButtonPressed : null
+              ]}
+            >
+              <Text style={styles.diagnosticLabel}>
+                {sentryDiagnosticState === "sending"
+                  ? "Sending Sentry diagnostic…"
+                  : sentryDiagnosticState === "sent"
+                    ? "Sentry diagnostic sent"
+                    : sentryDiagnosticState === "failed"
+                      ? "Sentry diagnostic failed"
+                      : "Send Sentry diagnostic"}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScreenScroll>
 
-      <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+      <AccountFloatingHeader title="Account" insetTop={insets.top} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
     </View>
   );
 }
@@ -345,6 +407,31 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: uiPalette.textSecondary
   },
+  pointsErrorWrap: {
+    marginTop: 14,
+    gap: 10
+  },
+  pointsError: {
+    color: uiPalette.warning,
+    fontSize: 13,
+    lineHeight: 19
+  },
+  pointsRetry: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: uiPalette.border,
+    paddingHorizontal: 14,
+    paddingVertical: 9
+  },
+  pointsRetryPressed: {
+    opacity: 0.72
+  },
+  pointsRetryLabel: {
+    color: uiPalette.text,
+    fontSize: 13,
+    fontWeight: "700"
+  },
   listSection: {
     marginTop: 28
   },
@@ -354,6 +441,25 @@ const styles = StyleSheet.create({
     borderTopColor: uiPalette.border,
     borderBottomWidth: 1,
     borderBottomColor: uiPalette.border
+  },
+  diagnosticButton: {
+    alignSelf: "flex-start",
+    marginTop: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: uiPalette.border,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  diagnosticButtonPressed: {
+    opacity: 0.72
+  },
+  diagnosticLabel: {
+    color: uiPalette.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.7,
+    textTransform: "uppercase"
   },
   pageRow: {
     minHeight: 68

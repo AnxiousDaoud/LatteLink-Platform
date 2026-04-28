@@ -74,9 +74,12 @@ export default function SettingsPage() {
   const appConfigQuery = useAppConfigQuery();
   const appConfig = resolveAppConfigData(appConfigQuery.data);
   const loyaltyEnabled = isMobileLoyaltyVisible(appConfigQuery.data);
-  const pushEnabled = appConfig.featureFlags.pushNotifications;
+  const pushEnabled = appConfig?.featureFlags.pushNotifications ?? false;
   const privacyPolicyUrl = resolvePrivacyPolicyUrl();
   const headerOffset = insets.top + ACCOUNT_HEADER_HEIGHT;
+  const headerBackgroundColor = appConfig?.header.background ?? uiPalette.background;
+  const headerForegroundColor = appConfig?.header.foreground ?? uiPalette.text;
+  const locationName = appConfig?.brand.locationName ?? "Location unavailable";
   const [signOutPending, setSignOutPending] = useState(false);
   const [deleteAccountPending, setDeleteAccountPending] = useState(false);
   const [deleteAccountSheetOpen, setDeleteAccountSheetOpen] = useState(false);
@@ -168,7 +171,7 @@ export default function SettingsPage() {
           </View>
         </ScreenScroll>
 
-        <AccountFloatingHeader title="Settings" insetTop={insets.top} onBack={goBack} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+        <AccountFloatingHeader title="Settings" insetTop={insets.top} onBack={goBack} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       </View>
     );
   }
@@ -192,7 +195,7 @@ export default function SettingsPage() {
         <View style={styles.settingsSection}>
           <SectionLabel label="App" />
           <View style={styles.sectionList}>
-            <SettingsInfoRow label="Location" value={appConfig.brand.locationName} />
+            <SettingsInfoRow label="Location" value={locationName} />
             <SettingsInfoRow label="Alerts" value={pushEnabled ? "Enabled" : "Disabled"} />
             <SettingsInfoRow label="Loyalty" value={loyaltyEnabled ? "Enabled" : "Disabled"} isLast />
           </View>
@@ -235,7 +238,7 @@ export default function SettingsPage() {
         </View>
       </ScreenScroll>
 
-      <AccountFloatingHeader title="Settings" insetTop={insets.top} onBack={goBack} backgroundColor={appConfig.header.background} foregroundColor={appConfig.header.foreground} />
+      <AccountFloatingHeader title="Settings" insetTop={insets.top} onBack={goBack} backgroundColor={headerBackgroundColor} foregroundColor={headerForegroundColor} />
       <DeleteAccountSheet
         open={deleteAccountSheetOpen}
         bottomInset={insets.bottom}

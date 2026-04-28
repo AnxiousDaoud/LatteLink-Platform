@@ -5,6 +5,12 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import {
+  buildFastifyLoggerOptions,
+  buildRequestCompletionLogPayload,
+  initializeSentry,
+  registerSentryErrorHook
+} from "@lattelink/observability";
 import { registerRoutes } from "./routes.js";
 
 const defaultCorsAllowedOrigins = [
@@ -39,6 +45,32 @@ function parseOriginCandidate(value: string | undefined) {
     });
 }
 
+function parseOriginHostSuffixCandidate(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  return trimmed
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0)
+    .map((entry) => entry.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^\*\./, "").replace(/^\./, ""))
+    .filter((entry) => entry.length > 0);
+}
+
+function originMatchesAllowedHostSuffix(origin: string, allowedHostSuffixes: string[]) {
+  let hostname: string;
+
+  try {
+    hostname = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+
+  return allowedHostSuffixes.some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`));
+}
+
 function resolveAllowedCorsOrigins() {
   return new Set([
     ...defaultCorsAllowedOrigins,
@@ -51,21 +83,21 @@ function resolveAllowedCorsOrigins() {
   ]);
 }
 
+function resolveAllowedCorsOriginHostSuffixes() {
+  return parseOriginHostSuffixCandidate(process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES);
+}
+
 export async function buildApp() {
+  const serviceName = "gateway";
+  initializeSentry({ service: serviceName });
   const publicApiBaseUrl = process.env.PUBLIC_API_BASE_URL ?? "http://localhost:8080/v1";
   const allowedCorsOrigins = resolveAllowedCorsOrigins();
+  const allowedCorsOriginHostSuffixes = resolveAllowedCorsOriginHostSuffixes();
   const app = Fastify({
-    logger: {
-      level: process.env.LOG_LEVEL ?? "info",
-      transport:
-        process.env.NODE_ENV === "production"
-          ? undefined
-          : {
-              target: "pino-pretty"
-            }
-    },
+    logger: buildFastifyLoggerOptions(serviceName),
     genReqId: (req) => (req.headers["x-request-id"] as string | undefined) ?? randomUUID()
   });
+  registerSentryErrorHook(app, serviceName);
   const startedAtMs = Date.now();
   const requestMetrics = {
     total: 0,
@@ -76,7 +108,11 @@ export async function buildApp() {
 
   await app.register(cors, {
     origin: (origin, cb) => {
-      if (!origin || allowedCorsOrigins.has(origin)) {
+      if (
+        !origin ||
+        allowedCorsOrigins.has(origin) ||
+        originMatchesAllowedHostSuffix(origin, allowedCorsOriginHostSuffixes)
+      ) {
         cb(null, true);
       } else {
         cb(new Error("Not allowed by CORS"), false);
@@ -133,13 +169,7 @@ export async function buildApp() {
       requestMetrics.status2xx += 1;
     }
 
-    const logPayload = {
-      requestId: request.id,
-      method: request.method,
-      url: request.url,
-      statusCode: reply.statusCode,
-      responseTimeMs: Math.round(reply.elapsedTime)
-    };
+    const logPayload = buildRequestCompletionLogPayload({ service: serviceName, request, reply });
 
     if (reply.statusCode >= 500) {
       request.log.error(logPayload, "request completed with server error");

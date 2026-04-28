@@ -146,7 +146,7 @@ function LoadingMenuState({
           <View style={styles.sectionStickyHeader}>
             <View style={styles.sectionHeader}>
               <SectionHeader
-                label="Espresso Bar"
+                label="Menu"
                 action={<Ionicons name="chevron-up-outline" size={16} color={uiPalette.textMuted} />}
               />
             </View>
@@ -164,9 +164,9 @@ function LoadingMenuState({
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <View style={[styles.pickupMetaWrap, styles.loadingPickupMetaWrap]}>
-              <Text style={styles.pickupMeta}>Estimated pick-up is 12 mins</Text>
+              <Text style={styles.pickupMeta}>Loading pickup estimate</Text>
             </View>
-            <Text style={styles.locationText}>Ann Arbor, MI</Text>
+            <Text style={styles.locationText}>Loading location</Text>
           </View>
         </View>
 

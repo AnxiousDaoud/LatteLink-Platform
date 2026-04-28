@@ -1,27 +1,29 @@
 import Link from "next/link";
-import { getInternalLocationOwner, listInternalLocations } from "@/lib/internal-api";
+import { getInternalLocationReadiness, listInternalLocations } from "@/lib/internal-api";
+
+type LaunchState = "healthy" | "warning" | "critical";
+
+function getLaunchState(readiness: { ready: boolean; passedCount: number; totalCount: number }): LaunchState {
+  if (readiness.ready) {
+    return "healthy";
+  }
+
+  return readiness.passedCount >= Math.max(readiness.totalCount - 2, 0) ? "warning" : "critical";
+}
 
 export default async function LaunchReadinessPage() {
   const locations = (await listInternalLocations()).locations;
   const readinessRows = await Promise.all(
     locations.map(async (location) => ({
       location,
-      owner: await getInternalLocationOwner(location.locationId).catch(() => ({ locationId: location.locationId, owner: null }))
+      readiness: await getInternalLocationReadiness(location.locationId)
     }))
   );
-  const rows = readinessRows.map(({ location, owner }) => {
-    const issues = [
-      !owner.owner,
-      !location.capabilities.operations.dashboardEnabled,
-      !location.capabilities.operations.liveOrderTrackingEnabled
-    ].filter(Boolean).length;
-
-    const launchState = issues === 0 ? "healthy" : issues === 1 ? "warning" : "critical";
-
+  const rows = readinessRows.map(({ location, readiness }) => {
     return {
       location,
-      owner,
-      launchState
+      readiness,
+      launchState: getLaunchState(readiness)
     };
   });
 
@@ -35,7 +37,7 @@ export default async function LaunchReadinessPage() {
         <div>
           <span className="eyebrow">Launch Readiness</span>
           <h3>Client launch status</h3>
-          <p>Use this view to spot missing owner access or disabled launch-critical capabilities before handoff.</p>
+          <p>Use this view to spot missing payment, menu, owner, and operations setup before handoff.</p>
         </div>
         <Link href="/clients/new" className="primary-button">
           Create Client
@@ -51,7 +53,7 @@ export default async function LaunchReadinessPage() {
         <article className="stat-card">
           <span className="eyebrow">Ready</span>
           <strong>{healthyCount}</strong>
-          <p>Locations with owner access, dashboard access, and live tracking already configured.</p>
+          <p>Locations passing all automated go-live checks.</p>
         </article>
         <article className="stat-card">
           <span className="eyebrow">Attention</span>
@@ -76,16 +78,21 @@ export default async function LaunchReadinessPage() {
             <thead>
               <tr>
                 <th>Client</th>
-                <th>Owner</th>
-                <th>Dashboard</th>
-                <th>Tracking</th>
-                <th>Loyalty</th>
-                <th>Launch State</th>
+                  <th>Readiness</th>
+                  <th>Remaining</th>
+                  <th>Payment</th>
+                  <th>Menu</th>
+                  <th>Launch State</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ location, owner, launchState }) => (
+              {rows.map(({ location, readiness, launchState }) => {
+                const remaining = readiness.checks.filter((check) => !check.passed && !check.manual).length;
+                const paymentCheck = readiness.checks.find((check) => check.id === "stripe_onboarded");
+                const menuCheck = readiness.checks.find((check) => check.id === "menu_has_items");
+
+                return (
                 <tr key={location.locationId}>
                   <td>
                     <div className="grid-table-meta">
@@ -95,10 +102,10 @@ export default async function LaunchReadinessPage() {
                       </p>
                     </div>
                   </td>
-                  <td>{owner.owner ? owner.owner.email : "Missing owner"}</td>
-                  <td>{location.capabilities.operations.dashboardEnabled ? "Enabled" : "Disabled"}</td>
-                  <td>{location.capabilities.operations.liveOrderTrackingEnabled ? "Enabled" : "Disabled"}</td>
-                  <td>{location.capabilities.loyalty.visible ? "Visible" : "Hidden"}</td>
+                  <td>{readiness.passedCount}/{readiness.totalCount}</td>
+                  <td>{remaining === 0 ? "Automated checks passed" : `${remaining} automated gap${remaining === 1 ? "" : "s"}`}</td>
+                  <td>{paymentCheck?.passed ? "Ready" : "Needs setup"}</td>
+                  <td>{menuCheck?.passed ? "Visible item found" : "No visible items"}</td>
                   <td>
                     <span className={`status-badge is-${launchState}`}>
                       {launchState === "healthy" ? "Ready" : launchState === "warning" ? "Attention" : "Blocked"}
@@ -110,7 +117,8 @@ export default async function LaunchReadinessPage() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         )}

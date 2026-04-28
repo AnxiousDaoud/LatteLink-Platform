@@ -68,6 +68,9 @@ const authHeaderSchema = z.object({
 const gatewayHeadersSchema = z.object({
   "x-gateway-token": z.string().optional()
 });
+const actorHeadersSchema = z.object({
+  "x-user-id": z.string().min(1).optional()
+});
 
 const operatorLocationQuerySchema = z.object({
   locationId: z.string().trim().min(1).optional()
@@ -90,8 +93,10 @@ const defaultAccessTokenTtlMs = 30 * 60 * 1000;
 const defaultInternalAdminAccessTokenTtlMs = 12 * 60 * 60 * 1000;
 const defaultGoogleOAuthStateTtlMs = 10 * 60 * 1000;
 // Successful refresh rotation extends the session's idle lifetime by issuing a new refresh token.
-// We intentionally keep this as an idle timeout for now; absolute session caps are a future policy choice.
 const defaultRefreshSessionTtlMs = 30 * 24 * 60 * 60 * 1000;
+const defaultCustomerAbsoluteSessionTtlDays = 90;
+const defaultOperatorAbsoluteSessionTtlDays = 30;
+const defaultInternalAdminAbsoluteSessionTtlDays = 14;
 
 function parseCommaSeparatedEnv(value: string | undefined) {
   return (value ?? "")
@@ -107,6 +112,15 @@ function toPositiveInteger(value: string | undefined, fallback: number) {
   }
 
   return Math.floor(parsed);
+}
+
+function daysToMs(days: number) {
+  return days * 24 * 60 * 60 * 1000;
+}
+
+function isPastAbsoluteSessionTtl(createdAt: string, absoluteTtlMs: number) {
+  const createdAtMs = Date.parse(createdAt);
+  return !Number.isFinite(createdAtMs) || Date.now() - createdAtMs > absoluteTtlMs;
 }
 
 function buildCustomerMeResponse(input: {
@@ -234,10 +248,11 @@ function isAllowedGoogleRedirectUri(config: GoogleOAuthConfig, redirectUri: stri
   return config.allowedRedirectUris.length === 0 || config.allowedRedirectUris.includes(redirectUri);
 }
 
-function buildGoogleOAuthState(input: { redirectUri: string; stateSecret: string }) {
+function buildGoogleOAuthState(input: { redirectUri: string; stateSecret: string; locationId?: string }) {
   const payload = Buffer.from(
     JSON.stringify({
       redirectUri: input.redirectUri,
+      ...(input.locationId ? { locationId: input.locationId } : {}),
       issuedAt: Date.now()
     }),
     "utf8"
@@ -251,7 +266,7 @@ function parseGoogleOAuthState(input: {
   state: string;
   stateSecret: string;
   maxAgeMs: number;
-}): { redirectUri: string } | undefined {
+}): { redirectUri: string; locationId?: string } | undefined {
   const [payload, signature] = input.state.split(".");
   if (!payload || !signature) {
     return undefined;
@@ -266,6 +281,7 @@ function parseGoogleOAuthState(input: {
     const parsed = z
       .object({
         redirectUri: z.string().url(),
+        locationId: z.string().trim().min(1).optional(),
         issuedAt: z.number().int().nonnegative()
       })
       .parse(JSON.parse(Buffer.from(payload, "base64url").toString("utf8")));
@@ -275,7 +291,8 @@ function parseGoogleOAuthState(input: {
     }
 
     return {
-      redirectUri: parsed.redirectUri
+      redirectUri: parsed.redirectUri,
+      locationId: parsed.locationId
     };
   } catch {
     return undefined;
@@ -368,6 +385,7 @@ function buildStoredSession(seed: string, userId: string) {
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
   const jwtSecret = loadJwtSecret();
   // JWT access tokens are opt-in for rollout compatibility. Refresh/logout semantics remain DB-backed
   // either way because the refresh token and session record are still persisted. The opaque path stays
@@ -381,21 +399,25 @@ function buildStoredSession(seed: string, userId: string) {
       expiresAt: accessExpiresAt,
       userId
     }),
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
-function buildStoredOperatorSession(seed: string, operatorUserId: string) {
+function buildStoredOperatorSession(seed: string, operatorUserId: string, activeLocationId?: string) {
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
 
   return {
     accessToken: `operator-access-${tokenSuffix}`,
     refreshToken: `operator-refresh-${tokenSuffix}`,
     operatorUserId,
+    activeLocationId,
     expiresAt: accessExpiresAt,
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
@@ -403,13 +425,15 @@ function buildStoredInternalAdminSession(seed: string, internalAdminUserId: stri
   const tokenSuffix = `${seed}-${randomUUID()}`;
   const accessExpiresAt = new Date(Date.now() + defaultInternalAdminAccessTokenTtlMs).toISOString();
   const refreshExpiresAt = new Date(Date.now() + defaultRefreshSessionTtlMs).toISOString();
+  const createdAt = new Date().toISOString();
 
   return {
     accessToken: `internal-admin-access-${tokenSuffix}`,
     refreshToken: `internal-admin-refresh-${tokenSuffix}`,
     internalAdminUserId,
     expiresAt: accessExpiresAt,
-    refreshExpiresAt
+    refreshExpiresAt,
+    createdAt
   };
 }
 
@@ -454,20 +478,23 @@ async function issueOperatorSession(params: {
   repository: IdentityRepository;
   seed: string;
   operatorUserId: string;
+  activeLocationId?: string;
   authMethod: "password" | "google" | "refresh";
 }) {
-  const session = buildStoredOperatorSession(params.seed, params.operatorUserId);
+  const session = buildStoredOperatorSession(params.seed, params.operatorUserId, params.activeLocationId);
   await params.repository.saveOperatorSession(session, params.authMethod);
   const operator = await params.repository.getOperatorUserById(params.operatorUserId);
   if (!operator || !operator.active) {
     throw new Error("Operator user is not active");
   }
 
+  const activeOperator = resolveOperatorActiveLocation(operator, params.activeLocationId);
+
   return operatorSessionSchema.parse({
     accessToken: session.accessToken,
     refreshToken: session.refreshToken,
     expiresAt: session.expiresAt,
-    operator
+    operator: activeOperator
   });
 }
 
@@ -513,6 +540,25 @@ function resolveRequestedOperatorLocationId(
   return requestedLocationId;
 }
 
+function resolveOperatorActiveLocation(
+  operator: z.output<typeof operatorMeResponseSchema>,
+  requestedLocationId?: string
+) {
+  if (!requestedLocationId) {
+    return operator;
+  }
+
+  if (!operator.locationIds.includes(requestedLocationId)) {
+    throw new Error("OPERATOR_LOCATION_FORBIDDEN");
+  }
+
+  return {
+    ...operator,
+    locationId: requestedLocationId,
+    locationIds: Array.from(new Set([requestedLocationId, ...operator.locationIds]))
+  };
+}
+
 function authorizeGatewayRequest(
   request: { headers: unknown; id: string },
   gatewayToken: string | undefined
@@ -556,6 +602,31 @@ function logIdentityMutation(
   );
 }
 
+async function recordAuditLog(
+  request: { id: string; headers: unknown; log: { error(payload: Record<string, unknown>, message: string): void } },
+  repository: IdentityRepository,
+  entry: Parameters<IdentityRepository["writeAuditLog"]>[0]
+) {
+  try {
+    await repository.writeAuditLog(entry);
+  } catch (error) {
+    request.log.error(
+      {
+        error,
+        requestId: request.id,
+        auditAction: entry.action,
+        targetId: entry.targetId
+      },
+      "audit log write failed"
+    );
+  }
+}
+
+function getActorId(request: { headers: unknown }) {
+  const parsed = actorHeadersSchema.safeParse(request.headers);
+  return parsed.success ? (parsed.data["x-user-id"] ?? "system") : "system";
+}
+
 function deriveDevCustomerName(email: string) {
   const localPart = email.split("@")[0]?.trim() ?? "";
   if (!localPart) {
@@ -593,7 +664,11 @@ async function resolveOperatorFromBearer(params: {
     return undefined;
   }
 
-  return operator;
+  try {
+    return resolveOperatorActiveLocation(operator, session.activeLocationId);
+  } catch {
+    return operator;
+  }
 }
 
 async function resolveInternalAdminFromBearer(params: {
@@ -655,6 +730,18 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     max: toPositiveInteger(process.env.IDENTITY_RATE_LIMIT_PASSKEY_VERIFY_MAX, defaultPasskeyVerifyRateLimitMax),
     timeWindow: rateLimitWindowMs
   };
+  const customerAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(process.env.CUSTOMER_SESSION_ABSOLUTE_TTL_DAYS, defaultCustomerAbsoluteSessionTtlDays)
+  );
+  const operatorAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS, defaultOperatorAbsoluteSessionTtlDays)
+  );
+  const internalAdminAbsoluteSessionTtlMs = daysToMs(
+    toPositiveInteger(
+      process.env.INTERNAL_ADMIN_SESSION_ABSOLUTE_TTL_DAYS,
+      defaultInternalAdminAbsoluteSessionTtlDays
+    )
+  );
 
   const requireCustomerAuth = async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await getAuthenticatedCustomerSession({ request, reply, repository });
@@ -1113,9 +1200,24 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getSessionByRefreshToken(input.refreshToken);
+      if (currentSession && isPastAbsoluteSessionTtl(currentSession.createdAt, customerAbsoluteSessionTtlMs)) {
+        await repository.revokeByRefreshToken(input.refreshToken);
+        return reply.status(401).send(
+          apiErrorSchema.parse({
+            code: "SESSION_EXPIRED",
+            message: "Your session has expired. Please sign in again.",
+            requestId: request.id
+          })
+        );
+      }
+
       const rotatedSession = await repository.rotateRefreshSession(
         input.refreshToken,
-        (userId) => buildStoredSession(input.refreshToken, userId),
+        (userId) => ({
+          ...buildStoredSession(input.refreshToken, userId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
       if (!rotatedSession) {
@@ -1297,10 +1399,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .send(buildApiError(request.id, "INVALID_OPERATOR_CREDENTIALS", "Email or password is incorrect"));
       }
 
+      let activeOperator: z.output<typeof operatorMeResponseSchema>;
+      try {
+        activeOperator = resolveOperatorActiveLocation(operator, input.locationId);
+      } catch {
+        return reply
+          .status(403)
+          .send(buildApiError(request.id, "OPERATOR_LOCATION_FORBIDDEN", "Operator does not have access to that location"));
+      }
+
       const session = await issueOperatorSession({
         repository,
         seed: `password:${operator.operatorUserId}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
+        activeLocationId: activeOperator.locationId,
         authMethod: "password"
       });
       logIdentityMutation(request, "operator session issued", {
@@ -1350,6 +1462,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
 
       const state = buildGoogleOAuthState({
         redirectUri: input.redirectUri,
+        locationId: input.locationId,
         stateSecret: config.stateSecret
       });
 
@@ -1393,6 +1506,12 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
         return reply
           .status(401)
           .send(buildApiError(request.id, "INVALID_GOOGLE_STATE", "Google Sign-In state is invalid or expired"));
+      }
+
+      if (input.locationId && parsedState.locationId && input.locationId !== parsedState.locationId) {
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "INVALID_GOOGLE_STATE", "Google Sign-In state does not match requested location"));
       }
 
       let tokenResponse: Response;
@@ -1471,10 +1590,21 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .send(buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "No client dashboard access exists for this Google account"));
       }
 
+      const requestedLocationId = input.locationId ?? parsedState.locationId;
+      let activeOperator: z.output<typeof operatorMeResponseSchema>;
+      try {
+        activeOperator = resolveOperatorActiveLocation(operator, requestedLocationId);
+      } catch {
+        return reply
+          .status(403)
+          .send(buildApiError(request.id, "OPERATOR_LOCATION_FORBIDDEN", "Operator does not have access to that location"));
+      }
+
       const session = await issueOperatorSession({
         repository,
         seed: `google:${parsedUserInfo.data.sub}:${Date.now()}`,
         operatorUserId: operator.operatorUserId,
+        activeLocationId: activeOperator.locationId,
         authMethod: "google"
       });
       logIdentityMutation(request, "operator session issued", {
@@ -1533,9 +1663,20 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getOperatorSessionByRefreshToken(input.refreshToken);
+      if (currentSession && isPastAbsoluteSessionTtl(currentSession.createdAt, operatorAbsoluteSessionTtlMs)) {
+        await repository.revokeOperatorByRefreshToken(input.refreshToken);
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "SESSION_EXPIRED", "Your session has expired. Please sign in again."));
+      }
+
       const rotatedSession = await repository.rotateOperatorRefreshSession(
         input.refreshToken,
-        (operatorUserId) => buildStoredOperatorSession(input.refreshToken, operatorUserId),
+        (operatorUserId, activeLocationId) => ({
+          ...buildStoredOperatorSession(input.refreshToken, operatorUserId, activeLocationId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
 
@@ -1551,12 +1692,13 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
           .status(401)
           .send(buildApiError(request.id, "OPERATOR_ACCESS_NOT_GRANTED", "Operator access is not active"));
       }
+      const activeOperator = resolveOperatorActiveLocation(operator, rotatedSession.activeLocationId);
 
       const session = operatorSessionSchema.parse({
         accessToken: rotatedSession.accessToken,
         refreshToken: rotatedSession.refreshToken,
         expiresAt: rotatedSession.expiresAt,
-        operator
+        operator: activeOperator
       });
       logIdentityMutation(request, "operator session rotated", {
         operatorUserId: session.operator.operatorUserId,
@@ -1639,9 +1781,23 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     },
     async (request, reply) => {
       const input = refreshRequestSchema.parse(request.body);
+      const currentSession = await repository.getInternalAdminSessionByRefreshToken(input.refreshToken);
+      if (
+        currentSession &&
+        isPastAbsoluteSessionTtl(currentSession.createdAt, internalAdminAbsoluteSessionTtlMs)
+      ) {
+        await repository.revokeInternalAdminByRefreshToken(input.refreshToken);
+        return reply
+          .status(401)
+          .send(buildApiError(request.id, "SESSION_EXPIRED", "Your session has expired. Please sign in again."));
+      }
+
       const rotatedSession = await repository.rotateInternalAdminRefreshSession(
         input.refreshToken,
-        (internalAdminUserId) => buildStoredInternalAdminSession(input.refreshToken, internalAdminUserId),
+        (internalAdminUserId) => ({
+          ...buildStoredInternalAdminSession(input.refreshToken, internalAdminUserId),
+          createdAt: currentSession?.createdAt ?? new Date().toISOString()
+        }),
         "refresh"
       );
 
@@ -1889,6 +2045,19 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
       targetEmail: result.operator.email,
       locationId,
       action: result.action
+    });
+    await recordAuditLog(request, repository, {
+      locationId,
+      actorId: getActorId(request),
+      actorType: "internal_admin",
+      action: "owner.provisioned",
+      targetId: result.operator.operatorUserId,
+      targetType: "operator_user",
+      payload: {
+        email: result.operator.email,
+        role: result.operator.role,
+        action: result.action
+      }
     });
 
     return internalOwnerProvisionResponseSchema.parse(result);

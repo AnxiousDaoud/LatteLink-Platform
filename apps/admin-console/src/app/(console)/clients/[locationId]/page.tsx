@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getInternalLocation, getInternalLocationOwner, InternalApiError } from "@/lib/internal-api";
+import { LaunchReadinessChecklist } from "@/components/LaunchReadinessChecklist";
+import { getInternalLocation, getInternalLocationOwner, getInternalLocationReadiness, InternalApiError } from "@/lib/internal-api";
 
 type ClientDetailPageProps = {
   params: Promise<{ locationId: string }>;
@@ -13,9 +14,10 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
   const created = typeof query.created === "string" ? query.created : undefined;
 
   try {
-    const [location, ownerSummary] = await Promise.all([
+    const [location, ownerSummary, launchReadiness] = await Promise.all([
       getInternalLocation(locationId),
-      getInternalLocationOwner(locationId)
+      getInternalLocationOwner(locationId),
+      getInternalLocationReadiness(locationId)
     ]);
 
     const hasOwner = Boolean(ownerSummary.owner);
@@ -27,14 +29,6 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
 
     const launchState = issues === 0 ? "healthy" : issues === 1 ? "warning" : "critical";
     const launchLabel = launchState === "healthy" ? "Launch ready" : launchState === "warning" ? "Needs attention" : "Blocked";
-
-    const readiness = [
-      { label: "Location configured", ready: true },
-      { label: "Stripe mobile payments ready", ready: location.paymentReadiness?.ready ?? false },
-      { label: "Client dashboard enabled", ready: location.capabilities.operations.dashboardEnabled },
-      { label: "Owner access configured", ready: Boolean(ownerSummary.owner) },
-      { label: "Live order tracking configured", ready: location.capabilities.operations.liveOrderTrackingEnabled }
-    ];
 
     return (
       <section className="page-stack">
@@ -205,18 +199,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
         </div>
 
         <section className="panel">
-          <div className="section-heading">
-            <span className="eyebrow">Readiness</span>
-            <h4>Launch checklist</h4>
-          </div>
-          <div className="checklist">
-            {readiness.map((item) => (
-              <div key={item.label} className={item.ready ? "check-item is-ready" : "check-item is-blocked"}>
-                <strong>{item.label}</strong>
-                <span>{item.ready ? "Ready" : "Needs attention"}</span>
-              </div>
-            ))}
-          </div>
+          <LaunchReadinessChecklist readiness={launchReadiness} />
         </section>
       </section>
     );

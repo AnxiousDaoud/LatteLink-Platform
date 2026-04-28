@@ -57,6 +57,7 @@ import {
   internalLocationPaymentProfileUpdateSchema,
   internalLocationParamsSchema,
   internalLocationSummarySchema,
+  launchReadinessResponseSchema,
   stripeConnectDashboardLinkRequestSchema,
   stripeConnectLinkResponseSchema,
   stripeConnectOnboardingLinkRequestSchema,
@@ -128,6 +129,40 @@ const adminOrderStatusUpdateSchema = z.object({
   status: z.enum(["IN_PREP", "READY", "COMPLETED", "CANCELED"]),
   note: z.string().min(1).optional()
 });
+const supportOrderLookupQuerySchema = z.object({
+  query: z.string().min(1),
+  locationId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(50).default(25)
+});
+const supportAuditLogEntrySchema = z.object({
+  logId: z.string().min(1),
+  locationId: z.string().min(1),
+  actorId: z.string().min(1),
+  actorType: z.string().min(1),
+  action: z.string().min(1),
+  targetId: z.string().optional(),
+  targetType: z.string().optional(),
+  payload: z.unknown().optional(),
+  occurredAt: z.string().datetime()
+});
+const supportOrderLookupResponseSchema = z.object({
+  results: z.array(
+    z.object({
+      order: orderSchema,
+      customer: z.unknown().optional(),
+      userId: z.string().optional(),
+      paymentId: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      paymentProvider: z.string().optional(),
+      paymentIntentId: z.string().optional(),
+      successfulCharge: z.unknown().optional(),
+      successfulRefund: z.unknown().optional(),
+      createdAt: z.string().datetime().optional(),
+      updatedAt: z.string().datetime().optional(),
+      auditLog: z.array(supportAuditLogEntrySchema)
+    })
+  )
+});
 const defaultRateLimitWindowMs = 60_000;
 const defaultUpstreamTimeoutMs = 5_000;
 const defaultOrderStreamPollIntervalMs = 2_000;
@@ -145,6 +180,20 @@ type StreamOrdersFetchError = {
   statusCode: number;
   error: z.output<typeof apiErrorSchema>;
 };
+
+class UpstreamHttpError extends Error {
+  serviceLabel: string;
+  statusCode: number;
+  body: unknown;
+
+  constructor(serviceLabel: string, statusCode: number, body: unknown) {
+    super(`${serviceLabel} request failed with status ${statusCode}`);
+    this.name = "UpstreamHttpError";
+    this.serviceLabel = serviceLabel;
+    this.statusCode = statusCode;
+    this.body = body;
+  }
+}
 
 function unauthorized(requestId: string) {
   return apiErrorSchema.parse({
@@ -196,6 +245,28 @@ function invalidRequest(requestId: string, message: string, details?: unknown) {
     message,
     requestId,
     ...(details === undefined ? {} : { details })
+  });
+}
+
+function resourceNotFound(requestId: string, message: string, details?: unknown) {
+  return apiErrorSchema.parse({
+    code: "NOT_FOUND",
+    message,
+    requestId,
+    ...(details === undefined ? {} : { details })
+  });
+}
+
+function upstreamFailure(requestId: string, serviceLabel: string, statusCode: number, body?: unknown) {
+  const upstreamError = apiErrorSchema.safeParse(body);
+  if (upstreamError.success) {
+    return upstreamError.data;
+  }
+
+  return apiErrorSchema.parse({
+    code: "UPSTREAM_ERROR",
+    message: `${serviceLabel} request failed with status ${statusCode}`,
+    requestId
   });
 }
 
@@ -449,6 +520,9 @@ function resolveRequestedOperatorLocationId(
   }
 
   const operator = request.authenticatedOperator;
+  // Admin route tenant selection is constrained to the authenticated operator's access set.
+  // The selected location may come from the active operator session or a query selection, but
+  // the gateway never forwards a location the identity service did not authorize for this user.
   const locationId = parsedQuery.data.locationId ?? operator?.locationId;
   if (locationId && operator && !operator.locationIds.includes(locationId)) {
     return {
@@ -467,6 +541,20 @@ function resolveRequestedOperatorLocationId(
 
 function operatorLocationHeader(locationId?: string): Record<string, string> {
   return locationId ? { "x-operator-location-id": locationId } : {};
+}
+
+function operatorActorHeader(request: FastifyRequest): Record<string, string> {
+  const operatorUserId = trimToUndefined(request.authenticatedOperator?.operatorUserId);
+  return operatorUserId ? { "x-user-id": operatorUserId } : {};
+}
+
+function internalAdminActorHeader(request: FastifyRequest): Record<string, string> {
+  const internalAdminUserId = trimToUndefined(request.authenticatedInternalAdmin?.internalAdminUserId);
+  return internalAdminUserId ? { "x-user-id": internalAdminUserId } : {};
+}
+
+function operatorLocationQuery(locationId: string): string {
+  return `?locationId=${encodeURIComponent(locationId)}`;
 }
 
 function resolveServiceBaseUrl(params: {
@@ -612,6 +700,7 @@ async function proxyUpstream<TResponse>(params: {
   forwardCacheControl?: boolean;
   timeoutMs?: number;
   responseSchema: z.ZodType<TResponse>;
+  onSuccess?: (response: TResponse) => void;
 }) {
   const {
     request,
@@ -626,7 +715,8 @@ async function proxyUpstream<TResponse>(params: {
     forwardQuery = false,
     forwardCacheControl = false,
     timeoutMs = toPositiveInteger(process.env.GATEWAY_UPSTREAM_TIMEOUT_MS, defaultUpstreamTimeoutMs),
-    responseSchema
+    responseSchema,
+    onSuccess
   } = params;
 
   const queryString = forwardQuery && request.url.includes("?") ? request.url.split("?")[1] : undefined;
@@ -672,7 +762,16 @@ async function proxyUpstream<TResponse>(params: {
   } catch (error) {
     if (isAbortError(error)) {
       request.log.warn(
-        { requestId: request.id, serviceLabel, method, path, timeoutMs },
+        {
+          service: "gateway",
+          event: "upstream.timeout",
+          timestamp: new Date().toISOString(),
+          requestId: request.id,
+          upstream: serviceLabel,
+          method,
+          path,
+          timeoutMs
+        },
         "upstream request timed out"
       );
       return reply.status(504).send(
@@ -685,7 +784,16 @@ async function proxyUpstream<TResponse>(params: {
     }
 
     request.log.error(
-      { error, requestId: request.id, serviceLabel, method, path },
+      {
+        error,
+        service: "gateway",
+        event: "upstream.error",
+        timestamp: new Date().toISOString(),
+        requestId: request.id,
+        upstream: serviceLabel,
+        method,
+        path
+      },
       "upstream request failed before response"
     );
     return reply.status(502).send(
@@ -705,6 +813,19 @@ async function proxyUpstream<TResponse>(params: {
 
   if (!upstreamResponse.ok) {
     const upstreamError = apiErrorSchema.safeParse(parsedBody);
+    request.log.error(
+      {
+        service: "gateway",
+        event: "upstream.error",
+        timestamp: new Date().toISOString(),
+        requestId: request.id,
+        upstream: serviceLabel,
+        method,
+        path,
+        status: upstreamResponse.status
+      },
+      "upstream request returned error response"
+    );
 
     if (upstreamError.success) {
       return reply.status(upstreamResponse.status).send(upstreamError.data);
@@ -723,6 +844,19 @@ async function proxyUpstream<TResponse>(params: {
   const parsedResponse = responseSchema.safeParse(parsedBody);
 
   if (!parsedResponse.success) {
+    request.log.error(
+      {
+        service: "gateway",
+        event: "upstream.invalid_response",
+        timestamp: new Date().toISOString(),
+        requestId: request.id,
+        upstream: serviceLabel,
+        method,
+        path,
+        status: upstreamResponse.status
+      },
+      "upstream response did not match contract"
+    );
     return reply.status(502).send(
       apiErrorSchema.parse({
         code: "UPSTREAM_INVALID_RESPONSE",
@@ -737,6 +871,7 @@ async function proxyUpstream<TResponse>(params: {
     reply.header("cache-control", cacheControl);
   }
 
+  onSuccess?.(parsedResponse.data);
   return reply.status(upstreamResponse.status).send(parsedResponse.data);
 }
 
@@ -1463,7 +1598,21 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: stripeMobilePaymentSessionResponseSchema
+        responseSchema: stripeMobilePaymentSessionResponseSchema,
+        onSuccess: (response) => {
+          request.log.info(
+            {
+              service: "gateway",
+              event: "order.payment.initiated",
+              timestamp: new Date().toISOString(),
+              requestId: request.id,
+              userId: request.authenticatedUserId,
+              orderId: response.orderId,
+              paymentIntentId: response.paymentIntentId
+            },
+            "Stripe mobile payment initiated"
+          );
+        }
       });
     }
   );
@@ -1485,7 +1634,24 @@ export async function registerRoutes(app: FastifyInstance) {
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken
         },
-        responseSchema: stripeMobilePaymentFinalizeResponseSchema
+        responseSchema: stripeMobilePaymentFinalizeResponseSchema,
+        onSuccess: (response) => {
+          request.log.info(
+            {
+              service: "gateway",
+              event: "payment.finalized",
+              timestamp: new Date().toISOString(),
+              requestId: request.id,
+              userId: request.authenticatedUserId,
+              orderId: response.orderId,
+              paymentIntentId: response.paymentIntentId,
+              accepted: response.accepted,
+              applied: response.applied,
+              orderStatus: response.orderStatus
+            },
+            "Stripe mobile payment finalized"
+          );
+        }
       });
     }
   );
@@ -1875,6 +2041,9 @@ export async function registerRoutes(app: FastifyInstance) {
       const search = new URLSearchParams({
         redirectUri: input.redirectUri
       });
+      if (input.locationId) {
+        search.set("locationId", input.locationId);
+      }
 
       return proxyUpstream({
         request,
@@ -2142,7 +2311,21 @@ export async function registerRoutes(app: FastifyInstance) {
       additionalHeaders: {
         "x-gateway-token": gatewayInternalApiToken
       },
-      responseSchema: orderQuoteSchema
+      responseSchema: orderQuoteSchema,
+      onSuccess: (response) => {
+        request.log.info(
+          {
+            service: "gateway",
+            event: "order.quote.created",
+            timestamp: new Date().toISOString(),
+            requestId: request.id,
+            userId: request.authenticatedUserId,
+            quoteId: response.quoteId,
+            locationId: response.locationId
+          },
+          "order quote created"
+        );
+      }
     });
     }
   );
@@ -2171,7 +2354,22 @@ export async function registerRoutes(app: FastifyInstance) {
         "x-gateway-token": gatewayInternalApiToken,
         "x-user-id": userId
       },
-      responseSchema: orderSchema
+      responseSchema: orderSchema,
+      onSuccess: (response) => {
+        request.log.info(
+          {
+            service: "gateway",
+            event: "order.created",
+            timestamp: new Date().toISOString(),
+            requestId: request.id,
+            userId,
+            orderId: response.id,
+            locationId: response.locationId,
+            status: response.status
+          },
+          "order created"
+        );
+      }
     });
   });
 
@@ -2381,7 +2579,22 @@ export async function registerRoutes(app: FastifyInstance) {
         "x-gateway-token": gatewayInternalApiToken,
         "x-user-id": userId
       },
-      responseSchema: orderSchema
+      responseSchema: orderSchema,
+      onSuccess: (response) => {
+        request.log.info(
+          {
+            service: "gateway",
+            event: "order.canceled",
+            timestamp: new Date().toISOString(),
+            requestId: request.id,
+            userId,
+            orderId: response.id,
+            locationId: response.locationId,
+            status: response.status
+          },
+          "order canceled"
+        );
+      }
     });
   });
 
@@ -2528,6 +2741,7 @@ export async function registerRoutes(app: FastifyInstance) {
         return;
       }
 
+      let shouldPollForUpdates = !eventBusSubscriber;
       if (eventBusSubscriber) {
         try {
           unsubscribeFromOrderEvents = await eventBusSubscriber.subscribeToOrderStatus(orderId, (event) => {
@@ -2542,7 +2756,9 @@ export async function registerRoutes(app: FastifyInstance) {
               cleanup();
             }
           });
+          shouldPollForUpdates = false;
         } catch (error) {
+          shouldPollForUpdates = true;
           request.log.warn(
             {
               requestId: request.id,
@@ -2554,7 +2770,7 @@ export async function registerRoutes(app: FastifyInstance) {
         }
       }
 
-      if (!closed) {
+      if (!closed && shouldPollForUpdates) {
         pollTimeout = setTimeout(() => {
           void pollForUpdates();
         }, orderStreamPollIntervalMs);
@@ -2597,9 +2813,13 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(staffReadRateLimit), requireOperatorCapability("orders:read")]
     },
     async (request, reply) => {
-      const locationContext = resolveRequestedOperatorLocationId(request);
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
       if (locationContext.error) {
         return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
       }
 
       return proxyUpstream({
@@ -2629,6 +2849,10 @@ export async function registerRoutes(app: FastifyInstance) {
       const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
       if (locationContext.error) {
         return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
       }
 
       return proxyUpstream({
@@ -2677,10 +2901,26 @@ export async function registerRoutes(app: FastifyInstance) {
           additionalHeaders: {
             "x-gateway-token": gatewayInternalApiToken,
             "x-order-cancel-source": "staff",
+            ...operatorActorHeader(request),
             ...operatorLocationHeader(locationContext.locationId)
           },
           forwardUserIdHeader: false,
-          responseSchema: orderSchema
+          responseSchema: orderSchema,
+          onSuccess: (response) => {
+            request.log.info(
+              {
+                service: "gateway",
+                event: "order.canceled",
+                timestamp: new Date().toISOString(),
+                requestId: request.id,
+                orderId: response.id,
+                locationId: response.locationId,
+                status: response.status,
+                cancelSource: "staff"
+              },
+              "order canceled by staff"
+            );
+          }
         });
       }
 
@@ -2694,10 +2934,25 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-internal-token": ordersInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         forwardUserIdHeader: false,
-        responseSchema: orderSchema
+        responseSchema: orderSchema,
+        onSuccess: (response) => {
+          request.log.info(
+            {
+              service: "gateway",
+              event: "order.status.advanced",
+              timestamp: new Date().toISOString(),
+              requestId: request.id,
+              orderId: response.id,
+              locationId: response.locationId,
+              status: response.status
+            },
+            "order status advanced"
+          );
+        }
       });
     }
   );
@@ -2708,7 +2963,7 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(staffReadRateLimit), requireOperatorCapability("orders:read")]
     },
     async (request, reply) => {
-      const locationContext = resolveRequestedOperatorLocationId(request);
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
       if (locationContext.error) {
         return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
       }
@@ -2883,6 +3138,10 @@ export async function registerRoutes(app: FastifyInstance) {
       if (locationContext.error) {
         return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
       }
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
+      }
 
       return proxyUpstream({
         request,
@@ -2969,6 +3228,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: homeNewsCardsResponseSchema
@@ -3128,6 +3388,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: parsedBody.data,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3159,6 +3420,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemImageUploadResponseSchema
@@ -3189,6 +3451,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3220,6 +3483,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3319,9 +3583,14 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(staffReadRateLimit), requireOperatorCapability("team:read")]
     },
     async (request, reply) => {
-      const locationError = resolveRequestedOperatorLocationId(request, { required: true }).error;
-      if (locationError) {
-        return reply.status(locationError.code === "FORBIDDEN" ? 403 : 400).send(locationError);
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
       }
 
       return proxyUpstream({
@@ -3330,8 +3599,7 @@ export async function registerRoutes(app: FastifyInstance) {
         baseUrl: identityBaseUrl,
         serviceLabel: "Identity",
         method: "GET",
-        path: "/v1/operator/users",
-        forwardQuery: true,
+        path: `/v1/operator/users${operatorLocationQuery(locationId)}`,
         responseSchema: operatorUserListResponseSchema
       });
     }
@@ -3343,9 +3611,13 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(staffWriteRateLimit), requireOperatorCapability("team:write")]
     },
     async (request, reply) => {
-      const locationError = resolveRequestedOperatorLocationId(request, { required: true }).error;
-      if (locationError) {
-        return reply.status(locationError.code === "FORBIDDEN" ? 403 : 400).send(locationError);
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
       }
 
       const input = operatorUserCreateSchema.parse(request.body);
@@ -3356,9 +3628,8 @@ export async function registerRoutes(app: FastifyInstance) {
         baseUrl: identityBaseUrl,
         serviceLabel: "Identity",
         method: "POST",
-        path: "/v1/operator/users",
+        path: `/v1/operator/users${operatorLocationQuery(locationId)}`,
         body: input,
-        forwardQuery: true,
         responseSchema: operatorMeResponseSchema
       });
     }
@@ -3370,9 +3641,13 @@ export async function registerRoutes(app: FastifyInstance) {
       preHandler: [app.rateLimit(staffWriteRateLimit), requireOperatorCapability("team:write")]
     },
     async (request, reply) => {
-      const locationError = resolveRequestedOperatorLocationId(request, { required: true }).error;
-      if (locationError) {
-        return reply.status(locationError.code === "FORBIDDEN" ? 403 : 400).send(locationError);
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+      const locationId = locationContext.locationId;
+      if (!locationId) {
+        return reply.status(400).send(invalidRequest(request.id, "A locationId is required for this request"));
       }
 
       const { operatorUserId } = operatorUserParamsSchema.parse(request.params);
@@ -3384,9 +3659,8 @@ export async function registerRoutes(app: FastifyInstance) {
         baseUrl: identityBaseUrl,
         serviceLabel: "Identity",
         method: "PATCH",
-        path: `/v1/operator/users/${operatorUserId}`,
+        path: `/v1/operator/users/${operatorUserId}${operatorLocationQuery(locationId)}`,
         body: input,
-        forwardQuery: true,
         responseSchema: operatorMeResponseSchema
       });
     }
@@ -3464,6 +3738,180 @@ export async function registerRoutes(app: FastifyInstance) {
   );
 
   app.get(
+    "/v1/internal/support/orders",
+    {
+      preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
+    },
+    async (request, reply) => {
+      const input = supportOrderLookupQuerySchema.parse(request.query);
+      const query = new URLSearchParams({
+        query: input.query,
+        limit: String(input.limit)
+      });
+      if (input.locationId) {
+        query.set("locationId", input.locationId);
+      }
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: ordersBaseUrl,
+        serviceLabel: "Orders",
+        method: "GET",
+        path: `/v1/orders/internal/support/lookup?${query.toString()}`,
+        additionalHeaders: {
+          "x-internal-token": ordersInternalApiToken
+        },
+        forwardUserIdHeader: false,
+        responseSchema: supportOrderLookupResponseSchema
+      });
+    }
+  );
+
+  app.get(
+    "/v1/internal/locations/:locationId/readiness",
+    {
+      preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
+    },
+    async (request, reply) => {
+      const { locationId } = internalLocationParamsSchema.parse(request.params);
+      const internalHeaders = {
+        "x-gateway-token": gatewayInternalApiToken ?? ""
+      };
+
+      const fetchInternalJson = async <TSchema extends z.ZodTypeAny>(params: {
+        baseUrl: string;
+        path: string;
+        schema: TSchema;
+        serviceLabel: string;
+        allowNotFound?: boolean;
+      }): Promise<z.output<TSchema> | undefined> => {
+        const response = await fetch(`${params.baseUrl}${params.path}`, {
+          method: "GET",
+          headers: internalHeaders
+        });
+        const body = parseJsonSafely(await response.text());
+
+        if (response.status === 404 && params.allowNotFound) {
+          return undefined;
+        }
+
+        if (!response.ok) {
+          throw new UpstreamHttpError(params.serviceLabel, response.status, body);
+        }
+
+        return params.schema.parse(body);
+      };
+
+      try {
+        const location = await fetchInternalJson({
+          baseUrl: catalogBaseUrl,
+          path: `/v1/catalog/internal/locations/${locationId}`,
+          schema: internalLocationSummarySchema,
+          serviceLabel: "Catalog"
+        });
+        if (!location) {
+          return reply.status(404).send(resourceNotFound(request.id, "Location not found", { locationId }));
+        }
+
+        const [ownerSummary, paymentProfile, menu] = await Promise.all([
+          fetchInternalJson({
+            baseUrl: identityBaseUrl,
+            path: `/v1/identity/internal/locations/${locationId}/owner`,
+            schema: internalOwnerSummarySchema,
+            serviceLabel: "Identity"
+          }),
+          fetchInternalJson({
+            baseUrl: catalogBaseUrl,
+            path: `/v1/catalog/internal/locations/${locationId}/payment-profile`,
+            schema: clientPaymentProfileSchema,
+            serviceLabel: "Catalog",
+            allowNotFound: true
+          }),
+          fetchInternalJson({
+            baseUrl: catalogBaseUrl,
+            path: `/v1/catalog/internal/locations/${locationId}/menu`,
+            schema: menuResponseSchema,
+            serviceLabel: "Catalog"
+          })
+        ]);
+
+        const visibleItemCount =
+          menu?.categories.reduce(
+            (count, category) => count + category.items.filter((item) => item.visible).length,
+            0
+          ) ?? 0;
+
+        const checks = [
+          {
+            id: "owner_provisioned" as const,
+            label: "Owner account provisioned",
+            passed: Boolean(ownerSummary?.owner?.active),
+            detail: ownerSummary?.owner ? ownerSummary.owner.email : "No active owner account is provisioned."
+          },
+          {
+            id: "stripe_onboarded" as const,
+            label: "Stripe payment account connected",
+            passed: paymentProfile?.stripeOnboardingStatus === "completed" && paymentProfile.stripeChargesEnabled,
+            detail: paymentProfile?.stripeAccountId
+              ? `${paymentProfile.stripeAccountId} · ${paymentProfile.stripeOnboardingStatus}`
+              : "No Stripe Connect account is linked."
+          },
+          {
+            id: "menu_has_items" as const,
+            label: "At least 1 visible menu item",
+            passed: visibleItemCount > 0,
+            detail: `${visibleItemCount} visible item${visibleItemCount === 1 ? "" : "s"} found.`
+          },
+          {
+            id: "fulfillment_mode_set" as const,
+            label: "Fulfillment mode set to staff",
+            passed: location.capabilities.operations.fulfillmentMode === "staff",
+            detail: `Current mode: ${location.capabilities.operations.fulfillmentMode}.`
+          },
+          {
+            id: "hours_configured" as const,
+            label: "Store hours configured",
+            passed: location.hours.trim().length > 0,
+            detail: location.hours
+          },
+          {
+            id: "tax_configured" as const,
+            label: "Tax rate configured",
+            passed: location.taxRateBasisPoints > 0,
+            detail: `${(location.taxRateBasisPoints / 100).toFixed(2)}%`
+          },
+          {
+            id: "test_order_confirmed" as const,
+            label: "Test order completed (manual)",
+            passed: false,
+            manual: true,
+            detail: "Confirm this from the admin console after a successful test order."
+          }
+        ];
+        const nonManualChecks = checks.filter((check) => !check.manual);
+        const passedCount = checks.filter((check) => check.passed).length;
+
+        return launchReadinessResponseSchema.parse({
+          locationId,
+          ready: nonManualChecks.every((check) => check.passed),
+          passedCount,
+          totalCount: checks.length,
+          checks
+        });
+      } catch (error) {
+        if (error instanceof UpstreamHttpError) {
+          return reply.status(error.statusCode).send(
+            upstreamFailure(request.id, error.serviceLabel, error.statusCode, error.body)
+          );
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  app.get(
     "/v1/internal/locations/:locationId/payment-profile",
     {
       preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
@@ -3508,7 +3956,8 @@ export async function registerRoutes(app: FastifyInstance) {
         path: `/v1/catalog/internal/locations/${locationId}/payment-profile`,
         body: input,
         additionalHeaders: {
-          "x-gateway-token": gatewayInternalApiToken
+          "x-gateway-token": gatewayInternalApiToken,
+          ...internalAdminActorHeader(request)
         },
         forwardUserIdHeader: false,
         responseSchema: clientPaymentProfileSchema
@@ -3558,7 +4007,8 @@ export async function registerRoutes(app: FastifyInstance) {
         path: `/v1/identity/internal/locations/${locationId}/owner/provision`,
         body: input,
         additionalHeaders: {
-          "x-gateway-token": gatewayInternalApiToken
+          "x-gateway-token": gatewayInternalApiToken,
+          ...internalAdminActorHeader(request)
         },
         forwardUserIdHeader: false,
         responseSchema: internalOwnerProvisionResponseSchema
@@ -3577,6 +4027,7 @@ export async function registerRoutes(app: FastifyInstance) {
       additionalHeaders: {
         "x-gateway-token": gatewayInternalApiToken
       },
+      forwardQuery: true,
       responseSchema: loyaltyBalanceSchema
     });
   });
@@ -3592,6 +4043,7 @@ export async function registerRoutes(app: FastifyInstance) {
       additionalHeaders: {
         "x-gateway-token": gatewayInternalApiToken
       },
+      forwardQuery: true,
       responseSchema: z.array(loyaltyLedgerEntrySchema)
     });
   });

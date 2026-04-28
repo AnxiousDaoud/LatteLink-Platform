@@ -56,6 +56,18 @@ export interface PaymentsStripeWebhookEventTable {
   updated_at: Generated<string>;
 }
 
+export interface PaymentsStripePaymentIntentTable {
+  payment_intent_id: string;
+  order_id: string;
+  location_id: string;
+  stripe_account_id: string;
+  amount_cents: number;
+  currency: "USD";
+  status: string;
+  created_at: Generated<string>;
+  updated_at: Generated<string>;
+}
+
 export interface PaymentsCloverConnectionTable {
   merchant_id: string;
   location_id: string | null;
@@ -72,6 +84,7 @@ export interface PaymentsCloverConnectionTable {
 
 export interface LoyaltyBalanceTable {
   brand_id: string;
+  location_id: string;
   user_id: string;
   available_points: number;
   pending_points: number;
@@ -82,6 +95,7 @@ export interface LoyaltyBalanceTable {
 export interface LoyaltyLedgerEntryTable {
   id: string;
   brand_id: string;
+  location_id: string;
   user_id: string;
   type: "EARN" | "REDEEM" | "REFUND" | "ADJUSTMENT";
   points: number;
@@ -91,6 +105,7 @@ export interface LoyaltyLedgerEntryTable {
 
 export interface LoyaltyIdempotencyKeyTable {
   brand_id: string;
+  location_id: string;
   user_id: string;
   idempotency_key: string;
   request_fingerprint: string;
@@ -204,6 +219,7 @@ export interface OperatorSessionTable {
   access_token: string;
   refresh_token: string;
   operator_user_id: string;
+  active_location_id: string | null;
   access_expires_at: string | null;
   expires_at: string;
   revoked_at: string | null;
@@ -338,11 +354,24 @@ export interface CatalogPaymentProfileTable {
   updated_at: Generated<string>;
 }
 
+export interface AuditLogTable {
+  log_id: Generated<string>;
+  location_id: string;
+  actor_id: string;
+  actor_type: "operator" | "internal_admin" | "system" | "customer";
+  action: string;
+  target_id: string | null;
+  target_type: string | null;
+  payload: unknown;
+  occurred_at: Generated<string>;
+}
+
 export interface PersistenceDatabase {
   payments_charges: PaymentsChargeTable;
   payments_refunds: PaymentsRefundTable;
   payments_webhook_deduplication: PaymentsWebhookDeduplicationTable;
   payments_stripe_webhook_events: PaymentsStripeWebhookEventTable;
+  payments_stripe_payment_intents: PaymentsStripePaymentIntentTable;
   payments_clover_connections: PaymentsCloverConnectionTable;
   loyalty_balances: LoyaltyBalanceTable;
   loyalty_ledger_entries: LoyaltyLedgerEntryTable;
@@ -369,9 +398,39 @@ export interface PersistenceDatabase {
   catalog_store_configs: CatalogStoreConfigTable;
   catalog_app_configs: CatalogAppConfigTable;
   catalog_payment_profiles: CatalogPaymentProfileTable;
+  audit_log: AuditLogTable;
 }
 
 export type PersistenceDb = Kysely<PersistenceDatabase>;
+
+export type AuditLogActorType = AuditLogTable["actor_type"];
+
+export type AuditLogEntry = {
+  locationId: string;
+  actorId: string;
+  actorType: AuditLogActorType;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  payload?: Record<string, unknown>;
+  occurredAt?: string;
+};
+
+export async function writeAuditLog(db: PersistenceDb, entry: AuditLogEntry): Promise<void> {
+  await db
+    .insertInto("audit_log")
+    .values({
+      location_id: entry.locationId,
+      actor_id: entry.actorId,
+      actor_type: entry.actorType,
+      action: entry.action,
+      target_id: entry.targetId ?? null,
+      target_type: entry.targetType ?? null,
+      payload: entry.payload ?? null,
+      ...(entry.occurredAt ? { occurred_at: entry.occurredAt } : {})
+    })
+    .execute();
+}
 
 export function createPostgresDb(connectionString: string): PersistenceDb {
   return new Kysely<PersistenceDatabase>({

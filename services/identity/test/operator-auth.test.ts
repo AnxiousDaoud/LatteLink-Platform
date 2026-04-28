@@ -10,13 +10,19 @@ const storeEmail = "store@gazellecoffee.com";
 const storePassword = "LatteLinkStore123!";
 const locationId = "rawaqcoffee01";
 
-async function signInOperator(app: Awaited<ReturnType<typeof buildApp>>, email: string, password: string) {
+async function signInOperator(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  email: string,
+  password: string,
+  locationId?: string
+) {
   const response = await app.inject({
     method: "POST",
     url: "/v1/operator/auth/sign-in",
     payload: {
       email,
-      password
+      password,
+      locationId
     }
   });
 
@@ -46,6 +52,7 @@ async function provisionStore(repository: ReturnType<typeof createInMemoryIdenti
 
 describe("operator auth", () => {
   const previousGatewayToken = process.env.GATEWAY_INTERNAL_API_TOKEN;
+  const previousOperatorAbsoluteTtlDays = process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS;
 
   afterEach(() => {
     vi.useRealTimers();
@@ -53,6 +60,11 @@ describe("operator auth", () => {
       delete process.env.GATEWAY_INTERNAL_API_TOKEN;
     } else {
       process.env.GATEWAY_INTERNAL_API_TOKEN = previousGatewayToken;
+    }
+    if (previousOperatorAbsoluteTtlDays === undefined) {
+      delete process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS;
+    } else {
+      process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS = previousOperatorAbsoluteTtlDays;
     }
   });
 
@@ -134,6 +146,119 @@ describe("operator auth", () => {
     expect(invalidRefresh.statusCode).toBe(401);
     expect(invalidRefresh.json()).toMatchObject({
       code: "INVALID_REFRESH_TOKEN"
+    });
+
+    await app.close();
+  });
+
+  it("rejects operator refresh after absolute session TTL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2030-01-01T00:00:00.000Z"));
+    process.env.OPERATOR_SESSION_ABSOLUTE_TTL_DAYS = "1";
+    const repository = createInMemoryIdentityRepository();
+    await provisionOwner(repository);
+    const app = await buildApp({ repository });
+
+    const session = await signInOperator(app, ownerEmail, ownerPassword);
+
+    vi.setSystemTime(new Date("2030-01-02T00:00:01.000Z"));
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+
+    expect(refresh.statusCode).toBe(401);
+    expect(refresh.json()).toMatchObject({
+      code: "SESSION_EXPIRED",
+      message: "Your session has expired. Please sign in again."
+    });
+
+    const retry = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+    expect(retry.statusCode).toBe(401);
+    expect(retry.json()).toMatchObject({
+      code: "INVALID_REFRESH_TOKEN"
+    });
+
+    await app.close();
+  });
+
+  it("honors requested operator location during password sign-in and refresh", async () => {
+    const repository = createInMemoryIdentityRepository();
+    await provisionOwner(repository);
+    await provisionOwnerAccess(repository, {
+      allowInMemory: true,
+      displayName: "Store Owner",
+      email: ownerEmail,
+      locationId: "pilot-01",
+      password: ownerPassword
+    });
+    const app = await buildApp({ repository });
+
+    const session = await signInOperator(app, ownerEmail, ownerPassword, "pilot-01");
+    expect(session.operator).toMatchObject({
+      email: ownerEmail,
+      locationId: "pilot-01",
+      locationIds: expect.arrayContaining([locationId, "pilot-01"])
+    });
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/v1/operator/auth/me",
+      headers: {
+        authorization: `Bearer ${session.accessToken}`
+      }
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({
+      email: ownerEmail,
+      locationId: "pilot-01"
+    });
+
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/refresh",
+      payload: {
+        refreshToken: session.refreshToken
+      }
+    });
+    expect(refresh.statusCode).toBe(200);
+    expect(refresh.json()).toMatchObject({
+      operator: {
+        email: ownerEmail,
+        locationId: "pilot-01"
+      }
+    });
+
+    await app.close();
+  });
+
+  it("rejects requested operator locations outside the user's access set", async () => {
+    const repository = createInMemoryIdentityRepository();
+    await provisionOwner(repository);
+    const app = await buildApp({ repository });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/operator/auth/sign-in",
+      payload: {
+        email: ownerEmail,
+        password: ownerPassword,
+        locationId: "forbidden-01"
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "OPERATOR_LOCATION_FORBIDDEN"
     });
 
     await app.close();

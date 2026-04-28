@@ -20,6 +20,20 @@ import {
 describe("catalog service", () => {
   const previousGatewayToken = process.env.GATEWAY_INTERNAL_API_TOKEN;
   const previousFulfillmentMode = process.env.ORDER_FULFILLMENT_MODE;
+  const previousCatalogDefaultLocationId = process.env.CATALOG_DEFAULT_LOCATION_ID;
+  const mediaEnvNames = [
+    "CATALOG_MEDIA_R2_ACCOUNT_ID",
+    "CATALOG_MEDIA_R2_ACCESS_KEY_ID",
+    "CATALOG_MEDIA_R2_SECRET_ACCESS_KEY",
+    "CATALOG_MEDIA_R2_BUCKET",
+    "CATALOG_MEDIA_PUBLIC_BASE_URL",
+    "CATALOG_MEDIA_UPLOAD_MAX_BYTES",
+    "CATALOG_MEDIA_UPLOAD_EXPIRY_SECONDS"
+  ] as const;
+  const previousMediaEnv = Object.fromEntries(mediaEnvNames.map((name) => [name, process.env[name]])) as Record<
+    (typeof mediaEnvNames)[number],
+    string | undefined
+  >;
 
   afterEach(() => {
     if (previousGatewayToken === undefined) {
@@ -32,6 +46,21 @@ describe("catalog service", () => {
       delete process.env.ORDER_FULFILLMENT_MODE;
     } else {
       process.env.ORDER_FULFILLMENT_MODE = previousFulfillmentMode;
+    }
+
+    if (previousCatalogDefaultLocationId === undefined) {
+      delete process.env.CATALOG_DEFAULT_LOCATION_ID;
+    } else {
+      process.env.CATALOG_DEFAULT_LOCATION_ID = previousCatalogDefaultLocationId;
+    }
+
+    for (const name of mediaEnvNames) {
+      const previousValue = previousMediaEnv[name];
+      if (previousValue === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = previousValue;
+      }
     }
 
     vi.useRealTimers();
@@ -47,7 +76,7 @@ describe("catalog service", () => {
 
   it("returns v1 menu payload", async () => {
     const app = await buildApp();
-    const response = await app.inject({ method: "GET", url: "/v1/menu" });
+    const response = await app.inject({ method: "GET", url: `/v1/menu?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["cache-control"]).toBe("public, max-age=60, stale-while-revalidate=300");
@@ -56,9 +85,29 @@ describe("catalog service", () => {
     await app.close();
   });
 
-  it("returns v1 app config payload", async () => {
+  it("rejects public catalog requests without locationId unless an explicit fallback is configured", async () => {
     const app = await buildApp();
-    const response = await app.inject({ method: "GET", url: "/v1/app-config" });
+    const missingLocationResponse = await app.inject({ method: "GET", url: "/v1/menu" });
+
+    expect(missingLocationResponse.statusCode).toBe(400);
+    expect(missingLocationResponse.json()).toMatchObject({
+      code: "MISSING_LOCATION_ID",
+      message: "locationId query parameter is required"
+    });
+    await app.close();
+
+    process.env.CATALOG_DEFAULT_LOCATION_ID = DEFAULT_LOCATION_ID;
+    const fallbackApp = await buildApp();
+    const fallbackResponse = await fallbackApp.inject({ method: "GET", url: "/v1/menu" });
+
+    expect(fallbackResponse.statusCode).toBe(200);
+    expect(menuResponseSchema.parse(fallbackResponse.json()).locationId).toBe(DEFAULT_LOCATION_ID);
+    await fallbackApp.close();
+  });
+
+  it("returns v1 app config payload with staff fulfillment by default", async () => {
+    const app = await buildApp();
+    const response = await app.inject({ method: "GET", url: `/v1/app-config?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(response.statusCode).toBe(200);
     const parsed = appConfigSchema.parse(response.json());
@@ -67,19 +116,20 @@ describe("catalog service", () => {
     expect(parsed.storeCapabilities.menu.source).toBe("platform_managed");
     expect(parsed.storeCapabilities.operations.dashboardEnabled).toBe(true);
     expect(parsed.storeCapabilities.loyalty.visible).toBe(true);
-    expect(parsed.fulfillment.mode).toBe("time_based");
+    expect(parsed.fulfillment.mode).toBe("staff");
+    expect(parsed.storeCapabilities.operations.fulfillmentMode).toBe("staff");
     await app.close();
   });
 
-  it("returns a staff fulfillment mode when configured", async () => {
-    process.env.ORDER_FULFILLMENT_MODE = "staff";
+  it("returns a time-based fulfillment mode only when explicitly configured", async () => {
+    process.env.ORDER_FULFILLMENT_MODE = "time_based";
     const app = await buildApp();
-    const response = await app.inject({ method: "GET", url: "/v1/app-config" });
+    const response = await app.inject({ method: "GET", url: `/v1/app-config?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(response.statusCode).toBe(200);
     const parsed = appConfigSchema.parse(response.json());
-    expect(parsed.fulfillment.mode).toBe("staff");
-    expect(parsed.storeCapabilities.operations.fulfillmentMode).toBe("staff");
+    expect(parsed.fulfillment.mode).toBe("time_based");
+    expect(parsed.storeCapabilities.operations.fulfillmentMode).toBe("time_based");
     expect(parsed.fulfillment.timeBasedScheduleMinutes.completed).toBe(15);
 
     await app.close();
@@ -89,7 +139,7 @@ describe("catalog service", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-03-10T17:00:00.000Z"));
     const app = await buildApp();
-    const response = await app.inject({ method: "GET", url: "/v1/store/config" });
+    const response = await app.inject({ method: "GET", url: `/v1/store/config?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(response.statusCode).toBe(200);
     const parsed = storeConfigResponseSchema.parse(response.json());
@@ -104,7 +154,7 @@ describe("catalog service", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-03-10T02:00:00.000Z"));
     const app = await buildApp();
-    const response = await app.inject({ method: "GET", url: "/v1/store/config" });
+    const response = await app.inject({ method: "GET", url: `/v1/store/config?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(response.statusCode).toBe(200);
     const parsed = storeConfigResponseSchema.parse(response.json());
@@ -121,7 +171,8 @@ describe("catalog service", () => {
       method: "GET",
       url: "/v1/catalog/admin/menu",
       headers: {
-        "x-gateway-token": "catalog-gateway-token"
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
       }
     });
     expect(adminMenuResponse.statusCode).toBe(200);
@@ -135,7 +186,8 @@ describe("catalog service", () => {
       method: "PUT",
       url: "/v1/catalog/admin/menu/latte",
       headers: {
-        "x-gateway-token": "catalog-gateway-token"
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
       },
       payload: {
         name: "Operator Latte",
@@ -179,7 +231,8 @@ describe("catalog service", () => {
       method: "GET",
       url: "/v1/catalog/admin/store/config",
       headers: {
-        "x-gateway-token": "catalog-gateway-token"
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
       }
     });
     expect(adminStoreConfigResponse.statusCode).toBe(200);
@@ -193,7 +246,8 @@ describe("catalog service", () => {
       method: "PUT",
       url: "/v1/catalog/admin/store/config",
       headers: {
-        "x-gateway-token": "catalog-gateway-token"
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
       },
       payload: {
         storeName: "Gazelle Coffee Downtown",
@@ -237,13 +291,13 @@ describe("catalog service", () => {
       }
     });
 
-    const storeConfigResponse = await app.inject({ method: "GET", url: "/v1/store/config" });
+    const storeConfigResponse = await app.inject({ method: "GET", url: `/v1/store/config?locationId=${DEFAULT_LOCATION_ID}` });
     expect(storeConfigResponse.statusCode).toBe(200);
     expect(storeConfigResponseSchema.parse(storeConfigResponse.json())).toMatchObject({
       taxRateBasisPoints: 650
     });
 
-    const appConfigResponse = await app.inject({ method: "GET", url: "/v1/app-config" });
+    const appConfigResponse = await app.inject({ method: "GET", url: `/v1/app-config?locationId=${DEFAULT_LOCATION_ID}` });
     expect(appConfigResponse.statusCode).toBe(200);
     expect(appConfigSchema.parse(appConfigResponse.json())).toMatchObject({
       brand: {
@@ -278,6 +332,88 @@ describe("catalog service", () => {
     await app.close();
   });
 
+  it("returns a clear 503 when menu image uploads are not configured", async () => {
+    process.env.GATEWAY_INTERNAL_API_TOKEN = "catalog-gateway-token";
+    for (const name of mediaEnvNames) {
+      delete process.env[name];
+    }
+
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/catalog/admin/menu/latte/image-upload",
+      headers: {
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
+      },
+      payload: {
+        fileName: "latte.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 512
+      }
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      code: "MENU_IMAGE_UPLOAD_UNAVAILABLE",
+      message: "Menu image uploads are not configured."
+    });
+
+    await app.close();
+  });
+
+  it("validates menu image upload content type and size", async () => {
+    process.env.GATEWAY_INTERNAL_API_TOKEN = "catalog-gateway-token";
+    process.env.CATALOG_MEDIA_R2_ACCOUNT_ID = "test-account";
+    process.env.CATALOG_MEDIA_R2_ACCESS_KEY_ID = "test-access-key";
+    process.env.CATALOG_MEDIA_R2_SECRET_ACCESS_KEY = "test-secret-key";
+    process.env.CATALOG_MEDIA_R2_BUCKET = "menu-media";
+    process.env.CATALOG_MEDIA_PUBLIC_BASE_URL = "https://media.example.test";
+    process.env.CATALOG_MEDIA_UPLOAD_MAX_BYTES = "1024";
+    process.env.CATALOG_MEDIA_UPLOAD_EXPIRY_SECONDS = "120";
+
+    const app = await buildApp();
+    const unsupportedTypeResponse = await app.inject({
+      method: "POST",
+      url: "/v1/catalog/admin/menu/latte/image-upload",
+      headers: {
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
+      },
+      payload: {
+        fileName: "latte.svg",
+        contentType: "image/svg+xml",
+        sizeBytes: 512
+      }
+    });
+
+    expect(unsupportedTypeResponse.statusCode).toBe(400);
+    expect(unsupportedTypeResponse.json()).toMatchObject({
+      code: "INVALID_MENU_IMAGE_UPLOAD"
+    });
+
+    const oversizedResponse = await app.inject({
+      method: "POST",
+      url: "/v1/catalog/admin/menu/latte/image-upload",
+      headers: {
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
+      },
+      payload: {
+        fileName: "latte.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 2048
+      }
+    });
+
+    expect(oversizedResponse.statusCode).toBe(413);
+    expect(oversizedResponse.json()).toMatchObject({
+      code: "INVALID_MENU_IMAGE_UPLOAD"
+    });
+
+    await app.close();
+  });
+
   it("rejects invalid admin customization payloads with a 4xx response", async () => {
     process.env.GATEWAY_INTERNAL_API_TOKEN = "catalog-gateway-token";
     const app = await buildApp();
@@ -286,7 +422,8 @@ describe("catalog service", () => {
       method: "PUT",
       url: "/v1/catalog/admin/menu/latte",
       headers: {
-        "x-gateway-token": "catalog-gateway-token"
+        "x-gateway-token": "catalog-gateway-token",
+        "x-operator-location-id": DEFAULT_LOCATION_ID
       },
       payload: {
         name: "Operator Latte",
@@ -328,6 +465,26 @@ describe("catalog service", () => {
     expect(response.statusCode).toBe(401);
     expect(response.json()).toMatchObject({
       code: "UNAUTHORIZED_GATEWAY_REQUEST"
+    });
+
+    await app.close();
+  });
+
+  it("rejects gateway-protected admin requests without an operator location header", async () => {
+    process.env.GATEWAY_INTERNAL_API_TOKEN = "catalog-gateway-token";
+    const app = await buildApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/catalog/admin/menu",
+      headers: {
+        "x-gateway-token": "catalog-gateway-token"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({
+      code: "MISSING_OPERATOR_LOCATION_ID"
     });
 
     await app.close();
@@ -389,7 +546,8 @@ describe("catalog service", () => {
         method: "GET",
         url: "/v1/catalog/admin/menu",
         headers: {
-          "x-gateway-token": "catalog-gateway-token"
+          "x-gateway-token": "catalog-gateway-token",
+          "x-operator-location-id": DEFAULT_LOCATION_ID
         }
       });
       expect(firstRead.statusCode).toBe(200);
@@ -398,7 +556,8 @@ describe("catalog service", () => {
         method: "GET",
         url: "/v1/catalog/admin/menu",
         headers: {
-          "x-gateway-token": "catalog-gateway-token"
+          "x-gateway-token": "catalog-gateway-token",
+          "x-operator-location-id": DEFAULT_LOCATION_ID
         }
       });
       expect(secondRead.statusCode).toBe(429);
@@ -438,7 +597,7 @@ describe("catalog service", () => {
 
     const menuResponse = await app.inject({
       method: "GET",
-      url: "/v1/menu",
+      url: `/v1/menu?locationId=${DEFAULT_LOCATION_ID}`,
       headers: {
         "x-request-id": requestId
       }
@@ -644,7 +803,7 @@ describe("catalog service", () => {
 
     expect(paymentProfileResponse.statusCode).toBe(200);
 
-    const appConfigResponse = await app.inject({ method: "GET", url: "/v1/app-config" });
+    const appConfigResponse = await app.inject({ method: "GET", url: `/v1/app-config?locationId=${DEFAULT_LOCATION_ID}` });
 
     expect(appConfigResponse.statusCode).toBe(200);
     expect(appConfigSchema.parse(appConfigResponse.json())).toMatchObject({

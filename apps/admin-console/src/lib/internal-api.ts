@@ -9,6 +9,7 @@ import type {
   InternalLocationBootstrap,
   InternalLocationListResponse,
   InternalLocationSummary,
+  LaunchReadinessResponse,
   StripeConnectLinkResponse
 } from "@lattelink/contracts-catalog";
 import { requireAdminSession } from "@/lib/auth";
@@ -19,6 +20,48 @@ import {
   getOptionalClientDashboardUrl,
   hasInternalAdminApiBaseUrl
 } from "@/lib/config";
+
+export type SupportAuditLogEntry = {
+  logId: string;
+  locationId: string;
+  actorId: string;
+  actorType: string;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  payload?: unknown;
+  occurredAt: string;
+};
+
+export type SupportOrderLookupResult = {
+  order: {
+    id: string;
+    locationId: string;
+    status: string;
+    total: {
+      currency: string;
+      amountCents: number;
+    };
+    pickupCode: string;
+  };
+  customer?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
+  userId?: string;
+  paymentId?: string;
+  paymentStatus?: string;
+  paymentProvider?: string;
+  paymentIntentId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  auditLog: SupportAuditLogEntry[];
+};
+
+export type SupportOrderLookupResponse = {
+  results: SupportOrderLookupResult[];
+};
 
 type InternalApiErrorBody = {
   code?: string;
@@ -88,6 +131,22 @@ export async function getInternalLocation(locationId: string) {
 
 export async function getInternalLocationPaymentProfile(locationId: string) {
   return requestInternalApi<ClientPaymentProfile>(`/v1/internal/locations/${locationId}/payment-profile`);
+}
+
+export async function getInternalLocationReadiness(locationId: string) {
+  return requestInternalApi<LaunchReadinessResponse>(`/v1/internal/locations/${locationId}/readiness`);
+}
+
+export async function lookupSupportOrders(input: { query: string; locationId?: string; limit?: number }) {
+  const params = new URLSearchParams({
+    query: input.query,
+    limit: String(input.limit ?? 25)
+  });
+  if (input.locationId) {
+    params.set("locationId", input.locationId);
+  }
+
+  return requestInternalApi<SupportOrderLookupResponse>(`/v1/internal/support/orders?${params.toString()}`);
 }
 
 export async function getInternalLocationOwner(locationId: string) {

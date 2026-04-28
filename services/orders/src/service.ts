@@ -93,6 +93,7 @@ const paymentsRefundResponseSchema = z.object({
 
 const loyaltyBalanceSchema = z.object({
   userId: z.string().uuid(),
+  locationId: z.string().min(1),
   availablePoints: z.number().int().nonnegative(),
   pendingPoints: z.number().int().nonnegative(),
   lifetimeEarned: z.number().int().nonnegative()
@@ -103,11 +104,13 @@ const loyaltyLedgerEntrySchema = z.object({
   type: z.enum(["EARN", "REDEEM", "REFUND", "ADJUSTMENT"]),
   points: z.number().int(),
   orderId: z.string().uuid().optional(),
+  locationId: z.string().min(1),
   createdAt: z.string().datetime()
 });
 
 const loyaltyMutationBaseSchema = z.object({
   userId: z.string().uuid(),
+  locationId: z.string().min(1),
   orderId: z.string().uuid(),
   idempotencyKey: z.string().min(1)
 });
@@ -171,7 +174,7 @@ export type OrderServiceDeps = {
   logger: FastifyBaseLogger;
 };
 
-export type CancelOrderSource = "customer" | "staff";
+export type CancelOrderSource = "customer" | "staff" | "system";
 export type OrderStatusUpdateInput = {
   status: "IN_PREP" | "READY" | "COMPLETED";
   note?: string;
@@ -389,6 +392,7 @@ async function applyLoyaltyMutation(params: {
         requestId,
         orderId: mutation.orderId,
         userId: mutation.userId,
+        locationId: mutation.locationId,
         mutationType: mutation.type
       },
       "loyalty service request failed before response"
@@ -1161,7 +1165,7 @@ export async function cancelOrder(params: {
     };
   }
 
-  const cancelActorLabel = cancelSource === "staff" ? "staff" : "customer";
+  const cancelActorLabel = cancelSource === "staff" ? "staff" : cancelSource === "system" ? "system" : "customer";
   let refundNote = "";
 
   if (existingOrder.status !== "PENDING_PAYMENT") {
@@ -1229,6 +1233,7 @@ export async function cancelOrder(params: {
     const reverseEarnMutation = loyaltyMutationRequestSchema.parse({
       type: "ADJUSTMENT",
       userId: orderUserId,
+      locationId: existingOrder.locationId,
       orderId,
       points: -existingOrder.total.amountCents,
       idempotencyKey: toLoyaltyIdempotencyKey(orderId, "reverse-earn")
@@ -1248,6 +1253,7 @@ export async function cancelOrder(params: {
       const refundRedeemMutation = loyaltyMutationRequestSchema.parse({
         type: "REFUND",
         userId: orderUserId,
+        locationId: existingOrder.locationId,
         orderId,
         amountCents: orderQuote.pointsToRedeem,
         idempotencyKey: toLoyaltyIdempotencyKey(orderId, "refund-redeem")
@@ -1286,7 +1292,7 @@ export async function cancelOrder(params: {
     repository: deps.repository
   });
   if (isServiceError(notificationUserId)) {
-    if (cancelSource === "staff" && notificationUserId.code === "ORDER_USER_CONTEXT_MISSING") {
+    if ((cancelSource === "staff" || cancelSource === "system") && notificationUserId.code === "ORDER_USER_CONTEXT_MISSING") {
       deps.logger.warn(
         {
           orderId,
@@ -1389,6 +1395,7 @@ export async function reconcilePaymentWebhook(params: {
       const redeemMutation = loyaltyMutationRequestSchema.parse({
         type: "REDEEM",
         userId: orderUserId,
+        locationId: existingOrder.locationId,
         orderId: input.orderId,
         amountCents: orderQuote.pointsToRedeem,
         idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "redeem")
@@ -1408,6 +1415,7 @@ export async function reconcilePaymentWebhook(params: {
     const earnMutation = loyaltyMutationRequestSchema.parse({
       type: "EARN",
       userId: orderUserId,
+      locationId: existingOrder.locationId,
       orderId: input.orderId,
       amountCents: existingOrder.total.amountCents,
       idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "earn")
@@ -1529,6 +1537,7 @@ export async function reconcilePaymentWebhook(params: {
   const reverseEarnMutation = loyaltyMutationRequestSchema.parse({
     type: "ADJUSTMENT",
     userId: orderUserId,
+    locationId: existingOrder.locationId,
     orderId: input.orderId,
     points: -existingOrder.total.amountCents,
     idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "reverse-earn")
@@ -1548,6 +1557,7 @@ export async function reconcilePaymentWebhook(params: {
     const refundRedeemMutation = loyaltyMutationRequestSchema.parse({
       type: "REFUND",
       userId: orderUserId,
+      locationId: existingOrder.locationId,
       orderId: input.orderId,
       amountCents: orderQuote.pointsToRedeem,
       idempotencyKey: toLoyaltyIdempotencyKey(input.orderId, "refund-redeem")

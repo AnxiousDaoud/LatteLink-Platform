@@ -36,8 +36,9 @@ describe("gateway", () => {
   let previousOrdersInternalToken: string | undefined;
   let previousGatewayOrderStreamPollMs: string | undefined;
   let previousValkeyUrl: string | undefined;
-  let previousCorsAllowedOrigins: string | undefined;
-  let previousFreeClientDashboardDomain: string | undefined;
+let previousCorsAllowedOrigins: string | undefined;
+let previousCorsAllowedOriginHostSuffixes: string | undefined;
+let previousFreeClientDashboardDomain: string | undefined;
   let previousNodeEnv: string | undefined;
   let queuedOrderStatuses: Map<string, Array<"PENDING_PAYMENT" | "PAID" | "IN_PREP" | "READY" | "COMPLETED" | "CANCELED">>;
   let queuedOrderPayloads: Map<string, Array<ReturnType<typeof buildOrderPayload>>>;
@@ -109,6 +110,7 @@ describe("gateway", () => {
     previousGatewayOrderStreamPollMs = process.env.GATEWAY_ORDER_STREAM_POLL_MS;
     previousValkeyUrl = process.env.VALKEY_URL;
     previousCorsAllowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
+    previousCorsAllowedOriginHostSuffixes = process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES;
     previousFreeClientDashboardDomain = process.env.FREE_CLIENT_DASHBOARD_DOMAIN;
     previousNodeEnv = process.env.NODE_ENV;
     queuedOrderStatuses = new Map();
@@ -557,7 +559,7 @@ describe("gateway", () => {
         });
       }
 
-      if (url.endsWith("/v1/operator/users") && method === "GET") {
+      if (url.includes("/v1/operator/users") && method === "GET") {
         return new Response(
           JSON.stringify({
             users: [
@@ -599,7 +601,7 @@ describe("gateway", () => {
         );
       }
 
-      if (url.endsWith("/v1/operator/users") && method === "POST") {
+      if (url.includes("/v1/operator/users") && method === "POST") {
         const body = JSON.parse(String(init?.body ?? "{}")) as {
           displayName?: string;
           email?: string;
@@ -656,7 +658,7 @@ describe("gateway", () => {
         );
       }
 
-      const operatorUserMatch = url.match(/\/v1\/operator\/users\/([0-9a-f-]{36})$/);
+      const operatorUserMatch = url.match(/\/v1\/operator\/users\/([0-9a-f-]{36})(?:\\?|$)/);
       if (operatorUserMatch && method === "PATCH") {
         const operatorUserId = operatorUserMatch[1];
         const body = JSON.parse(String(init?.body ?? "{}")) as {
@@ -927,14 +929,72 @@ describe("gateway", () => {
         );
       }
 
+      if (url.includes("/v1/orders/internal/support/lookup") && method === "GET") {
+        const supportUrl = new URL(url);
+        const query = supportUrl.searchParams.get("query") ?? "";
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                order: {
+                  id: query,
+                  locationId: supportUrl.searchParams.get("locationId") ?? "flagship-01",
+                  status: "PAID",
+                  items: [],
+                  total: { currency: "USD", amountCents: 530 },
+                  pickupCode: "SUPPORT",
+                  timeline: [
+                    {
+                      status: "PENDING_PAYMENT",
+                      occurredAt: new Date(Date.now() - 120000).toISOString()
+                    },
+                    {
+                      status: "PAID",
+                      occurredAt: new Date(Date.now() - 60000).toISOString()
+                    }
+                  ]
+                },
+                paymentProvider: "STRIPE",
+                paymentStatus: "succeeded",
+                auditLog: [
+                  {
+                    logId: "audit-1",
+                    locationId: "flagship-01",
+                    actorId: "system:payments",
+                    actorType: "system",
+                    action: "order.payment_reconciled",
+                    targetId: query,
+                    targetType: "order",
+                    occurredAt: new Date().toISOString()
+                  }
+                ]
+              }
+            ]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       const getOrderMatch = url.match(/\/v1\/orders\/([0-9a-f-]{36})$/);
       if (getOrderMatch && method === "GET") {
         const orderId = getOrderMatch[1];
+        const headers = new Headers((init?.headers ?? {}) as HeadersInit);
+        const operatorLocationId = headers.get("x-operator-location-id");
         const queuedPayloadsForOrder = queuedOrderPayloads.get(orderId);
         if (queuedPayloadsForOrder?.length) {
           const nextPayload = queuedPayloadsForOrder.shift() ?? buildOrderPayload(orderId, "IN_PREP");
           if (queuedPayloadsForOrder.length === 0) {
             queuedOrderPayloads.delete(orderId);
+          }
+          if (operatorLocationId && nextPayload.locationId !== operatorLocationId) {
+            return new Response(
+              JSON.stringify({
+                code: "ORDER_NOT_FOUND",
+                message: "Order was not found",
+                requestId: "orders-stub-cross-tenant"
+              }),
+              { status: 404, headers: { "content-type": "application/json" } }
+            );
           }
           return new Response(JSON.stringify(nextPayload), {
             status: 200,
@@ -1178,6 +1238,36 @@ describe("gateway", () => {
                     visible: true
                   }
                 }
+              }
+            ]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
+      const internalLocationMenuMatch = url.match(/\/v1\/catalog\/internal\/locations\/([^/]+)\/menu$/);
+      if (internalLocationMenuMatch && method === "GET") {
+        const locationId = internalLocationMenuMatch[1];
+
+        return new Response(
+          JSON.stringify({
+            locationId,
+            currency: "USD",
+            categories: [
+              {
+                id: "espresso",
+                title: "Espresso Bar",
+                items: [
+                  {
+                    id: "latte",
+                    name: "Honey Oat Latte",
+                    description: "Espresso with steamed oat milk and honey.",
+                    priceCents: 675,
+                    visible: true,
+                    sortOrder: 0,
+                    customizationGroups: []
+                  }
+                ]
               }
             ]
           }),
@@ -1512,10 +1602,11 @@ describe("gateway", () => {
         );
       }
 
-      if (url.endsWith("/v1/loyalty/balance") && method === "GET") {
+      if (url.includes("/v1/loyalty/balance") && method === "GET") {
         return new Response(
           JSON.stringify({
             userId: "123e4567-e89b-12d3-a456-426614174000",
+            locationId: "flagship-01",
             availablePoints: 240,
             pendingPoints: 0,
             lifetimeEarned: 600
@@ -1524,7 +1615,7 @@ describe("gateway", () => {
         );
       }
 
-      if (url.endsWith("/v1/loyalty/ledger") && method === "GET") {
+      if (url.includes("/v1/loyalty/ledger") && method === "GET") {
         return new Response(
           JSON.stringify([
             {
@@ -1532,6 +1623,7 @@ describe("gateway", () => {
               type: "EARN",
               points: 240,
               orderId: "123e4567-e89b-12d3-a456-426614174211",
+              locationId: "flagship-01",
               createdAt: "2026-03-10T15:00:00.000Z"
             },
             {
@@ -1539,6 +1631,7 @@ describe("gateway", () => {
               type: "REDEEM",
               points: -120,
               orderId: "123e4567-e89b-12d3-a456-426614174213",
+              locationId: "flagship-01",
               createdAt: "2026-03-10T14:00:00.000Z"
             }
           ]),
@@ -1625,6 +1718,12 @@ describe("gateway", () => {
       process.env.CORS_ALLOWED_ORIGINS = previousCorsAllowedOrigins;
     }
 
+    if (previousCorsAllowedOriginHostSuffixes === undefined) {
+      delete process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES;
+    } else {
+      process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = previousCorsAllowedOriginHostSuffixes;
+    }
+
     if (previousFreeClientDashboardDomain === undefined) {
       delete process.env.FREE_CLIENT_DASHBOARD_DOMAIN;
     } else {
@@ -1704,6 +1803,41 @@ describe("gateway", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["access-control-allow-origin"]).toBe("https://client.example.com");
+    await app.close();
+  });
+
+  it("allows Vercel preview origins when an allowed host suffix is configured", async () => {
+    delete process.env.CORS_ALLOWED_ORIGINS;
+    process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = "vercel.app";
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: {
+        origin: "https://client-dashboard-git-develop-nomlyus-projects.vercel.app"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["access-control-allow-origin"]).toBe(
+      "https://client-dashboard-git-develop-nomlyus-projects.vercel.app"
+    );
+    await app.close();
+  });
+
+  it("rejects non-matching origins when an allowed host suffix is configured", async () => {
+    delete process.env.CORS_ALLOWED_ORIGINS;
+    process.env.CORS_ALLOWED_ORIGIN_HOST_SUFFIXES = "vercel.app";
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/health",
+      headers: {
+        origin: "https://malicious-example.com"
+      }
+    });
+
+    expect(response.statusCode).toBe(500);
     await app.close();
   });
 
@@ -2249,11 +2383,59 @@ describe("gateway", () => {
     await app.close();
   });
 
-  it("continues polling customer order status changes when the event bus is configured", async () => {
+  it("streams customer order status changes from event bus without steady-state polling", async () => {
     process.env.GATEWAY_ORDER_STREAM_POLL_MS = "5";
     process.env.VALKEY_URL = "redis://valkey.test:6379";
     const app = await buildApp();
     const orderId = "123e4567-e89b-12d3-a456-426614174119";
+    queuedOrderStatuses.set(orderId, ["IN_PREP"]);
+    eventBusMocks.subscribeToOrderStatus.mockImplementationOnce(async (_orderId, handler) => {
+      setTimeout(() => {
+        handler({
+          userId: "123e4567-e89b-12d3-a456-426614174000",
+          order: buildOrderPayload(orderId, "READY")
+        });
+      }, 0);
+      setTimeout(() => {
+        handler({
+          userId: "123e4567-e89b-12d3-a456-426614174000",
+          order: buildOrderPayload(orderId, "COMPLETED")
+        });
+      }, 1);
+      return () => undefined;
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/orders/${orderId}/stream`,
+      headers: authHeader
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(eventBusMocks.subscribeToOrderStatus).toHaveBeenCalledOnce();
+    const dataEvents = response.body
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map((block) => block.trim());
+    expect(dataEvents).toHaveLength(3);
+    expect(dataEvents[0]).toContain(`"status":"IN_PREP"`);
+    expect(dataEvents[1]).toContain(`"status":"READY"`);
+    expect(dataEvents[2]).toContain(`"status":"COMPLETED"`);
+    const orderFetchCalls = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = typeof input === "string" ? input : input.url;
+      return url === `http://orders.internal/v1/orders/${orderId}` && (init?.method ?? "GET") === "GET";
+    });
+    expect(orderFetchCalls).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it("keeps customer order status polling alive when event bus subscription fails", async () => {
+    process.env.GATEWAY_ORDER_STREAM_POLL_MS = "5";
+    process.env.VALKEY_URL = "redis://valkey.test:6379";
+    eventBusMocks.subscribeToOrderStatus.mockRejectedValueOnce(new Error("subscription failed"));
+    const app = await buildApp();
+    const orderId = "123e4567-e89b-12d3-a456-426614174120";
     queuedOrderStatuses.set(orderId, ["IN_PREP", "READY", "COMPLETED"]);
 
     const response = await app.inject({
@@ -2612,13 +2794,13 @@ describe("gateway", () => {
     });
 
     const requestedUrls = fetchMock.mock.calls.map(([input]) => (typeof input === "string" ? input : input.url));
-    expect(requestedUrls).toContain("http://identity.internal/v1/operator/users");
-    expect(requestedUrls).toContain(`http://identity.internal/v1/operator/users/${operatorUserId}`);
+    expect(requestedUrls).toContain("http://identity.internal/v1/operator/users?locationId=flagship-01");
+    expect(requestedUrls).toContain(`http://identity.internal/v1/operator/users/${operatorUserId}?locationId=flagship-01`);
     expect(requestedUrls).toContain("http://catalog.internal/v1/catalog/admin/store/config");
 
     const createCall = fetchMock.mock.calls.find(([input, init]) => {
       const url = typeof input === "string" ? input : input.url;
-      return url === "http://identity.internal/v1/operator/users" && (init?.method ?? "GET") === "POST";
+      return url === "http://identity.internal/v1/operator/users?locationId=flagship-01" && (init?.method ?? "GET") === "POST";
     });
     expect(createCall).toBeDefined();
     if (createCall) {
@@ -2739,6 +2921,61 @@ describe("gateway", () => {
     await app.close();
   });
 
+  it("rejects cross-tenant admin order scope overrides before calling orders", async () => {
+    const app = await buildApp();
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/admin/orders?locationId=northside-01",
+      headers: ownerOperatorHeaders
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      code: "FORBIDDEN"
+    });
+    expect(
+      fetchMock.mock.calls.some(([input]) => {
+        const url = typeof input === "string" ? input : input.url;
+        return url === "http://orders.internal/v1/orders";
+      })
+    ).toBe(false);
+
+    await app.close();
+  });
+
+  it("does not expose another tenant order through an admin order id read", async () => {
+    const app = await buildApp();
+    const orderId = "123e4567-e89b-12d3-a456-426614174116";
+    queuedOrderPayloads.set(orderId, [
+      {
+        ...buildOrderPayload(orderId, "PAID"),
+        locationId: "northside-01"
+      }
+    ]);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/admin/orders/${orderId}`,
+      headers: ownerOperatorHeaders
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({
+      code: "ORDER_NOT_FOUND"
+    });
+
+    const orderCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).endsWith(`/v1/orders/${orderId}`)
+    );
+    expect(orderCall).toBeDefined();
+    if (orderCall) {
+      const upstreamHeaders = new Headers((orderCall[1]?.headers ?? {}) as HeadersInit);
+      expect(upstreamHeaders.get("x-operator-location-id")).toBe("flagship-01");
+    }
+
+    await app.close();
+  });
+
   it("routes admin cancellations through the refund-aware cancel endpoint", async () => {
     const app = await buildApp();
     const orderId = "123e4567-e89b-12d3-a456-426614174115";
@@ -2853,6 +3090,60 @@ describe("gateway", () => {
       marketLabel: "Detroit, MI"
     });
 
+    const readinessResponse = await app.inject({
+      method: "GET",
+      url: "/v1/internal/locations/northside-01/readiness",
+      headers: ownerInternalAdminHeaders
+    });
+    expect(readinessResponse.statusCode, readinessResponse.body).toBe(200);
+    expect(readinessResponse.json()).toMatchObject({
+      locationId: "northside-01",
+      ready: true,
+      checks: expect.arrayContaining([
+        expect.objectContaining({ id: "owner_provisioned", passed: true }),
+        expect.objectContaining({ id: "stripe_onboarded", passed: true }),
+        expect.objectContaining({ id: "menu_has_items", passed: true }),
+        expect.objectContaining({ id: "fulfillment_mode_set", passed: true }),
+        expect.objectContaining({ id: "test_order_confirmed", manual: true, passed: false })
+      ])
+    });
+
+    const supportResponse = await app.inject({
+      method: "GET",
+      url: "/v1/internal/support/orders?query=123e4567-e89b-12d3-a456-426614174113&locationId=northside-01",
+      headers: readonlyInternalAdminHeaders
+    });
+    expect(supportResponse.statusCode, supportResponse.body).toBe(200);
+    expect(supportResponse.json()).toMatchObject({
+      results: [
+        {
+          order: {
+            id: "123e4567-e89b-12d3-a456-426614174113",
+            locationId: "northside-01",
+            status: "PAID"
+          },
+          paymentProvider: "STRIPE",
+          auditLog: [
+            expect.objectContaining({
+              action: "order.payment_reconciled",
+              targetType: "order"
+            })
+          ]
+        }
+      ]
+    });
+    const supportLookupCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).includes("/v1/orders/internal/support/lookup")
+    );
+    expect(supportLookupCall).toBeDefined();
+    if (supportLookupCall) {
+      const [input, init] = supportLookupCall;
+      const supportLookupUrl = new URL(typeof input === "string" ? input : input.url);
+      expect(supportLookupUrl.searchParams.get("query")).toBe("123e4567-e89b-12d3-a456-426614174113");
+      expect(supportLookupUrl.searchParams.get("locationId")).toBe("northside-01");
+      expect(new Headers(init?.headers).get("x-internal-token")).toBe("orders-internal-token");
+    }
+
     const paymentProfileResponse = await app.inject({
       method: "GET",
       url: "/v1/internal/locations/northside-01/payment-profile",
@@ -2921,7 +3212,7 @@ describe("gateway", () => {
     if (paymentProfileUpdateCall) {
       const upstreamHeaders = new Headers((paymentProfileUpdateCall[1]?.headers ?? {}) as HeadersInit);
       expect(upstreamHeaders.get("x-gateway-token")).toBe("gateway-test-token");
-      expect(upstreamHeaders.get("x-user-id")).toBeNull();
+      expect(upstreamHeaders.get("x-user-id")).toBe("223e4567-e89b-12d3-a456-426614174999");
       expect(JSON.parse(String(paymentProfileUpdateCall[1]?.body ?? "{}"))).toMatchObject({
         locationId: "northside-01",
         stripeAccountId: "acct_1TOk7VE0L5J7W3jY",
@@ -2992,7 +3283,7 @@ describe("gateway", () => {
 
     const balanceResponse = await app.inject({
       method: "GET",
-      url: "/v1/loyalty/balance",
+      url: "/v1/loyalty/balance?locationId=flagship-01",
       headers: authHeader
     });
     expect(balanceResponse.statusCode).toBe(200);
@@ -3003,7 +3294,7 @@ describe("gateway", () => {
 
     const ledgerResponse = await app.inject({
       method: "GET",
-      url: "/v1/loyalty/ledger",
+      url: "/v1/loyalty/ledger?locationId=flagship-01",
       headers: authHeader
     });
     expect(ledgerResponse.statusCode).toBe(200);
@@ -3015,8 +3306,8 @@ describe("gateway", () => {
     );
 
     const requestedUrls = fetchMock.mock.calls.map(([input]) => (typeof input === "string" ? input : input.url));
-    expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/balance");
-    expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/ledger");
+    expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/balance?locationId=flagship-01");
+    expect(requestedUrls).toContain("http://loyalty.internal/v1/loyalty/ledger?locationId=flagship-01");
 
     await app.close();
   });
