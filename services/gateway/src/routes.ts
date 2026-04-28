@@ -129,6 +129,40 @@ const adminOrderStatusUpdateSchema = z.object({
   status: z.enum(["IN_PREP", "READY", "COMPLETED", "CANCELED"]),
   note: z.string().min(1).optional()
 });
+const supportOrderLookupQuerySchema = z.object({
+  query: z.string().min(1),
+  locationId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(50).default(25)
+});
+const supportAuditLogEntrySchema = z.object({
+  logId: z.string().min(1),
+  locationId: z.string().min(1),
+  actorId: z.string().min(1),
+  actorType: z.string().min(1),
+  action: z.string().min(1),
+  targetId: z.string().optional(),
+  targetType: z.string().optional(),
+  payload: z.unknown().optional(),
+  occurredAt: z.string().datetime()
+});
+const supportOrderLookupResponseSchema = z.object({
+  results: z.array(
+    z.object({
+      order: orderSchema,
+      customer: z.unknown().optional(),
+      userId: z.string().optional(),
+      paymentId: z.string().optional(),
+      paymentStatus: z.string().optional(),
+      paymentProvider: z.string().optional(),
+      paymentIntentId: z.string().optional(),
+      successfulCharge: z.unknown().optional(),
+      successfulRefund: z.unknown().optional(),
+      createdAt: z.string().datetime().optional(),
+      updatedAt: z.string().datetime().optional(),
+      auditLog: z.array(supportAuditLogEntrySchema)
+    })
+  )
+});
 const defaultRateLimitWindowMs = 60_000;
 const defaultUpstreamTimeoutMs = 5_000;
 const defaultOrderStreamPollIntervalMs = 2_000;
@@ -507,6 +541,16 @@ function resolveRequestedOperatorLocationId(
 
 function operatorLocationHeader(locationId?: string): Record<string, string> {
   return locationId ? { "x-operator-location-id": locationId } : {};
+}
+
+function operatorActorHeader(request: FastifyRequest): Record<string, string> {
+  const operatorUserId = trimToUndefined(request.authenticatedOperator?.operatorUserId);
+  return operatorUserId ? { "x-user-id": operatorUserId } : {};
+}
+
+function internalAdminActorHeader(request: FastifyRequest): Record<string, string> {
+  const internalAdminUserId = trimToUndefined(request.authenticatedInternalAdmin?.internalAdminUserId);
+  return internalAdminUserId ? { "x-user-id": internalAdminUserId } : {};
 }
 
 function operatorLocationQuery(locationId: string): string {
@@ -2854,6 +2898,7 @@ export async function registerRoutes(app: FastifyInstance) {
           additionalHeaders: {
             "x-gateway-token": gatewayInternalApiToken,
             "x-order-cancel-source": "staff",
+            ...operatorActorHeader(request),
             ...operatorLocationHeader(locationContext.locationId)
           },
           forwardUserIdHeader: false,
@@ -2886,6 +2931,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-internal-token": ordersInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         forwardUserIdHeader: false,
@@ -3179,6 +3225,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: homeNewsCardsResponseSchema
@@ -3338,6 +3385,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: parsedBody.data,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3369,6 +3417,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemImageUploadResponseSchema
@@ -3399,6 +3448,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3430,6 +3480,7 @@ export async function registerRoutes(app: FastifyInstance) {
         body: input,
         additionalHeaders: {
           "x-gateway-token": gatewayInternalApiToken,
+          ...operatorActorHeader(request),
           ...operatorLocationHeader(locationContext.locationId)
         },
         responseSchema: adminMenuItemWithCustomizationsSchema
@@ -3684,6 +3735,37 @@ export async function registerRoutes(app: FastifyInstance) {
   );
 
   app.get(
+    "/v1/internal/support/orders",
+    {
+      preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
+    },
+    async (request, reply) => {
+      const input = supportOrderLookupQuerySchema.parse(request.query);
+      const query = new URLSearchParams({
+        query: input.query,
+        limit: String(input.limit)
+      });
+      if (input.locationId) {
+        query.set("locationId", input.locationId);
+      }
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: ordersBaseUrl,
+        serviceLabel: "Orders",
+        method: "GET",
+        path: `/v1/orders/internal/support/lookup?${query.toString()}`,
+        additionalHeaders: {
+          "x-internal-token": ordersInternalApiToken
+        },
+        forwardUserIdHeader: false,
+        responseSchema: supportOrderLookupResponseSchema
+      });
+    }
+  );
+
+  app.get(
     "/v1/internal/locations/:locationId/readiness",
     {
       preHandler: [app.rateLimit(authReadRateLimit), requireInternalAdminCapability("clients:read")]
@@ -3871,7 +3953,8 @@ export async function registerRoutes(app: FastifyInstance) {
         path: `/v1/catalog/internal/locations/${locationId}/payment-profile`,
         body: input,
         additionalHeaders: {
-          "x-gateway-token": gatewayInternalApiToken
+          "x-gateway-token": gatewayInternalApiToken,
+          ...internalAdminActorHeader(request)
         },
         forwardUserIdHeader: false,
         responseSchema: clientPaymentProfileSchema
@@ -3921,7 +4004,8 @@ export async function registerRoutes(app: FastifyInstance) {
         path: `/v1/identity/internal/locations/${locationId}/owner/provision`,
         body: input,
         additionalHeaders: {
-          "x-gateway-token": gatewayInternalApiToken
+          "x-gateway-token": gatewayInternalApiToken,
+          ...internalAdminActorHeader(request)
         },
         forwardUserIdHeader: false,
         responseSchema: internalOwnerProvisionResponseSchema

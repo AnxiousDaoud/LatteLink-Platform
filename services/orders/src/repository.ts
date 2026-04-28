@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import { normalizeCustomizationGroups, type MenuItemCustomizationGroup } from "@lattelink/contracts-catalog";
 import { orderCustomerSchema, orderQuoteSchema, orderSchema } from "@lattelink/contracts-orders";
@@ -7,7 +8,9 @@ import {
   createPostgresDb,
   getDatabaseUrl,
   runMigrations,
-  sql
+  sql,
+  writeAuditLog,
+  type AuditLogEntry
 } from "@lattelink/persistence";
 import { z } from "zod";
 
@@ -32,6 +35,8 @@ type PersistedOrderRow = {
   payment_id: string | null;
   successful_charge_json: unknown;
   successful_refund_json: unknown;
+  created_at?: string | Date;
+  updated_at?: string | Date;
 };
 
 type PersistedQuoteRow = {
@@ -40,11 +45,46 @@ type PersistedQuoteRow = {
   quote_json: unknown;
 };
 
+export type SupportAuditLogEntry = {
+  logId: string;
+  locationId: string;
+  actorId: string;
+  actorType: string;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  payload?: unknown;
+  occurredAt: string;
+};
+
+export type SupportOrderLookupResult = {
+  order: Order;
+  customer?: OrderCustomer;
+  userId?: string;
+  paymentId?: string;
+  paymentStatus?: string;
+  paymentProvider?: string;
+  paymentIntentId?: string;
+  successfulCharge?: unknown;
+  successfulRefund?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+  auditLog: SupportAuditLogEntry[];
+};
+
 const defaultTaxRateBasisPoints = 600;
 
 function trimToUndefined(value: string | null | undefined) {
   const next = value?.trim();
   return next && next.length > 0 ? next : undefined;
+}
+
+function parseIsoDate(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return new Date(String(value)).toISOString();
 }
 
 export type QuoteCatalogItem = {
@@ -79,6 +119,8 @@ export type OrdersRepository = {
   setSuccessfulRefund(orderId: string, payload: unknown): Promise<void>;
   getSuccessfulRefund(orderId: string): Promise<unknown | undefined>;
   updateOrder(orderId: string, order: Order): Promise<Order>;
+  writeAuditLog(entry: AuditLogEntry): Promise<void>;
+  lookupSupportOrders(input: { query: string; locationId?: string; limit?: number }): Promise<SupportOrderLookupResult[]>;
   getCatalogItemsForQuote(locationId: string, itemIds: string[]): Promise<Map<string, QuoteCatalogItem>>;
   getTaxRateBasisPoints(locationId: string): Promise<number>;
   pingDb(): Promise<void>;
@@ -91,6 +133,30 @@ function sortOrdersDescendingByCreatedAt(orders: Order[]) {
     const rightCreatedAt = Date.parse(right.timeline[0]?.occurredAt ?? "1970-01-01T00:00:00.000Z");
     return rightCreatedAt - leftCreatedAt;
   });
+}
+
+function toSupportAuditLogEntry(row: {
+  log_id: string;
+  location_id: string;
+  actor_id: string;
+  actor_type: string;
+  action: string;
+  target_id: string | null;
+  target_type: string | null;
+  payload: unknown;
+  occurred_at: string | Date;
+}): SupportAuditLogEntry {
+  return {
+    logId: row.log_id,
+    locationId: row.location_id,
+    actorId: row.actor_id,
+    actorType: row.actor_type,
+    action: row.action,
+    targetId: trimToUndefined(row.target_id),
+    targetType: trimToUndefined(row.target_type),
+    payload: row.payload ?? undefined,
+    occurredAt: parseIsoDate(row.occurred_at)
+  };
 }
 
 const fallbackCatalogItems = new Map<string, QuoteCatalogItem>([
@@ -211,6 +277,7 @@ function createInMemoryRepository(): OrdersRepository {
   const ordersById = new Map<string, StoredOrderRecord>();
   const createOrderIdempotency = new Map<string, string>();
   const paymentIdempotency = new Map<string, string>();
+  const auditLog: SupportAuditLogEntry[] = [];
 
   return {
     backend: "memory",
@@ -341,6 +408,45 @@ function createInMemoryRepository(): OrdersRepository {
         order
       });
       return order;
+    },
+    async writeAuditLog(entry) {
+      auditLog.unshift({
+        logId: randomUUID(),
+        locationId: entry.locationId,
+        actorId: entry.actorId,
+        actorType: entry.actorType,
+        action: entry.action,
+        targetId: entry.targetId,
+        targetType: entry.targetType,
+        payload: entry.payload,
+        occurredAt: entry.occurredAt ?? new Date().toISOString()
+      });
+    },
+    async lookupSupportOrders(input) {
+      const query = input.query.trim().toLowerCase();
+      const matches = [...ordersById.values()]
+        .filter((record) => {
+          if (input.locationId && record.order.locationId !== input.locationId) {
+            return false;
+          }
+
+          return (
+            record.order.id.toLowerCase() === query ||
+            record.order.customer?.email?.toLowerCase() === query ||
+            record.order.customer?.phone?.toLowerCase() === query
+          );
+        })
+        .slice(0, input.limit ?? 25);
+
+      return matches.map((record) => ({
+        order: record.order,
+        customer: record.order.customer,
+        userId: record.userId,
+        paymentId: record.paymentId,
+        successfulCharge: record.successfulCharge,
+        successfulRefund: record.successfulRefund,
+        auditLog: auditLog.filter((entry) => entry.targetType === "order" && entry.targetId === record.order.id)
+      }));
     },
     async getCatalogItemsForQuote(_locationId, itemIds) {
       const items = new Map<string, QuoteCatalogItem>();
@@ -664,6 +770,101 @@ async function createPostgresRepository(
       }
 
       return order;
+    },
+    async writeAuditLog(entry) {
+      await writeAuditLog(db, entry);
+    },
+    async lookupSupportOrders(input) {
+      const query = input.query.trim();
+      if (!query) {
+        return [];
+      }
+
+      const normalizedQuery = query.toLowerCase();
+      const limit = Math.min(Math.max(input.limit ?? 25, 1), 50);
+      let rowsQuery = db
+        .selectFrom("orders")
+        .leftJoin("identity_users", "identity_users.user_id", "orders.user_id")
+        .leftJoin("payments_stripe_payment_intents", "payments_stripe_payment_intents.order_id", "orders.order_id")
+        .select([
+          "orders.order_id as order_id",
+          "orders.user_id as user_id",
+          "orders.order_json as order_json",
+          "orders.payment_id as payment_id",
+          "orders.successful_charge_json as successful_charge_json",
+          "orders.successful_refund_json as successful_refund_json",
+          "orders.created_at as created_at",
+          "orders.updated_at as updated_at",
+          "identity_users.name as customer_name",
+          "identity_users.display_name as customer_display_name",
+          "identity_users.email as customer_email",
+          "identity_users.phone_number as customer_phone_number",
+          "payments_stripe_payment_intents.payment_intent_id as payment_intent_id",
+          "payments_stripe_payment_intents.status as stripe_payment_status"
+        ])
+        .where((eb) =>
+          eb.or([
+            eb("orders.order_id", "=", query),
+            eb("orders.payment_id", "=", query),
+            eb("payments_stripe_payment_intents.payment_intent_id", "=", query),
+            eb(sql`LOWER(identity_users.email)`, "=", normalizedQuery),
+            eb(sql`LOWER(identity_users.phone_number)`, "=", normalizedQuery)
+          ])
+        )
+        .orderBy("orders.created_at", "desc")
+        .limit(limit);
+
+      if (input.locationId) {
+        rowsQuery = rowsQuery.where(sql`orders.order_json->>'locationId'`, "=", input.locationId);
+      }
+
+      const rows = await rowsQuery.execute();
+      const orderIds = rows.map((row) => row.order_id);
+      const auditRows =
+        orderIds.length === 0
+          ? []
+          : await db
+              .selectFrom("audit_log")
+              .selectAll()
+              .where("target_type", "=", "order")
+              .where("target_id", "in", orderIds)
+              .orderBy("occurred_at", "desc")
+              .limit(250)
+              .execute();
+      const auditByOrderId = new Map<string, SupportAuditLogEntry[]>();
+      for (const row of auditRows) {
+        const auditEntry = toSupportAuditLogEntry(row);
+        const entries = auditByOrderId.get(auditEntry.targetId ?? "") ?? [];
+        entries.push(auditEntry);
+        if (auditEntry.targetId) {
+          auditByOrderId.set(auditEntry.targetId, entries);
+        }
+      }
+
+      return rows.map((row) => {
+        const order = orderSchema.parse(row.order_json);
+        const customer = toOrderCustomerFromIdentityUser({
+          name: row.customer_name,
+          display_name: row.customer_display_name,
+          email: row.customer_email,
+          phone_number: row.customer_phone_number
+        });
+
+        return {
+          order,
+          customer: customer ?? order.customer,
+          userId: row.user_id,
+          paymentId: row.payment_id ?? undefined,
+          paymentProvider: row.payment_intent_id ? "STRIPE" : row.payment_id ? "CLOVER" : undefined,
+          paymentStatus: row.stripe_payment_status ?? undefined,
+          paymentIntentId: row.payment_intent_id ?? undefined,
+          successfulCharge: row.successful_charge_json ?? undefined,
+          successfulRefund: row.successful_refund_json ?? undefined,
+          createdAt: row.created_at ? parseIsoDate(row.created_at) : undefined,
+          updatedAt: row.updated_at ? parseIsoDate(row.updated_at) : undefined,
+          auditLog: auditByOrderId.get(order.id) ?? []
+        };
+      });
     },
     async getCatalogItemsForQuote(locationId, itemIds) {
       if (itemIds.length === 0) {

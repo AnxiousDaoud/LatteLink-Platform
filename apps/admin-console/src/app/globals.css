@@ -986,6 +986,57 @@ select {
   padding: 10px 0;
 }
 
+.support-results {
+  display: grid;
+  gap: 18px;
+}
+
+.support-order-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.support-order-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.support-order-card__header h4 {
+  overflow-wrap: anywhere;
+}
+
+.audit-log {
+  display: grid;
+  gap: 12px;
+}
+
+.audit-log__entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.34);
+}
+
+.audit-log__entry div {
+  display: grid;
+  gap: 4px;
+}
+
+.audit-log__entry span,
+.audit-log__entry time {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 @media (max-width: 1180px) {
   .dashboard-layout,
   .dashboard-grid,
@@ -1040,6 +1091,8 @@ select {
 
   .page-header,
   .section-heading,
+  .support-order-card__header,
+  .audit-log__entry,
   .form-actions,
   .button-row,
   .owner-summary,

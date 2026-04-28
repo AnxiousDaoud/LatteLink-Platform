@@ -68,6 +68,9 @@ const authHeaderSchema = z.object({
 const gatewayHeadersSchema = z.object({
   "x-gateway-token": z.string().optional()
 });
+const actorHeadersSchema = z.object({
+  "x-user-id": z.string().min(1).optional()
+});
 
 const operatorLocationQuerySchema = z.object({
   locationId: z.string().trim().min(1).optional()
@@ -580,6 +583,31 @@ function logIdentityMutation(
     },
     message
   );
+}
+
+async function recordAuditLog(
+  request: { id: string; headers: unknown; log: { error(payload: Record<string, unknown>, message: string): void } },
+  repository: IdentityRepository,
+  entry: Parameters<IdentityRepository["writeAuditLog"]>[0]
+) {
+  try {
+    await repository.writeAuditLog(entry);
+  } catch (error) {
+    request.log.error(
+      {
+        error,
+        requestId: request.id,
+        auditAction: entry.action,
+        targetId: entry.targetId
+      },
+      "audit log write failed"
+    );
+  }
+}
+
+function getActorId(request: { headers: unknown }) {
+  const parsed = actorHeadersSchema.safeParse(request.headers);
+  return parsed.success ? (parsed.data["x-user-id"] ?? "system") : "system";
 }
 
 function deriveDevCustomerName(email: string) {
@@ -1948,6 +1976,19 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
       targetEmail: result.operator.email,
       locationId,
       action: result.action
+    });
+    await recordAuditLog(request, repository, {
+      locationId,
+      actorId: getActorId(request),
+      actorType: "internal_admin",
+      action: "owner.provisioned",
+      targetId: result.operator.operatorUserId,
+      targetType: "operator_user",
+      payload: {
+        email: result.operator.email,
+        role: result.operator.role,
+        action: result.action
+      }
     });
 
     return internalOwnerProvisionResponseSchema.parse(result);

@@ -929,6 +929,52 @@ let previousFreeClientDashboardDomain: string | undefined;
         );
       }
 
+      if (url.includes("/v1/orders/internal/support/lookup") && method === "GET") {
+        const supportUrl = new URL(url);
+        const query = supportUrl.searchParams.get("query") ?? "";
+        return new Response(
+          JSON.stringify({
+            results: [
+              {
+                order: {
+                  id: query,
+                  locationId: supportUrl.searchParams.get("locationId") ?? "flagship-01",
+                  status: "PAID",
+                  items: [],
+                  total: { currency: "USD", amountCents: 530 },
+                  pickupCode: "SUPPORT",
+                  timeline: [
+                    {
+                      status: "PENDING_PAYMENT",
+                      occurredAt: new Date(Date.now() - 120000).toISOString()
+                    },
+                    {
+                      status: "PAID",
+                      occurredAt: new Date(Date.now() - 60000).toISOString()
+                    }
+                  ]
+                },
+                paymentProvider: "STRIPE",
+                paymentStatus: "succeeded",
+                auditLog: [
+                  {
+                    logId: "audit-1",
+                    locationId: "flagship-01",
+                    actorId: "system:payments",
+                    actorType: "system",
+                    action: "order.payment_reconciled",
+                    targetId: query,
+                    targetType: "order",
+                    occurredAt: new Date().toISOString()
+                  }
+                ]
+              }
+            ]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+
       const getOrderMatch = url.match(/\/v1\/orders\/([0-9a-f-]{36})$/);
       if (getOrderMatch && method === "GET") {
         const orderId = getOrderMatch[1];
@@ -3014,6 +3060,42 @@ let previousFreeClientDashboardDomain: string | undefined;
       ])
     });
 
+    const supportResponse = await app.inject({
+      method: "GET",
+      url: "/v1/internal/support/orders?query=123e4567-e89b-12d3-a456-426614174113&locationId=northside-01",
+      headers: readonlyInternalAdminHeaders
+    });
+    expect(supportResponse.statusCode, supportResponse.body).toBe(200);
+    expect(supportResponse.json()).toMatchObject({
+      results: [
+        {
+          order: {
+            id: "123e4567-e89b-12d3-a456-426614174113",
+            locationId: "northside-01",
+            status: "PAID"
+          },
+          paymentProvider: "STRIPE",
+          auditLog: [
+            expect.objectContaining({
+              action: "order.payment_reconciled",
+              targetType: "order"
+            })
+          ]
+        }
+      ]
+    });
+    const supportLookupCall = fetchMock.mock.calls.find(([input]) =>
+      (typeof input === "string" ? input : input.url).includes("/v1/orders/internal/support/lookup")
+    );
+    expect(supportLookupCall).toBeDefined();
+    if (supportLookupCall) {
+      const [input, init] = supportLookupCall;
+      const supportLookupUrl = new URL(typeof input === "string" ? input : input.url);
+      expect(supportLookupUrl.searchParams.get("query")).toBe("123e4567-e89b-12d3-a456-426614174113");
+      expect(supportLookupUrl.searchParams.get("locationId")).toBe("northside-01");
+      expect(new Headers(init?.headers).get("x-internal-token")).toBe("orders-internal-token");
+    }
+
     const paymentProfileResponse = await app.inject({
       method: "GET",
       url: "/v1/internal/locations/northside-01/payment-profile",
@@ -3082,7 +3164,7 @@ let previousFreeClientDashboardDomain: string | undefined;
     if (paymentProfileUpdateCall) {
       const upstreamHeaders = new Headers((paymentProfileUpdateCall[1]?.headers ?? {}) as HeadersInit);
       expect(upstreamHeaders.get("x-gateway-token")).toBe("gateway-test-token");
-      expect(upstreamHeaders.get("x-user-id")).toBeNull();
+      expect(upstreamHeaders.get("x-user-id")).toBe("223e4567-e89b-12d3-a456-426614174999");
       expect(JSON.parse(String(paymentProfileUpdateCall[1]?.body ?? "{}"))).toMatchObject({
         locationId: "northside-01",
         stripeAccountId: "acct_1TOk7VE0L5J7W3jY",

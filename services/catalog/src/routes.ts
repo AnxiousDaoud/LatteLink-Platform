@@ -64,6 +64,9 @@ const gatewayHeadersSchema = z.object({
 const operatorLocationHeadersSchema = z.object({
   "x-operator-location-id": z.string().min(1).optional()
 });
+const actorHeadersSchema = z.object({
+  "x-user-id": z.string().min(1).optional()
+});
 
 const defaultRateLimitWindowMs = 60_000;
 
@@ -131,6 +134,31 @@ function authorizeGatewayRequest(request: FastifyRequest, reply: FastifyReply, g
     requestId: request.id
   });
   return false;
+}
+
+async function recordAuditLog(
+  request: FastifyRequest,
+  repository: Awaited<ReturnType<typeof createCatalogRepository>>,
+  entry: Parameters<Awaited<ReturnType<typeof createCatalogRepository>>["writeAuditLog"]>[0]
+) {
+  try {
+    await repository.writeAuditLog(entry);
+  } catch (error) {
+    request.log.error(
+      {
+        error,
+        requestId: request.id,
+        auditAction: entry.action,
+        targetId: entry.targetId
+      },
+      "audit log write failed"
+    );
+  }
+}
+
+function getActorId(request: FastifyRequest) {
+  const parsed = actorHeadersSchema.safeParse(request.headers);
+  return parsed.success ? (parsed.data["x-user-id"] ?? "system") : "system";
 }
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -433,6 +461,19 @@ export async function registerRoutes(app: FastifyInstance) {
         );
       }
 
+      await recordAuditLog(request, repository, {
+        locationId,
+        actorId: getActorId(request),
+        actorType: "operator",
+        action: "menu_item.updated",
+        targetId: itemId,
+        targetType: "menu_item",
+        payload: {
+          name: parsedInput.data.name,
+          priceCents: parsedInput.data.priceCents,
+          visible: parsedInput.data.visible
+        }
+      });
       return updatedItem;
     }
   );
@@ -457,6 +498,20 @@ export async function registerRoutes(app: FastifyInstance) {
         );
       }
 
+      await recordAuditLog(request, repository, {
+        locationId,
+        actorId: getActorId(request),
+        actorType: "operator",
+        action: "menu_item.created",
+        targetId: createdItem.itemId,
+        targetType: "menu_item",
+        payload: {
+          categoryId: input.categoryId,
+          name: input.name,
+          priceCents: input.priceCents,
+          visible: createdItem.visible
+        }
+      });
       return createdItem;
     }
   );
@@ -486,6 +541,17 @@ export async function registerRoutes(app: FastifyInstance) {
         );
       }
 
+      await recordAuditLog(request, repository, {
+        locationId,
+        actorId: getActorId(request),
+        actorType: "operator",
+        action: "menu_item.visibility_changed",
+        targetId: itemId,
+        targetType: "menu_item",
+        payload: {
+          visible: input.visible
+        }
+      });
       return updatedItem;
     }
   );
@@ -518,7 +584,22 @@ export async function registerRoutes(app: FastifyInstance) {
     async (request) => {
       const locationId = getOperatorLocationId(request);
       const input = adminStoreConfigUpdateSchema.parse(request.body);
-      return repository.updateAdminStoreConfig(locationId, input);
+      const updatedStoreConfig = await repository.updateAdminStoreConfig(locationId, input);
+      await recordAuditLog(request, repository, {
+        locationId,
+        actorId: getActorId(request),
+        actorType: "operator",
+        action: "store_config.updated",
+        targetId: locationId,
+        targetType: "location",
+        payload: {
+          storeName: updatedStoreConfig.storeName,
+          hours: updatedStoreConfig.hours,
+          taxRateBasisPoints: updatedStoreConfig.taxRateBasisPoints,
+          fulfillmentMode: updatedStoreConfig.capabilities.operations.fulfillmentMode
+        }
+      });
+      return updatedStoreConfig;
     }
   );
 
@@ -663,7 +744,23 @@ export async function registerRoutes(app: FastifyInstance) {
         ...(typeof request.body === "object" && request.body !== null ? request.body : {}),
         locationId
       });
-      return clientPaymentProfileSchema.parse(await repository.updateInternalLocationPaymentProfile(locationId, input));
+      const updatedPaymentProfile = clientPaymentProfileSchema.parse(
+        await repository.updateInternalLocationPaymentProfile(locationId, input)
+      );
+      await recordAuditLog(request, repository, {
+        locationId,
+        actorId: getActorId(request),
+        actorType: "internal_admin",
+        action: "payment_profile.updated",
+        targetId: locationId,
+        targetType: "payment_profile",
+        payload: {
+          stripeAccountId: updatedPaymentProfile.stripeAccountId,
+          stripeOnboardingStatus: updatedPaymentProfile.stripeOnboardingStatus,
+          stripeChargesEnabled: updatedPaymentProfile.stripeChargesEnabled
+        }
+      });
+      return updatedPaymentProfile;
     }
   );
 

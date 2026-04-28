@@ -1545,6 +1545,40 @@ describe("orders service", () => {
       status: "IN_PREP"
     });
 
+    const supportResponse = await app.inject({
+      method: "GET",
+      url: `/v1/orders/internal/support/lookup?query=${order.id}`,
+      headers: {
+        "x-internal-token": "orders-internal-token"
+      }
+    });
+    expect(supportResponse.statusCode, supportResponse.body).toBe(200);
+    expect(supportResponse.json()).toMatchObject({
+      results: [
+        {
+          order: {
+            id: order.id,
+            status: "IN_PREP"
+          },
+          auditLog: expect.arrayContaining([
+            expect.objectContaining({
+              action: "order.payment_reconciled",
+              targetId: order.id,
+              targetType: "order"
+            }),
+            expect.objectContaining({
+              action: "order.status_changed",
+              targetId: order.id,
+              targetType: "order",
+              payload: expect.objectContaining({
+                to: "IN_PREP"
+              })
+            })
+          ])
+        }
+      ]
+    });
+
     await app.close();
   });
 

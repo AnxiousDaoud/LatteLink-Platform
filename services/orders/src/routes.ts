@@ -5,6 +5,7 @@ import { captureOperationalError } from "@lattelink/observability";
 import {
   createOrderRequestSchema,
   orderPaymentContextSchema,
+  orderCustomerSchema,
   ordersPaymentReconciliationSchema,
   orderSchema,
   quoteRequestSchema
@@ -12,7 +13,7 @@ import {
 import { getPersistenceReadinessMetadata } from "@lattelink/persistence";
 import { z } from "zod";
 import { createFulfillmentConfigCache } from "./fulfillment.js";
-import { createOrdersRepository } from "./repository.js";
+import { createOrdersRepository, type OrdersRepository } from "./repository.js";
 import {
   advanceOrderStatus,
   cancelOrder,
@@ -77,6 +78,43 @@ const cancelSourceHeadersSchema = z.object({
 
 const operatorLocationHeadersSchema = z.object({
   "x-operator-location-id": z.string().min(1).optional()
+});
+
+const supportLookupQuerySchema = z.object({
+  query: z.string().min(1),
+  locationId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().max(50).default(25)
+});
+
+const supportAuditLogEntrySchema = z.object({
+  logId: z.string().min(1),
+  locationId: z.string().min(1),
+  actorId: z.string().min(1),
+  actorType: z.string().min(1),
+  action: z.string().min(1),
+  targetId: z.string().optional(),
+  targetType: z.string().optional(),
+  payload: z.unknown().optional(),
+  occurredAt: z.string().datetime()
+});
+
+const supportOrderLookupResultSchema = z.object({
+  order: orderSchema,
+  customer: orderCustomerSchema.optional(),
+  userId: z.string().optional(),
+  paymentId: z.string().optional(),
+  paymentStatus: z.string().optional(),
+  paymentProvider: z.string().optional(),
+  paymentIntentId: z.string().optional(),
+  successfulCharge: z.unknown().optional(),
+  successfulRefund: z.unknown().optional(),
+  createdAt: z.string().datetime().optional(),
+  updatedAt: z.string().datetime().optional(),
+  auditLog: z.array(supportAuditLogEntrySchema)
+});
+
+const supportOrderLookupResponseSchema = z.object({
+  results: z.array(supportOrderLookupResultSchema)
 });
 
 const defaultRateLimitWindowMs = 60_000;
@@ -234,6 +272,26 @@ function logOrderMutation(
     },
     message
   );
+}
+
+async function recordAuditLog(
+  request: FastifyRequest,
+  repository: OrdersRepository,
+  entry: Parameters<OrdersRepository["writeAuditLog"]>[0]
+) {
+  try {
+    await repository.writeAuditLog(entry);
+  } catch (error) {
+    request.log.error(
+      {
+        error,
+        requestId: request.id,
+        auditAction: entry.action,
+        targetId: entry.targetId
+      },
+      "audit log write failed"
+    );
+  }
 }
 
 function parseRequestUserContext(request: FastifyRequest): RequestUserContext {
@@ -421,7 +479,40 @@ export async function registerRoutes(app: FastifyInstance) {
         reconciliationApplied: result.result.applied,
         reconciledOrderStatus: result.result.orderStatus
       });
+      const reconciledOrder = await repository.getOrder(input.orderId);
+      await recordAuditLog(request, repository, {
+        locationId: reconciledOrder?.locationId ?? "unknown",
+        actorId: "system:payments",
+        actorType: "system",
+        action: "order.payment_reconciled",
+        targetId: input.orderId,
+        targetType: "order",
+        payload: {
+          paymentId: input.paymentId,
+          provider: input.provider,
+          kind: input.kind,
+          paymentStatus: input.status,
+          applied: result.result.applied,
+          orderStatus: result.result.orderStatus
+        }
+      });
       return result.result;
+    }
+  );
+
+  app.get(
+    "/v1/orders/internal/support/lookup",
+    {
+      preHandler: app.rateLimit(ordersInternalReconcileRateLimit)
+    },
+    async (request, reply) => {
+      if (!authorizeInternalRequest(request, reply, internalApiToken)) {
+        return;
+      }
+
+      const input = supportLookupQuerySchema.parse(request.query);
+      const results = await repository.lookupSupportOrders(input);
+      return supportOrderLookupResponseSchema.parse({ results });
     }
   );
 
@@ -625,6 +716,19 @@ export async function registerRoutes(app: FastifyInstance) {
         cancelSource,
         reason: input.reason
       });
+      await recordAuditLog(request, repository, {
+        locationId: result.order.locationId,
+        actorId: requestUserContext.userId ?? "operator",
+        actorType: cancelSource === "customer" ? "customer" : "operator",
+        action: "order.status_changed",
+        targetId: result.order.id,
+        targetType: "order",
+        payload: {
+          to: result.order.status,
+          cancelSource,
+          reason: input.reason
+        }
+      });
       return result.order;
     }
   );
@@ -661,6 +765,19 @@ export async function registerRoutes(app: FastifyInstance) {
         cancelSource: "system",
         reason: input.reason
       });
+      await recordAuditLog(request, repository, {
+        locationId: result.order.locationId,
+        actorId: "system",
+        actorType: "system",
+        action: "order.status_changed",
+        targetId: result.order.id,
+        targetType: "order",
+        payload: {
+          to: result.order.status,
+          cancelSource: "system",
+          reason: input.reason
+        }
+      });
       return result.order;
     }
   );
@@ -678,9 +795,11 @@ export async function registerRoutes(app: FastifyInstance) {
       const { orderId } = orderIdParamsSchema.parse(request.params);
       const input = orderStatusUpdateRequestSchema.parse(request.body);
       const parsedOperatorHeaders = operatorLocationHeadersSchema.safeParse(request.headers);
+      const parsedUserHeaders = userHeadersSchema.safeParse(request.headers);
       const operatorLocationId = parsedOperatorHeaders.success
         ? parsedOperatorHeaders.data["x-operator-location-id"]
         : undefined;
+      const actorId = parsedUserHeaders.success ? parsedUserHeaders.data["x-user-id"] : undefined;
       const result = await advanceOrderStatus({
         orderId,
         input,
@@ -699,6 +818,18 @@ export async function registerRoutes(app: FastifyInstance) {
         locationId: result.order.locationId,
         status: result.order.status,
         note: input.note ?? null
+      });
+      await recordAuditLog(request, repository, {
+        locationId: result.order.locationId,
+        actorId: actorId ?? "operator",
+        actorType: "operator",
+        action: "order.status_changed",
+        targetId: result.order.id,
+        targetType: "order",
+        payload: {
+          to: result.order.status,
+          note: input.note ?? null
+        }
       });
       return result.order;
     }

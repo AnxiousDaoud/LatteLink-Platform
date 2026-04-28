@@ -33,6 +33,8 @@ import {
   getDatabaseUrl,
   runMigrations,
   sql,
+  writeAuditLog,
+  type AuditLogEntry,
   type PersistenceDb
 } from "@lattelink/persistence";
 import { z } from "zod";
@@ -343,6 +345,7 @@ type CatalogRepository = {
   }): Promise<AdminStoreConfig>;
   getMenu(locationId: string): Promise<MenuResponse>;
   getStoreConfig(locationId: string): Promise<StoreConfigResponse>;
+  writeAuditLog(entry: AuditLogEntry): Promise<void>;
   pingDb(): Promise<void>;
   close(): Promise<void>;
 };
@@ -1065,6 +1068,9 @@ function createInMemoryRepository(): CatalogRepository {
     },
     async getStoreConfig(locationId) {
       return buildStoreConfigResponse(storeConfigsByLocation.get(locationId) ?? defaultStoreConfigRecord);
+    },
+    async writeAuditLog() {
+      // In-memory mode is for local tests; audit persistence is covered by the Postgres repository.
     },
     async pingDb() {
       // no-op for in-memory
@@ -2144,6 +2150,9 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         taxRateBasisPoints: row.tax_rate_basis_points,
         pickupInstructions: row.pickup_instructions
       });
+    },
+    async writeAuditLog(entry) {
+      await writeAuditLog(db, entry);
     },
     async pingDb() {
       await sql`SELECT 1`.execute(db);

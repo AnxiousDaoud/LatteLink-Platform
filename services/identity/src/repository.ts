@@ -16,7 +16,9 @@ import {
   createPostgresDb,
   getDatabaseUrl,
   runMigrations,
-  sql
+  sql,
+  writeAuditLog,
+  type AuditLogEntry
 } from "@lattelink/persistence";
 import { z } from "zod";
 
@@ -262,6 +264,7 @@ export type IdentityRepository = {
   getInternalAdminSessionByAccessToken(accessToken: string): Promise<StoredInternalAdminSession | undefined>;
   getInternalAdminSessionByRefreshToken(refreshToken: string): Promise<StoredInternalAdminSession | undefined>;
   revokeInternalAdminByRefreshToken(refreshToken: string): Promise<void>;
+  writeAuditLog(entry: AuditLogEntry): Promise<void>;
   pingDb(): Promise<void>;
   close(): Promise<void>;
 };
@@ -1175,6 +1178,9 @@ export function createInMemoryIdentityRepository(): IdentityRepository {
         revokedAt: new Date().toISOString()
       });
       internalAdminAccessTokenByRefreshToken.delete(refreshToken);
+    },
+    async writeAuditLog() {
+      // In-memory mode is for local tests; audit persistence is covered by the Postgres repository.
     },
     async pingDb() {
       // no-op for in-memory
@@ -2487,6 +2493,9 @@ async function createPostgresRepository(connectionString: string): Promise<Ident
         })
         .where("refresh_token", "=", refreshToken)
         .execute();
+    },
+    async writeAuditLog(entry) {
+      await writeAuditLog(db, entry);
     },
     async pingDb() {
       await sql`SELECT 1`.execute(db);

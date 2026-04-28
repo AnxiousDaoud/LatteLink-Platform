@@ -354,6 +354,18 @@ export interface CatalogPaymentProfileTable {
   updated_at: Generated<string>;
 }
 
+export interface AuditLogTable {
+  log_id: Generated<string>;
+  location_id: string;
+  actor_id: string;
+  actor_type: "operator" | "internal_admin" | "system" | "customer";
+  action: string;
+  target_id: string | null;
+  target_type: string | null;
+  payload: unknown;
+  occurred_at: Generated<string>;
+}
+
 export interface PersistenceDatabase {
   payments_charges: PaymentsChargeTable;
   payments_refunds: PaymentsRefundTable;
@@ -386,9 +398,39 @@ export interface PersistenceDatabase {
   catalog_store_configs: CatalogStoreConfigTable;
   catalog_app_configs: CatalogAppConfigTable;
   catalog_payment_profiles: CatalogPaymentProfileTable;
+  audit_log: AuditLogTable;
 }
 
 export type PersistenceDb = Kysely<PersistenceDatabase>;
+
+export type AuditLogActorType = AuditLogTable["actor_type"];
+
+export type AuditLogEntry = {
+  locationId: string;
+  actorId: string;
+  actorType: AuditLogActorType;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  payload?: Record<string, unknown>;
+  occurredAt?: string;
+};
+
+export async function writeAuditLog(db: PersistenceDb, entry: AuditLogEntry): Promise<void> {
+  await db
+    .insertInto("audit_log")
+    .values({
+      location_id: entry.locationId,
+      actor_id: entry.actorId,
+      actor_type: entry.actorType,
+      action: entry.action,
+      target_id: entry.targetId ?? null,
+      target_type: entry.targetType ?? null,
+      payload: entry.payload ?? null,
+      ...(entry.occurredAt ? { occurred_at: entry.occurredAt } : {})
+    })
+    .execute();
+}
 
 export function createPostgresDb(connectionString: string): PersistenceDb {
   return new Kysely<PersistenceDatabase>({
