@@ -7,6 +7,7 @@ import {
   pushTokenUpsertSchema
 } from "@lattelink/contracts-notifications";
 import { EventBusSubscriber, type OrderEvent } from "@lattelink/event-bus";
+import { getPersistenceReadinessMetadata } from "@lattelink/persistence";
 import { z } from "zod";
 import { createNotificationsRepository, type OutboxEntry } from "./repository.js";
 
@@ -376,11 +377,17 @@ export async function registerRoutes(app: FastifyInstance) {
       return {
         status: "ready",
         service: "notifications",
-        persistence: repository.backend
+        persistence: repository.backend,
+        environment: getPersistenceReadinessMetadata()
       };
     } catch {
       reply.status(503);
-      return { status: "unavailable", service: "notifications", error: "Database unavailable" };
+      return {
+        status: "unavailable",
+        service: "notifications",
+        error: "Database unavailable",
+        environment: getPersistenceReadinessMetadata()
+      };
     }
   });
 

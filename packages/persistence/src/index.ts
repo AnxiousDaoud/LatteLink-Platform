@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Generated } from "kysely";
 import { Pool } from "pg";
@@ -380,9 +381,107 @@ export function createPostgresDb(connectionString: string): PersistenceDb {
   });
 }
 
+function trimToUndefined(value: string | null | undefined) {
+  const next = value?.trim();
+  return next && next.length > 0 ? next : undefined;
+}
+
+function parseDatabaseUrl(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveSupabaseProjectRef(parsed: URL | undefined) {
+  if (!parsed) {
+    return undefined;
+  }
+
+  const directHostMatch = parsed.hostname.match(/^db\.([a-z0-9]+)\.supabase\.co$/i);
+  if (directHostMatch?.[1]) {
+    return directHostMatch[1];
+  }
+
+  const poolerUserMatch = decodeURIComponent(parsed.username).match(/^postgres\.([a-z0-9]+)$/i);
+  if (poolerUserMatch?.[1]) {
+    return poolerUserMatch[1];
+  }
+
+  return undefined;
+}
+
+export function getDeployEnvironment(env: NodeJS.ProcessEnv = process.env) {
+  return trimToUndefined(env.DEPLOY_ENV) ?? trimToUndefined(env.APP_ENV) ?? "unknown";
+}
+
+export function getDatabaseTargetMetadata(connectionString?: string) {
+  const parsed = parseDatabaseUrl(connectionString);
+  const supabaseProjectRef = resolveSupabaseProjectRef(parsed);
+  const target = parsed
+    ? [parsed.hostname, parsed.port, decodeURIComponent(parsed.username), parsed.pathname].filter(Boolean).join("|")
+    : "unconfigured";
+
+  return {
+    hostname: parsed?.hostname,
+    supabaseProjectRef,
+    fingerprint: createHash("sha256").update(target).digest("hex").slice(0, 16)
+  };
+}
+
+export function assertExpectedDatabaseTarget(connectionString: string, env: NodeJS.ProcessEnv = process.env) {
+  const expectedSupabaseProjectRef = trimToUndefined(env.EXPECTED_SUPABASE_PROJECT_REF);
+  if (!expectedSupabaseProjectRef) {
+    return;
+  }
+
+  const metadata = getDatabaseTargetMetadata(connectionString);
+  if (metadata.supabaseProjectRef === expectedSupabaseProjectRef) {
+    return;
+  }
+
+  const error = new Error(
+    `DATABASE_URL Supabase project ref mismatch for ${getDeployEnvironment(env)}: expected ${expectedSupabaseProjectRef}, received ${metadata.supabaseProjectRef ?? "unknown"}`
+  ) as Error & { code?: string };
+  error.name = "DatabaseEnvironmentMismatchError";
+  error.code = "DATABASE_ENVIRONMENT_MISMATCH";
+  throw error;
+}
+
+export function getPersistenceReadinessMetadata(env: NodeJS.ProcessEnv = process.env) {
+  const databaseUrl = trimToUndefined(env.DATABASE_URL);
+  const databaseTarget = getDatabaseTargetMetadata(databaseUrl);
+  const expectedSupabaseProjectRef = trimToUndefined(env.EXPECTED_SUPABASE_PROJECT_REF);
+
+  return {
+    deployEnvironment: getDeployEnvironment(env),
+    database: {
+      configured: Boolean(databaseUrl),
+      backend: databaseUrl ? "postgres" : "memory",
+      supabaseProjectRef: databaseTarget.supabaseProjectRef,
+      fingerprint: databaseTarget.fingerprint,
+      expectedSupabaseProjectRef,
+      matchesExpected:
+        expectedSupabaseProjectRef && databaseUrl
+          ? databaseTarget.supabaseProjectRef === expectedSupabaseProjectRef
+          : undefined
+    }
+  };
+}
+
 export function getDatabaseUrl(env: NodeJS.ProcessEnv = process.env) {
   const value = env.DATABASE_URL?.trim();
-  return value && value.length > 0 ? value : undefined;
+  if (!value || value.length === 0) {
+    return undefined;
+  }
+
+  assertExpectedDatabaseTarget(value, env);
+  return value;
 }
 
 const truthyInMemoryValues = new Set(["1", "true", "yes", "on"]);

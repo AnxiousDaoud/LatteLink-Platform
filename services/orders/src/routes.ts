@@ -8,6 +8,7 @@ import {
   orderSchema,
   quoteRequestSchema
 } from "@lattelink/contracts-orders";
+import { getPersistenceReadinessMetadata } from "@lattelink/persistence";
 import { z } from "zod";
 import { createFulfillmentConfigCache } from "./fulfillment.js";
 import { createOrdersRepository } from "./repository.js";
@@ -354,10 +355,15 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/ready", async (_request, reply) => {
     try {
       await repository.pingDb();
-      return { status: "ready", service: "orders", persistence: repository.backend };
+      return { status: "ready", service: "orders", persistence: repository.backend, environment: getPersistenceReadinessMetadata() };
     } catch {
       reply.status(503);
-      return { status: "unavailable", service: "orders", error: "Database unavailable" };
+      return {
+        status: "unavailable",
+        service: "orders",
+        error: "Database unavailable",
+        environment: getPersistenceReadinessMetadata()
+      };
     }
   });
 

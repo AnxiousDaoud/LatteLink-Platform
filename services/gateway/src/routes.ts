@@ -1281,6 +1281,7 @@ export async function registerRoutes(app: FastifyInstance) {
     serviceLabel: "Notifications",
     fallbackUrl: "http://127.0.0.1:3005"
   });
+  const deployEnvironment = process.env.DEPLOY_ENV?.trim() || process.env.APP_ENV?.trim() || "unknown";
   const gatewayInternalApiToken = trimToUndefined(process.env.GATEWAY_INTERNAL_API_TOKEN);
   const jwtSecret = trimToUndefined(process.env.JWT_SECRET);
   const rateLimitWindowMs = toPositiveInteger(process.env.GATEWAY_RATE_LIMIT_WINDOW_MS, defaultRateLimitWindowMs);
@@ -1383,8 +1384,57 @@ export async function registerRoutes(app: FastifyInstance) {
     await eventBusSubscriber?.close();
   });
 
-  app.get("/health", async () => ({ status: "ok", service: "gateway" }));
-  app.get("/ready", async () => ({ status: "ready", service: "gateway" }));
+  const upstreamReadyTargets = [
+    { service: "identity", baseUrl: identityBaseUrl },
+    { service: "orders", baseUrl: ordersBaseUrl },
+    { service: "catalog", baseUrl: catalogBaseUrl },
+    { service: "payments", baseUrl: paymentsBaseUrl },
+    { service: "loyalty", baseUrl: loyaltyBaseUrl },
+    { service: "notifications", baseUrl: notificationsBaseUrl }
+  ] as const;
+
+  async function fetchUpstreamReady(target: (typeof upstreamReadyTargets)[number]) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1_500);
+
+    try {
+      const response = await fetch(`${target.baseUrl}/ready`, {
+        method: "GET",
+        signal: controller.signal
+      });
+      const body = parseJsonSafely(await response.text());
+      return {
+        service: target.service,
+        ok: response.ok,
+        statusCode: response.status,
+        body
+      };
+    } catch (error) {
+      return {
+        service: target.service,
+        ok: false,
+        error: error instanceof Error ? error.message : "ready check failed"
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  app.get("/health", async () => ({ status: "ok", service: "gateway", deployEnvironment }));
+  app.get("/ready", async (_request, reply) => {
+    const upstream = await Promise.all(upstreamReadyTargets.map((target) => fetchUpstreamReady(target)));
+    const allReady = upstream.every((target) => target.ok);
+    if (!allReady) {
+      reply.status(503);
+    }
+
+    return {
+      status: allReady ? "ready" : "unavailable",
+      service: "gateway",
+      deployEnvironment,
+      upstream
+    };
+  });
 
   app.get("/v1/meta/contracts", async () => ({
     auth: authContract.basePath,

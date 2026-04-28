@@ -21,6 +21,7 @@ import {
   homeNewsCardsResponseSchema,
   homeNewsCardSchema
 } from "@lattelink/contracts-catalog";
+import { getPersistenceReadinessMetadata } from "@lattelink/persistence";
 import { z } from "zod";
 import { createCatalogRepository } from "./repository.js";
 import { DEFAULT_LOCATION_ID } from "./tenant.js";
@@ -161,10 +162,15 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/ready", async (_request, reply) => {
     try {
       await repository.pingDb();
-      return { status: "ready", service: "catalog", persistence: repository.backend };
+      return { status: "ready", service: "catalog", persistence: repository.backend, environment: getPersistenceReadinessMetadata() };
     } catch {
       reply.status(503);
-      return { status: "unavailable", service: "catalog", error: "Database unavailable" };
+      return {
+        status: "unavailable",
+        service: "catalog",
+        error: "Database unavailable",
+        environment: getPersistenceReadinessMetadata()
+      };
     }
   });
 
