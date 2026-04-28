@@ -7,3 +7,9 @@ The authoritative changelog policy lives in [development-flow.md](/Users/yazan/D
 ## Unreleased
 
 - No release entries recorded yet under the new workflow.
+
+## v1.0.0 - 2026-04-28
+
+- Released the Gate 1 pilot-safety baseline after production deploy validation.
+- Added dev/prod environment separation, automated deploy workflows, and restore-drill validation.
+- Shipped pilot readiness systems: structured logging, Sentry, uptime checks, launch readiness, stale payment reconciliation, loyalty scoping, tenant-isolation hardening, and support tooling.

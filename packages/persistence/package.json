@@ -1,10 +1,12 @@
 {
   "name": "@lattelink/persistence",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "migrate": "tsx src/migrate-cli.ts",
     "build": "tsc -p tsconfig.json",

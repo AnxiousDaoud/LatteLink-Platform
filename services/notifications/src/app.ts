@@ -31,7 +31,7 @@ export async function buildApp() {
     openapi: {
       info: {
         title: "Gazelle notifications service",
-        version: "0.1.0"
+        version: "1.0.0"
       }
     }
   });
