@@ -13,6 +13,7 @@
       "extends": "base",
       "autoIncrement": true,
       "distribution": "store",
+      "environment": "preview",
       "channel": "beta",
       "env": {
         "APP_VARIANT": "beta",
@@ -32,6 +33,7 @@
       "extends": "base",
       "autoIncrement": true,
       "distribution": "store",
+      "environment": "production",
       "channel": "production",
       "env": {
         "APP_VARIANT": "production",

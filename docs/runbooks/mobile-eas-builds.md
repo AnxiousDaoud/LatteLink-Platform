@@ -104,9 +104,11 @@ pnpm --filter @lattelink/mobile exec eas env:list preview --format long
 Then run the actual EAS build:
 
 ```bash
-eas build --platform ios --profile beta --environment preview
-eas build --platform ios --profile production --environment production
+eas build --platform ios --profile beta
+eas build --platform ios --profile production
 ```
+
+The EAS environment is selected by the `environment` field in [apps/mobile/eas.json](../../apps/mobile/eas.json).
 
 For OTA updates, use the matching channel and EAS environment. The beta channel uses EAS's default `preview`
 environment because custom EAS environments require a paid Expo plan; production uses EAS `production`.
