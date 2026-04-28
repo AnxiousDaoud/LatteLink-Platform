@@ -73,9 +73,21 @@ function resolveApiEnvironmentError(baseUrl: string, label: string) {
   return null;
 }
 
+function resolveRequiredApiEnvironmentError(baseUrl: string, label: string) {
+  const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl);
+  if (!normalizedBaseUrl) {
+    return `${label} is not configured.`;
+  }
+
+  return resolveApiEnvironmentError(normalizedBaseUrl, label);
+}
+
 function resolveGuardedApiBaseUrl(baseUrl: string | undefined, label: string) {
   const normalizedBaseUrl = normalizeApiBaseUrl(baseUrl);
-  const error = resolveApiEnvironmentError(normalizedBaseUrl, label);
+  const error =
+    label === "EXPO_PUBLIC_API_BASE_URL"
+      ? resolveRequiredApiEnvironmentError(normalizedBaseUrl, label)
+      : resolveApiEnvironmentError(normalizedBaseUrl, label);
   if (error) {
     console.error(`[mobile-api-config] ${error}`);
     return "";
@@ -84,7 +96,7 @@ function resolveGuardedApiBaseUrl(baseUrl: string | undefined, label: string) {
   return normalizedBaseUrl;
 }
 
-const apiBaseUrlEnvironmentError = resolveApiEnvironmentError(
+const apiBaseUrlEnvironmentError = resolveRequiredApiEnvironmentError(
   normalizeApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL),
   "EXPO_PUBLIC_API_BASE_URL"
 );

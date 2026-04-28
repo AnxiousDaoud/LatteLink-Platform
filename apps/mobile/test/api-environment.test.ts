@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 type RuntimeConfig = {
   appVariant?: string;
   bundleIdentifier?: string;
-  apiBaseUrl: string;
+  apiBaseUrl?: string;
   catalogApiBaseUrl?: string;
   nodeEnv?: string;
 };
@@ -19,7 +19,9 @@ async function loadApiClientEnvironment(config: RuntimeConfig) {
   if (config.bundleIdentifier) {
     vi.stubEnv("EXPO_PUBLIC_IOS_BUNDLE_IDENTIFIER", config.bundleIdentifier);
   }
-  vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", config.apiBaseUrl);
+  if (config.apiBaseUrl !== undefined) {
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", config.apiBaseUrl);
+  }
   if (config.catalogApiBaseUrl) {
     vi.stubEnv("EXPO_PUBLIC_CATALOG_SERVICE_BASE_URL", config.catalogApiBaseUrl);
   }
@@ -64,6 +66,16 @@ describe("mobile API environment guard", () => {
 
     expect(API_BASE_URL).toBe("");
     expect(MOBILE_API_ENVIRONMENT.apiConfigurationError).toContain("Production mobile builds must use api.nomly.us");
+  });
+
+  it("reports a missing API base URL as a startup configuration error", async () => {
+    const { API_BASE_URL, MOBILE_API_ENVIRONMENT } = await loadApiClientEnvironment({
+      appVariant: "beta",
+      bundleIdentifier: "com.lattelink.rawaq.beta"
+    });
+
+    expect(API_BASE_URL).toBe("");
+    expect(MOBILE_API_ENVIRONMENT.apiConfigurationError).toContain("EXPO_PUBLIC_API_BASE_URL is not configured.");
   });
 
   it("allows local API URLs while running in Expo Go", async () => {

@@ -13,85 +13,6 @@ import { formatUsd, resolveMenuData, resolveMenuImageUrl, useMenuQuery, type Men
 import { findRefundEntriesForOrder, formatOrderStatus } from "../../src/orders/history";
 import { Button, ScreenScroll, uiPalette, uiTypography } from "../../src/ui/system";
 
-const DEV_REFUND_PREVIEW_ORDER_ID = "dev-preview";
-
-const DEV_REFUND_PREVIEW_ORDER: OrderHistoryEntry = {
-  id: "2dc5d2a0-c1fd-4a36-9017-92d2d8335ebd",
-  status: "CANCELED",
-  pickupCode: "8472H",
-  total: { currency: "USD", amountCents: 2145 },
-  items: [
-    {
-      itemId: "iced-maple-latte",
-      itemName: "Iced Maple Latte",
-      quantity: 1,
-      unitPriceCents: 725,
-      lineTotalCents: 805,
-      customization: {
-        notes: "Light ice",
-        selectedOptions: [
-          {
-            groupId: "milk",
-            groupLabel: "Milk",
-            optionId: "oat",
-            optionLabel: "Oat",
-            priceDeltaCents: 80
-          }
-        ]
-      }
-    },
-    {
-      itemId: "cortado",
-      itemName: "Cortado",
-      quantity: 1,
-      unitPriceCents: 495,
-      lineTotalCents: 495,
-      customization: {
-        notes: "",
-        selectedOptions: []
-      }
-    },
-    {
-      itemId: "orange-cardamom-cookie",
-      itemName: "Orange Cardamom Cookie",
-      quantity: 2,
-      unitPriceCents: 395,
-      lineTotalCents: 790,
-      customization: {
-        notes: "",
-        selectedOptions: []
-      }
-    }
-  ],
-  timeline: [
-    {
-      status: "PAID",
-      occurredAt: "2026-03-22T14:05:00.000Z",
-      note: "Clover payment accepted; Pickup timing locked."
-    },
-    {
-      status: "IN_PREP",
-      occurredAt: "2026-03-22T14:08:00.000Z",
-      note: "Bar started espresso and pastry warm-up."
-    },
-    {
-      status: "CANCELED",
-      occurredAt: "2026-03-22T14:11:00.000Z",
-      note: "Canceled before pickup; Earned points returned to account."
-    }
-  ]
-};
-
-const DEV_REFUND_PREVIEW_LEDGER: LoyaltyLedgerEntry[] = [
-  {
-    id: "7cd4d61f-347f-41b0-8933-3b6bb8b4da75",
-    type: "REFUND",
-    points: 84,
-    orderId: DEV_REFUND_PREVIEW_ORDER.id,
-    createdAt: "2026-03-22T14:12:30.000Z"
-  }
-];
-
 function sumReturnedPoints(entries: LoyaltyLedgerEntry[]) {
   return entries.reduce((sum, entry) => sum + entry.points, 0);
 }
@@ -262,9 +183,8 @@ export default function RefundDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ orderId?: string | string[] }>();
   const orderId = Array.isArray(params.orderId) ? params.orderId[0] : params.orderId;
-  const isDevPreview = __DEV__ && orderId === DEV_REFUND_PREVIEW_ORDER_ID;
   const { isAuthenticated } = useAuthSession();
-  const shouldLoadLiveData = isAuthenticated && !isDevPreview;
+  const shouldLoadLiveData = isAuthenticated;
   const ordersQuery = useOrderHistoryQuery(shouldLoadLiveData);
   const loyaltyLedgerQuery = useLoyaltyLedgerQuery(shouldLoadLiveData);
   const menuQuery = useMenuQuery();
@@ -274,12 +194,8 @@ export default function RefundDetailScreen() {
     [menu?.categories]
   );
 
-  const order = isDevPreview ? DEV_REFUND_PREVIEW_ORDER : (ordersQuery.data ?? []).find((entry) => entry.id === orderId);
-  const refundEntries = isDevPreview
-    ? DEV_REFUND_PREVIEW_LEDGER
-    : orderId
-      ? findRefundEntriesForOrder(orderId, loyaltyLedgerQuery.data ?? [])
-      : [];
+  const order = (ordersQuery.data ?? []).find((entry) => entry.id === orderId);
+  const refundEntries = orderId ? findRefundEntriesForOrder(orderId, loyaltyLedgerQuery.data ?? []) : [];
 
   const headline = order ? buildHeadline(order, refundEntries) : null;
   const returnedPoints = useMemo(() => sumReturnedPoints(refundEntries), [refundEntries]);
@@ -293,7 +209,7 @@ export default function RefundDetailScreen() {
     router.replace("/(tabs)/orders");
   }
 
-  if (!isAuthenticated && !isDevPreview) {
+  if (!isAuthenticated) {
     return (
       <EmptyState
         title="Sign in to view this order."

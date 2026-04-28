@@ -94,10 +94,9 @@ export function HomeScreen() {
   const homeNewsCards = homeNewsCardsQuery.data?.cards ?? [];
   const hasBlockingHomeError =
     (!!appConfigQuery.error && !appConfigQuery.data) ||
-    (!!homeNewsCardsQuery.error && !homeNewsCardsQuery.data) ||
     (!!storeConfigQuery.error && !storeConfigQuery.data);
   const homeErrorMessage =
-    [appConfigQuery.error, homeNewsCardsQuery.error, storeConfigQuery.error].some(isBackendReachabilityError)
+    [appConfigQuery.error, storeConfigQuery.error].some(isBackendReachabilityError)
       ? "Unable to reach backend. Pull to refresh or try again in a moment."
       : "We couldn’t load the live store details. Pull to refresh or try again in a moment.";
   const brandName = appConfig?.brand.brandName ?? "Store";

@@ -13,8 +13,8 @@ import { MOBILE_API_ENVIRONMENT } from "../src/api/client";
 import { Button, uiPalette, uiTypography } from "../src/ui/system";
 
 type ReturnToPath = "cart" | "/(tabs)/home" | "/(tabs)/orders" | "/(tabs)/account";
-const DEFAULT_DEV_ACCESS_EMAIL = "dev@rawaq.local";
-const DEFAULT_DEV_ACCESS_NAME = "Rawaq Dev";
+const DEFAULT_DEV_ACCESS_EMAIL = "dev@nomly.local";
+const DEFAULT_DEV_ACCESS_NAME = "Dev Tester";
 
 function resolveReturnToPath(input: string | string[] | undefined): ReturnToPath | null {
   if (Array.isArray(input)) return resolveReturnToPath(input[0]);
