@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=8080
       - IDENTITY_SERVICE_BASE_URL=http://identity:3000
@@ -51,9 +52,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - JWT_SECRET=${JWT_SECRET:-}
       - PASSKEY_RP_ID=${PASSKEY_RP_ID:-localhost}
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
@@ -71,9 +74,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3001
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - CATALOG_SERVICE_BASE_URL=http://catalog:3002
       - PAYMENTS_SERVICE_BASE_URL=http://payments:3003
       - LOYALTY_SERVICE_BASE_URL=http://loyalty:3004
@@ -92,9 +97,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3002
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
       - CATALOG_MEDIA_R2_ACCOUNT_ID=${CATALOG_MEDIA_R2_ACCOUNT_ID:-}
       - CATALOG_MEDIA_R2_ACCESS_KEY_ID=${CATALOG_MEDIA_R2_ACCESS_KEY_ID:-}
@@ -108,9 +115,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3003
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - CATALOG_SERVICE_BASE_URL=http://catalog:3002
       - ORDERS_SERVICE_BASE_URL=http://orders:3001
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
@@ -134,9 +143,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3004
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
       - LOYALTY_INTERNAL_API_TOKEN=${LOYALTY_INTERNAL_API_TOKEN:-}
   notifications:
@@ -144,9 +155,11 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - HOST=0.0.0.0
       - PORT=3005
       - DATABASE_URL=${DATABASE_URL}
+      - EXPECTED_SUPABASE_PROJECT_REF=${EXPECTED_SUPABASE_PROJECT_REF:-}
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
       - NOTIFICATIONS_INTERNAL_API_TOKEN=${NOTIFICATIONS_INTERNAL_API_TOKEN:-}
       - NOTIFICATIONS_PROVIDER_MODE=${NOTIFICATIONS_PROVIDER_MODE:-expo}
@@ -162,6 +175,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - NOTIFICATIONS_SERVICE_BASE_URL=http://notifications:3005
       - NOTIFICATIONS_INTERNAL_API_TOKEN=${NOTIFICATIONS_INTERNAL_API_TOKEN:-}
       - NOTIFICATIONS_DISPATCH_INTERVAL_MS=${NOTIFICATIONS_DISPATCH_INTERVAL_MS:-5000}
@@ -174,6 +188,7 @@ services:
     restart: unless-stopped
     environment:
       - NODE_ENV=production
+      - DEPLOY_ENV=${DEPLOY_ENV:-unknown}
       - CATALOG_SERVICE_BASE_URL=http://catalog:3002
       - GATEWAY_INTERNAL_API_TOKEN=${GATEWAY_INTERNAL_API_TOKEN:-}
       - WEBAPP_MENU_SOURCE_URL=${WEBAPP_MENU_SOURCE_URL:-}

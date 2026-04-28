@@ -6,6 +6,7 @@ import {
   buildPersistenceStartupError,
   createPostgresDb,
   getDatabaseUrl,
+  getPersistenceReadinessMetadata,
   runMigrations,
   sql
 } from "@lattelink/persistence";
@@ -613,10 +614,15 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/ready", async (_request, reply) => {
     try {
       await repository.pingDb();
-      return { status: "ready", service: "loyalty", persistence: repository.backend };
+      return { status: "ready", service: "loyalty", persistence: repository.backend, environment: getPersistenceReadinessMetadata() };
     } catch {
       reply.status(503);
-      return { status: "unavailable", service: "loyalty", error: "Database unavailable" };
+      return {
+        status: "unavailable",
+        service: "loyalty",
+        error: "Database unavailable",
+        environment: getPersistenceReadinessMetadata()
+      };
     }
   });
 

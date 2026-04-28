@@ -38,6 +38,7 @@ import {
   refreshRequestSchema
 } from "@lattelink/contracts-auth";
 import { apiErrorSchema, authSessionSchema } from "@lattelink/contracts-core";
+import { getPersistenceReadinessMetadata } from "@lattelink/persistence";
 import {
   AppleAuthError,
   exchangeAppleAuthorizationCode,
@@ -672,10 +673,15 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   app.get("/ready", async (_request, reply) => {
     try {
       await repository.pingDb();
-      return { status: "ready", service: "identity", persistence: repository.backend };
+      return { status: "ready", service: "identity", persistence: repository.backend, environment: getPersistenceReadinessMetadata() };
     } catch {
       reply.status(503);
-      return { status: "unavailable", service: "identity", error: "Database unavailable" };
+      return {
+        status: "unavailable",
+        service: "identity",
+        error: "Database unavailable",
+        environment: getPersistenceReadinessMetadata()
+      };
     }
   });
 

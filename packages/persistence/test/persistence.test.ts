@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   allowsInMemoryPersistence,
   buildPersistenceStartupError,
-  getDatabaseUrl
+  getDatabaseTargetMetadata,
+  getDatabaseUrl,
+  getPersistenceReadinessMetadata
 } from "../src/index.js";
 import * as migration0001 from "../src/migrations/0001_initial_schema.js";
 import * as migration0002 from "../src/migrations/0002_add_brand_id_columns.js";
@@ -36,6 +38,47 @@ describe("persistence", () => {
     expect(getDatabaseUrl({ DATABASE_URL: "  postgres://localhost:5432/gazelle  " })).toBe(
       "postgres://localhost:5432/gazelle"
     );
+  });
+
+  it("extracts Supabase project refs from direct and pooler URLs", () => {
+    expect(
+      getDatabaseTargetMetadata("postgresql://postgres:password@db.gtcyijhdapjpymxgphbl.supabase.co:5432/postgres")
+        .supabaseProjectRef
+    ).toBe("gtcyijhdapjpymxgphbl");
+    expect(
+      getDatabaseTargetMetadata(
+        "postgresql://postgres.wdlyegrmosuhrrbbmnrb:password@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+      ).supabaseProjectRef
+    ).toBe("wdlyegrmosuhrrbbmnrb");
+  });
+
+  it("rejects a DATABASE_URL that does not match the expected Supabase project ref", () => {
+    expect(() =>
+      getDatabaseUrl({
+        DEPLOY_ENV: "dev",
+        EXPECTED_SUPABASE_PROJECT_REF: "wdlyegrmosuhrrbbmnrb",
+        DATABASE_URL: "postgresql://postgres.gtcyijhdapjpymxgphbl:password@aws-1-us-east-1.pooler.supabase.com:5432/postgres"
+      })
+    ).toThrow(/Supabase project ref mismatch/);
+  });
+
+  it("reports non-secret persistence readiness metadata", () => {
+    expect(
+      getPersistenceReadinessMetadata({
+        DEPLOY_ENV: "dev",
+        EXPECTED_SUPABASE_PROJECT_REF: "wdlyegrmosuhrrbbmnrb",
+        DATABASE_URL: "postgresql://postgres.wdlyegrmosuhrrbbmnrb:password@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+      })
+    ).toMatchObject({
+      deployEnvironment: "dev",
+      database: {
+        configured: true,
+        backend: "postgres",
+        supabaseProjectRef: "wdlyegrmosuhrrbbmnrb",
+        expectedSupabaseProjectRef: "wdlyegrmosuhrrbbmnrb",
+        matchesExpected: true
+      }
+    });
   });
 
   it("allows in-memory persistence automatically in test mode", () => {

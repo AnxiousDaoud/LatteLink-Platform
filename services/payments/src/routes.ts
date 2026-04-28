@@ -7,6 +7,7 @@ import {
   buildPersistenceStartupError,
   createPostgresDb,
   getDatabaseUrl,
+  getPersistenceReadinessMetadata,
   runMigrations
 } from "@lattelink/persistence";
 import {
@@ -1986,7 +1987,8 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/ready", async () => ({
     status: "ready",
     service: "payments",
-    persistence: repository.backend
+    persistence: repository.backend,
+    environment: getPersistenceReadinessMetadata()
   }));
 
   app.post("/v1/payments/stripe/mobile-session", { preHandler: app.rateLimit(paymentsWriteRateLimit) }, async (request, reply) => {
