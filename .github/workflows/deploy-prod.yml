@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   deploy:
@@ -194,8 +195,8 @@ jobs:
           CATALOG_MEDIA_PUBLIC_BASE_URL: ${{ vars.CATALOG_MEDIA_PUBLIC_BASE_URL }}
           CATALOG_MEDIA_UPLOAD_MAX_BYTES: ${{ vars.CATALOG_MEDIA_UPLOAD_MAX_BYTES }}
           CATALOG_MEDIA_UPLOAD_EXPIRY_SECONDS: ${{ vars.CATALOG_MEDIA_UPLOAD_EXPIRY_SECONDS }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
           COMPOSE_PROJECT_NAME: ${{ vars.COMPOSE_PROJECT_NAME }}
         run: |
           remote_path="${DEPLOY_PATH:-/opt/lattelink-prod}"

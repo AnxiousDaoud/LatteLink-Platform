@@ -94,8 +94,6 @@ Recommended values:
 - `GOOGLE_OAUTH_CLIENT_ID`
 - `GOOGLE_OAUTH_CLIENT_SECRET`
 - `GOOGLE_OAUTH_STATE_SECRET`
-- `GHCR_USERNAME`
-- `GHCR_TOKEN`
 
 Optional secrets depending on enabled features:
 
