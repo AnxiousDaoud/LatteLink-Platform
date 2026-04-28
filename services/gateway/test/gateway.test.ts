@@ -2383,11 +2383,59 @@ let previousFreeClientDashboardDomain: string | undefined;
     await app.close();
   });
 
-  it("continues polling customer order status changes when the event bus is configured", async () => {
+  it("streams customer order status changes from event bus without steady-state polling", async () => {
     process.env.GATEWAY_ORDER_STREAM_POLL_MS = "5";
     process.env.VALKEY_URL = "redis://valkey.test:6379";
     const app = await buildApp();
     const orderId = "123e4567-e89b-12d3-a456-426614174119";
+    queuedOrderStatuses.set(orderId, ["IN_PREP"]);
+    eventBusMocks.subscribeToOrderStatus.mockImplementationOnce(async (_orderId, handler) => {
+      setTimeout(() => {
+        handler({
+          userId: "123e4567-e89b-12d3-a456-426614174000",
+          order: buildOrderPayload(orderId, "READY")
+        });
+      }, 0);
+      setTimeout(() => {
+        handler({
+          userId: "123e4567-e89b-12d3-a456-426614174000",
+          order: buildOrderPayload(orderId, "COMPLETED")
+        });
+      }, 1);
+      return () => undefined;
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/orders/${orderId}/stream`,
+      headers: authHeader
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(eventBusMocks.subscribeToOrderStatus).toHaveBeenCalledOnce();
+    const dataEvents = response.body
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map((block) => block.trim());
+    expect(dataEvents).toHaveLength(3);
+    expect(dataEvents[0]).toContain(`"status":"IN_PREP"`);
+    expect(dataEvents[1]).toContain(`"status":"READY"`);
+    expect(dataEvents[2]).toContain(`"status":"COMPLETED"`);
+    const orderFetchCalls = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = typeof input === "string" ? input : input.url;
+      return url === `http://orders.internal/v1/orders/${orderId}` && (init?.method ?? "GET") === "GET";
+    });
+    expect(orderFetchCalls).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it("keeps customer order status polling alive when event bus subscription fails", async () => {
+    process.env.GATEWAY_ORDER_STREAM_POLL_MS = "5";
+    process.env.VALKEY_URL = "redis://valkey.test:6379";
+    eventBusMocks.subscribeToOrderStatus.mockRejectedValueOnce(new Error("subscription failed"));
+    const app = await buildApp();
+    const orderId = "123e4567-e89b-12d3-a456-426614174120";
     queuedOrderStatuses.set(orderId, ["IN_PREP", "READY", "COMPLETED"]);
 
     const response = await app.inject({

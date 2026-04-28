@@ -2741,6 +2741,7 @@ export async function registerRoutes(app: FastifyInstance) {
         return;
       }
 
+      let shouldPollForUpdates = !eventBusSubscriber;
       if (eventBusSubscriber) {
         try {
           unsubscribeFromOrderEvents = await eventBusSubscriber.subscribeToOrderStatus(orderId, (event) => {
@@ -2755,7 +2756,9 @@ export async function registerRoutes(app: FastifyInstance) {
               cleanup();
             }
           });
+          shouldPollForUpdates = false;
         } catch (error) {
+          shouldPollForUpdates = true;
           request.log.warn(
             {
               requestId: request.id,
@@ -2767,7 +2770,7 @@ export async function registerRoutes(app: FastifyInstance) {
         }
       }
 
-      if (!closed) {
+      if (!closed && shouldPollForUpdates) {
         pollTimeout = setTimeout(() => {
           void pollForUpdates();
         }, orderStreamPollIntervalMs);
