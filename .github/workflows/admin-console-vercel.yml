@@ -78,6 +78,8 @@ jobs:
         if: steps.preview-check.outputs.enabled == 'true'
         with:
           node-version: 22
+      - uses: pnpm/action-setup@v6
+        if: steps.preview-check.outputs.enabled == 'true'
       - name: Install Vercel CLI
         if: steps.preview-check.outputs.enabled == 'true'
         run: npm install --global vercel@latest
@@ -136,6 +138,8 @@ jobs:
         if: steps.production-check.outputs.enabled == 'true'
         with:
           node-version: 22
+      - uses: pnpm/action-setup@v6
+        if: steps.production-check.outputs.enabled == 'true'
       - name: Install Vercel CLI
         if: steps.production-check.outputs.enabled == 'true'
         run: npm install --global vercel@latest
