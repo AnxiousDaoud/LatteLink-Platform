@@ -1,16 +1,25 @@
 # Pilot Uptime Monitoring Runbook
 
-Last verified: `2026-04-28`
+Last verified: `2026-04-29`
 
 ## Scope
 
 This runbook documents external uptime monitoring for the pilot environments.
 
-Application errors are handled by Sentry. Uptime monitoring is separate: it detects DNS, TLS, Caddy, host, gateway, dependency readiness, and web-surface outages even when the app cannot report to Sentry.
+Application errors are handled by Sentry. External uptime monitoring detects DNS, TLS, Caddy, host, gateway, dependency readiness, and web-surface outages even when the app cannot report its own error.
 
 ## Provider
 
 Primary external monitor:
+
+- Provider: Sentry Uptime Monitoring
+- Check interval: 60 seconds
+- Failure threshold: 3 consecutive failed checks
+- Recovery threshold: 1 successful check
+- Timeout: 10 seconds
+- Alert routing: existing Sentry high-priority email workflows for the owning project
+
+Backup external monitor:
 
 - GitHub Actions workflow: `.github/workflows/uptime-monitor.yml`
 - Schedule: every 5 minutes
@@ -18,11 +27,25 @@ Primary external monitor:
 - Alert record: GitHub issues labeled `uptime` and `status:degraded`
 - Optional immediate channel: `UPTIME_WEBHOOK_URL` repository secret
 
-This is sufficient for pilot operations. If volume or SLA expectations increase, move the same target list to Better Stack, Checkly, UptimeRobot, or DigitalOcean Uptime and keep this workflow as a backup.
+Sentry is the human-facing incident surface. GitHub Actions remains the repo-controlled backup because its targets and alert issue lifecycle are versioned with the codebase.
 
 ## Monitored Targets
 
-Default targets checked by `scripts/uptime-check.mjs`:
+Sentry uptime monitors:
+
+| Environment | Monitor ID | Project | Target | URL | Critical |
+| --- | --- | --- | --- | --- | --- |
+| production | `7151828` | `lattelink-backend` | API readiness | `https://api.nomly.us/ready` | yes |
+| production | `7151833` | `lattelink-backend` | API health | `https://api.nomly.us/health` | yes |
+| production | `7151834` | `lattelink-operator-web` | operator dashboard | `https://app.nomly.us` | yes |
+| production | `7151835` | `lattelink-admin-console` | admin console | `https://admin.nomly.us` | yes |
+| production | `7151836` | `lattelink-web` | marketing site | `https://nomly.us` | no |
+| dev | `7151837` | `lattelink-backend` | API readiness | `https://api-dev.nomly.us/ready` | no |
+| dev | `7151838` | `lattelink-backend` | API health | `https://api-dev.nomly.us/health` | no |
+| dev | `7151839` | `lattelink-operator-web` | operator dashboard | `https://app-dev.nomly.us` | no |
+| dev | `7151840` | `lattelink-admin-console` | admin console | `https://admin-dev.nomly.us` | no |
+
+Backup targets checked by `scripts/uptime-check.mjs`:
 
 | Environment | Target | URL | Critical |
 | --- | --- | --- | --- |
@@ -36,7 +59,7 @@ Default targets checked by `scripts/uptime-check.mjs`:
 | dev | operator dashboard | `https://app-dev.nomly.us` | no |
 | dev | admin console | `https://admin-dev.nomly.us` | no |
 
-If a URL changes, either update `scripts/uptime-check.mjs` or define repository variable `UPTIME_TARGETS_JSON`.
+If a URL changes, update both the Sentry uptime monitor and the backup GitHub Actions target. For the backup workflow, either update `scripts/uptime-check.mjs` or define repository variable `UPTIME_TARGETS_JSON`.
 
 Example override:
 
@@ -49,7 +72,14 @@ Example override:
 
 ## Alert Routing
 
-Current alert path:
+Primary Sentry alert path:
+
+1. Sentry Uptime marks the endpoint as failed after 3 consecutive failures.
+2. Sentry creates an outage issue on the project that owns the monitor.
+3. The monitor is attached to the existing high-priority email workflow for that project.
+4. The issue resolves after 1 successful recovery check.
+
+Backup GitHub alert path:
 
 1. A failing target creates or updates a GitHub issue with labels `uptime`, `status:degraded`, `p1`, `gate:1`, and `area:infra`.
 2. GitHub sends notifications to repository watchers and subscribed operators.
@@ -64,8 +94,9 @@ Optional webhook:
 
 Minimum pilot recipient:
 
+- At least one operator must receive Sentry high-priority issue emails.
 - At least one operator must watch the repository and receive GitHub issue emails.
-- For production launch, configure `UPTIME_WEBHOOK_URL` or a dedicated external provider if email is not immediate enough.
+- For production launch, configure Slack/phone escalation in Sentry or `UPTIME_WEBHOOK_URL` if email is not immediate enough.
 
 ## Manual Test
 
@@ -185,4 +216,3 @@ When a dev uptime issue opens:
 1. Check whether maintenance or deploy is in progress.
 2. If planned, comment with the maintenance reason.
 3. If unplanned, treat it as a release blocker before promotion to production.
-
