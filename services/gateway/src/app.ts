@@ -132,7 +132,7 @@ export async function buildApp() {
     openapi: {
       info: {
         title: "Gazelle Public API Gateway",
-        version: "1.0.0"
+        version: "1.0.1"
       },
       servers: [{ url: publicApiBaseUrl }]
     }

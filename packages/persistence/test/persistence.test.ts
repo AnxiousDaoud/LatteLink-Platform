@@ -5,6 +5,7 @@ import {
   buildPersistenceStartupError,
   getDatabaseTargetMetadata,
   getDatabaseUrl,
+  getPostgresPoolConfig,
   getPersistenceReadinessMetadata
 } from "../src/index.js";
 import * as migration0001 from "../src/migrations/0001_initial_schema.js";
@@ -38,6 +39,27 @@ describe("persistence", () => {
     expect(getDatabaseUrl({ DATABASE_URL: "  postgres://localhost:5432/gazelle  " })).toBe(
       "postgres://localhost:5432/gazelle"
     );
+  });
+
+  it("caps postgres pools below the pg default unless explicitly configured", () => {
+    expect(getPostgresPoolConfig("postgres://localhost:5432/gazelle", {})).toMatchObject({
+      connectionString: "postgres://localhost:5432/gazelle",
+      max: 2,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 10_000
+    });
+
+    expect(
+      getPostgresPoolConfig("postgres://localhost:5432/gazelle", {
+        POSTGRES_POOL_MAX: "4",
+        POSTGRES_CONNECTION_TIMEOUT_MS: "2500",
+        POSTGRES_IDLE_TIMEOUT_MS: "15000"
+      })
+    ).toMatchObject({
+      max: 4,
+      connectionTimeoutMillis: 2_500,
+      idleTimeoutMillis: 15_000
+    });
   });
 
   it("extracts Supabase project refs from direct and pooler URLs", () => {

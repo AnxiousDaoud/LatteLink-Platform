@@ -31,7 +31,7 @@ export async function buildApp() {
     openapi: {
       info: {
         title: "Gazelle catalog service",
-        version: "1.0.0"
+        version: "1.0.1"
       }
     }
   });

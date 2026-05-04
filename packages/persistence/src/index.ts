@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import type { Generated } from "kysely";
-import { Pool } from "pg";
+import { Pool, type PoolConfig } from "pg";
 
 export { runMigrations } from "./migrate.js";
 export { sql } from "kysely";
@@ -469,10 +469,38 @@ export async function writeAuditLog(db: PersistenceDb, entry: AuditLogEntry): Pr
     .execute();
 }
 
+const defaultPostgresPoolMax = 2;
+const defaultPostgresConnectionTimeoutMs = 5_000;
+const defaultPostgresIdleTimeoutMs = 10_000;
+
+function toPositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+}
+
+export function getPostgresPoolConfig(
+  connectionString: string,
+  env: NodeJS.ProcessEnv = process.env
+): PoolConfig {
+  return {
+    connectionString,
+    max: toPositiveInteger(env.POSTGRES_POOL_MAX, defaultPostgresPoolMax),
+    connectionTimeoutMillis: toPositiveInteger(
+      env.POSTGRES_CONNECTION_TIMEOUT_MS,
+      defaultPostgresConnectionTimeoutMs
+    ),
+    idleTimeoutMillis: toPositiveInteger(env.POSTGRES_IDLE_TIMEOUT_MS, defaultPostgresIdleTimeoutMs)
+  };
+}
+
 export function createPostgresDb(connectionString: string): PersistenceDb {
   return new Kysely<PersistenceDatabase>({
     dialect: new PostgresDialect({
-      pool: new Pool({ connectionString })
+      pool: new Pool(getPostgresPoolConfig(connectionString))
     })
   });
 }

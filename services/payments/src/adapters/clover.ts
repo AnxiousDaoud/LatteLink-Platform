@@ -290,7 +290,7 @@ export class CloverAdapter implements PosAdapter {
           "content-type": "application/json",
           accept: "application/json",
           "x-request-id": this.requestId,
-          "user-agent": `GazellePayments/${process.env.npm_package_version ?? "1.0.0"} (${this.oauthConfig.environment})`
+          "user-agent": `GazellePayments/${process.env.npm_package_version ?? "1.0.1"} (${this.oauthConfig.environment})`
         },
         body: JSON.stringify(params.body),
         signal: controller.signal

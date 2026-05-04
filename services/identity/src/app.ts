@@ -38,7 +38,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     openapi: {
       info: {
         title: "Gazelle identity service",
-        version: "1.0.0"
+        version: "1.0.1"
       }
     }
   });

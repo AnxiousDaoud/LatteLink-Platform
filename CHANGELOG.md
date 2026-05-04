@@ -8,6 +8,11 @@ The authoritative changelog policy lives in [development-flow.md](/Users/yazan/D
 
 - No release entries recorded yet under the new workflow.
 
+## v1.0.1 - 2026-05-04
+
+- Capped Postgres client pools for DB-backed services to keep the free Supabase session pool below its client limit.
+- Added configurable Postgres pool timeout settings for safer overload behavior.
+
 ## v1.0.0 - 2026-04-28
 
 - Released the Gate 1 pilot-safety baseline after production deploy validation.
