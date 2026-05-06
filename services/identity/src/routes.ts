@@ -2232,9 +2232,8 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     }
 
     const { locationId } = internalOwnerProvisionParamsSchema.parse(request.params);
-    const owner =
-      (await repository.listOperatorUsers(locationId)).find((operator) => operator.role === "owner" && operator.active) ??
-      null;
+    const owners = (await repository.listOperatorUsers(locationId)).filter((operator) => operator.role === "owner");
+    const owner = owners.find((operator) => operator.active) ?? owners[0] ?? null;
 
     return internalOwnerSummarySchema.parse({
       locationId,

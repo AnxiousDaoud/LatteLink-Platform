@@ -1,9 +1,13 @@
 import type {
+  InternalOwnerInviteRequest,
+  InternalOwnerInviteResponse,
   InternalOwnerProvisionRequest,
   InternalOwnerProvisionResponse,
   InternalOwnerSummary
 } from "@lattelink/contracts-auth";
 import type {
+  AdminClientCreateRequest,
+  AdminClientCreateResponse,
   AppConfigStoreCapabilities,
   ClientPaymentProfile,
   InternalLocationBootstrap,
@@ -153,6 +157,13 @@ export async function getInternalLocationOwner(locationId: string) {
   return requestInternalApi<InternalOwnerSummary>(`/v1/internal/locations/${locationId}/owner`);
 }
 
+export async function createInternalClient(input: AdminClientCreateRequest) {
+  return requestInternalApi<AdminClientCreateResponse>("/v1/internal/clients", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export async function bootstrapInternalLocation(input: InternalLocationBootstrap) {
   return requestInternalApi<InternalLocationSummary>("/v1/internal/locations/bootstrap", {
     method: "POST",
@@ -162,6 +173,13 @@ export async function bootstrapInternalLocation(input: InternalLocationBootstrap
 
 export async function provisionLocationOwner(locationId: string, input: InternalOwnerProvisionRequest) {
   return requestInternalApi<InternalOwnerProvisionResponse>(`/v1/internal/locations/${locationId}/owner/provision`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function resendLocationOwnerInvite(locationId: string, input: InternalOwnerInviteRequest) {
+  return requestInternalApi<InternalOwnerInviteResponse>(`/v1/internal/locations/${locationId}/owner/invite/resend`, {
     method: "POST",
     body: JSON.stringify(input)
   });

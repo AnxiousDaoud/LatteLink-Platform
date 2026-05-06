@@ -14,18 +14,14 @@ import {
 import {
   bootstrapInternalLocation,
   buildCapabilities,
+  createInternalClient,
   createStripeDashboardLink,
   createStripeOnboardingLink,
-  provisionLocationOwner
+  resendLocationOwnerInvite
 } from "@/lib/internal-api";
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
-}
-
-function readOptionalString(formData: FormData, key: string) {
-  const value = readString(formData, key);
-  return value.length > 0 ? value : undefined;
 }
 
 function readBoolean(formData: FormData, key: string) {
@@ -101,34 +97,35 @@ export async function createClientAction(formData: FormData) {
 
   try {
     await requireAdminCapability("clients:write");
+    await requireAdminCapability("owners:write");
 
     if (!clientName || !locationName || !marketLabel || !ownerDisplayName || !ownerEmail) {
       throw new Error("Client name, location name, market, and owner fields are required.");
     }
 
-    const location = await bootstrapInternalLocation({
-      brandName: clientName,
+    const client = await createInternalClient({
+      clientName,
       locationName,
       marketLabel,
-      storeName: readOptionalString(formData, "storeName") ?? clientName,
-      hours: readOptionalString(formData, "hours"),
-      pickupInstructions: readOptionalString(formData, "pickupInstructions"),
-      taxRateBasisPoints: readTaxRateBasisPoints(formData, "taxRatePercent"),
-      capabilities: readCapabilities(formData)
+      ownerEmail,
+      ownerName: ownerDisplayName
     });
-    locationId = location.locationId;
+    locationId = client.locationId;
 
-    await provisionLocationOwner(locationId, {
+    await resendLocationOwnerInvite(locationId, {
       displayName: ownerDisplayName,
       email: ownerEmail,
-      password: readOptionalString(formData, "temporaryPassword"),
-      dashboardUrl: readOptionalString(formData, "dashboardUrl") ?? process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
+      dashboardUrl: process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
     });
   } catch (error) {
+    if (locationId) {
+      redirect(`/clients/${locationId}/owner?created=1&error=${encodeURIComponent(toRedirectError(error))}`);
+    }
+
     redirect(`/clients/new?error=${encodeURIComponent(toRedirectError(error))}`);
   }
 
-  redirect(`/clients/${locationId}?created=1`);
+  redirect(`/clients/${locationId}?created=1&invited=1`);
 }
 
 export async function updateClientCapabilitiesAction(formData: FormData) {
@@ -158,7 +155,7 @@ export async function updateClientCapabilitiesAction(formData: FormData) {
   redirect(`/clients/${locationId}/capabilities?updated=1`);
 }
 
-export async function reprovisionOwnerAction(formData: FormData) {
+export async function resendOwnerInviteAction(formData: FormData) {
   const locationId = readString(formData, "locationId");
   if (!locationId) {
     redirect("/clients?error=Location ID is required.");
@@ -166,17 +163,16 @@ export async function reprovisionOwnerAction(formData: FormData) {
 
   try {
     await requireAdminCapability("owners:write");
-    await provisionLocationOwner(locationId, {
+    await resendLocationOwnerInvite(locationId, {
       displayName: readString(formData, "displayName"),
       email: readString(formData, "email"),
-      password: readOptionalString(formData, "temporaryPassword"),
-      dashboardUrl: readOptionalString(formData, "dashboardUrl") ?? process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
+      dashboardUrl: process.env.ADMIN_CONSOLE_CLIENT_DASHBOARD_URL
     });
   } catch (error) {
     redirect(`/clients/${locationId}/owner?error=${encodeURIComponent(toRedirectError(error))}`);
   }
 
-  redirect(`/clients/${locationId}/owner?updated=1`);
+  redirect(`/clients/${locationId}/owner?invited=1`);
 }
 
 export async function startStripeOnboardingAction(formData: FormData) {

@@ -12,6 +12,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
   const { locationId } = await params;
   const query = await searchParams;
   const created = typeof query.created === "string" ? query.created : undefined;
+  const invited = typeof query.invited === "string" ? query.invited : undefined;
 
   try {
     const [location, ownerSummary, launchReadiness] = await Promise.all([
@@ -36,9 +37,7 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           <div>
             <span className="eyebrow">{location.marketLabel}</span>
             <h3>{location.brandName}</h3>
-            <p>
-              {location.locationName} · {location.locationId}
-            </p>
+            <p>{location.locationName}</p>
           </div>
           <div className="page-tools">
             <span className={`status-badge is-${launchState}`}>{launchLabel}</span>
@@ -51,7 +50,8 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
           </div>
         </div>
 
-        {created ? <p className="inline-message inline-message-success">Client created and owner access is ready.</p> : null}
+        {created ? <p className="inline-message inline-message-success">Client shell created.</p> : null}
+        {invited ? <p className="inline-message inline-message-success">Owner invite sent.</p> : null}
 
         <div className="stat-grid">
           <article className="stat-card">
@@ -92,14 +92,6 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
             </div>
             <dl className="detail-list">
               <div>
-                <dt>Brand ID</dt>
-                <dd>{location.brandId}</dd>
-              </div>
-              <div>
-                <dt>Location ID</dt>
-                <dd>{location.locationId}</dd>
-              </div>
-              <div>
                 <dt>Store name</dt>
                 <dd>{location.storeName}</dd>
               </div>
@@ -139,6 +131,23 @@ export default async function ClientDetailPage({ params, searchParams }: ClientD
             </dl>
           </section>
         </div>
+
+        <section className="panel">
+          <div className="section-heading">
+            <span className="eyebrow">Technical Details</span>
+            <h4>Generated identifiers</h4>
+          </div>
+          <dl className="detail-list">
+            <div>
+              <dt>Brand ID</dt>
+              <dd>{location.brandId}</dd>
+            </div>
+            <div>
+              <dt>Location ID</dt>
+              <dd>{location.locationId}</dd>
+            </div>
+          </dl>
+        </section>
 
         <div className="detail-grid">
           <section className="panel">

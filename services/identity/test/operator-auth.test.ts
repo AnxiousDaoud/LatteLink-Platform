@@ -655,6 +655,21 @@ describe("operator auth", () => {
     expect(invite.invite.inviteUrl).toContain("/invites/");
     const token = invite.invite.inviteUrl!.split("/invites/")[1]!;
 
+    const pendingOwnerSummaryResponse = await app.inject({
+      method: "GET",
+      url: "/v1/identity/internal/locations/pilot-01/owner",
+      headers: {
+        "x-gateway-token": "identity-gateway-token"
+      }
+    });
+    expect(pendingOwnerSummaryResponse.statusCode).toBe(200);
+    expect(internalOwnerSummarySchema.parse(pendingOwnerSummaryResponse.json())).toMatchObject({
+      owner: {
+        email: "pilot.owner@example.com",
+        active: false
+      }
+    });
+
     const lookupResponse = await app.inject({
       method: "GET",
       url: `/v1/operator/invites/${token}`
@@ -692,6 +707,21 @@ describe("operator auth", () => {
       },
       invite: {
         status: "consumed"
+      }
+    });
+
+    const acceptedOwnerSummaryResponse = await app.inject({
+      method: "GET",
+      url: "/v1/identity/internal/locations/pilot-01/owner",
+      headers: {
+        "x-gateway-token": "identity-gateway-token"
+      }
+    });
+    expect(acceptedOwnerSummaryResponse.statusCode).toBe(200);
+    expect(internalOwnerSummarySchema.parse(acceptedOwnerSummaryResponse.json())).toMatchObject({
+      owner: {
+        email: "pilot.owner@example.com",
+        active: true
       }
     });
 
