@@ -3,6 +3,8 @@ import {
   ApiRequestError,
   buildOperatorHeaders,
   acceptOperatorInvite,
+  createOperatorStripeDashboardLink,
+  createOperatorStripeOnboardingLink,
   extractApiErrorMessage,
   fetchDashboardLocations,
   fetchOperatorOnboardingSummary,
@@ -295,6 +297,111 @@ describe("client dashboard api helpers", () => {
     expect(fetchSpy).toHaveBeenNthCalledWith(
       3,
       "https://api.nomly.us/v1/admin/onboarding/submit-review?locationId=northside-01",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+  });
+
+  it("creates owner-scoped Stripe Connect links through the gateway", async () => {
+    const stripeLinkPayload = {
+      locationId: "northside-01",
+      stripeAccountId: "acct_1TOk7VE0L5J7W3jY",
+      url: "https://connect.stripe.com/setup/s/test_123",
+      expiresAt: "2026-05-06T12:30:00.000Z",
+      paymentProfile: {
+        locationId: "northside-01",
+        stripeAccountId: "acct_1TOk7VE0L5J7W3jY",
+        stripeAccountType: "express",
+        stripeOnboardingStatus: "pending",
+        stripeDetailsSubmitted: false,
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: false,
+        stripeDashboardEnabled: true,
+        country: "US",
+        currency: "USD",
+        cardEnabled: true,
+        applePayEnabled: true,
+        refundsEnabled: true,
+        cloverPosEnabled: false
+      },
+      paymentReadiness: {
+        ready: false,
+        onboardingState: "pending",
+        missingRequiredFields: ["stripeChargesEnabled"]
+      }
+    };
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(stripeLinkPayload), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...stripeLinkPayload,
+            url: "https://connect.stripe.com/express/test_dashboard",
+            paymentReadiness: {
+              ready: true,
+              onboardingState: "completed",
+              missingRequiredFields: []
+            },
+            paymentProfile: {
+              ...stripeLinkPayload.paymentProfile,
+              stripeOnboardingStatus: "completed",
+              stripeDetailsSubmitted: true,
+              stripeChargesEnabled: true,
+              stripePayoutsEnabled: true
+            }
+          }),
+          { status: 200 }
+        )
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const session: OperatorSession = {
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      apiBaseUrl: "https://api.nomly.us/v1",
+      expiresAt: "2026-04-23T23:00:00.000Z",
+      operator: {
+        operatorUserId: "11111111-1111-4111-8111-111111111111",
+        displayName: "Avery Quinn",
+        email: "avery@store.com",
+        role: "owner",
+        locationId: "northside-01",
+        locationIds: ["northside-01"],
+        active: true,
+        capabilities: ["store:read", "store:write"],
+        createdAt: "2026-04-23T20:00:00.000Z",
+        updatedAt: "2026-04-23T20:00:00.000Z"
+      }
+    };
+
+    const onboardingLink = await createOperatorStripeOnboardingLink(session, "northside-01", {
+      returnUrl: "https://dashboard.example.com/?stripeReturn=1",
+      refreshUrl: "https://dashboard.example.com/?stripeRefresh=1"
+    });
+    const dashboardLink = await createOperatorStripeDashboardLink(session, "northside-01");
+
+    expect(onboardingLink.url).toContain("connect.stripe.com/setup");
+    expect(dashboardLink.paymentReadiness.ready).toBe(true);
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      "https://api.nomly.us/v1/admin/payments/stripe/onboarding-link?locationId=northside-01",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          authorization: "Bearer access-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          returnUrl: "https://dashboard.example.com/?stripeReturn=1",
+          refreshUrl: "https://dashboard.example.com/?stripeRefresh=1"
+        })
+      })
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      2,
+      "https://api.nomly.us/v1/admin/payments/stripe/dashboard-link?locationId=northside-01",
       expect.objectContaining({
         method: "POST"
       })

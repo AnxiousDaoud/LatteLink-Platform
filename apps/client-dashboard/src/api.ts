@@ -23,7 +23,10 @@ import {
   appConfigSchema,
   homeNewsCardsResponseSchema,
   onboardingSummarySchema,
-  operatorOnboardingUpdateSchema
+  operatorOnboardingUpdateSchema,
+  stripeConnectDashboardLinkRequestSchema,
+  stripeConnectLinkResponseSchema,
+  stripeConnectOnboardingLinkRequestSchema
 } from "@lattelink/contracts-catalog";
 import {
   createDiscountCodeRequestSchema,
@@ -637,6 +640,36 @@ export function submitOperatorOnboardingReview(session: OperatorSession, locatio
     method: "POST",
     body: {},
     schema: onboardingSummarySchema
+  });
+}
+
+export function createOperatorStripeOnboardingLink(
+  session: OperatorSession,
+  locationId: string,
+  input: Omit<z.input<typeof stripeConnectOnboardingLinkRequestSchema>, "locationId">
+) {
+  return requestJson({
+    apiBaseUrl: session.apiBaseUrl,
+    accessToken: session.accessToken,
+    path: "/admin/payments/stripe/onboarding-link",
+    query: { locationId },
+    method: "POST",
+    body: stripeConnectOnboardingLinkRequestSchema
+      .omit({ locationId: true })
+      .parse(input),
+    schema: stripeConnectLinkResponseSchema
+  });
+}
+
+export function createOperatorStripeDashboardLink(session: OperatorSession, locationId: string) {
+  return requestJson({
+    apiBaseUrl: session.apiBaseUrl,
+    accessToken: session.accessToken,
+    path: "/admin/payments/stripe/dashboard-link",
+    query: { locationId },
+    method: "POST",
+    body: stripeConnectDashboardLinkRequestSchema.omit({ locationId: true }).parse({}),
+    schema: stripeConnectLinkResponseSchema
   });
 }
 

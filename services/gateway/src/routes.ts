@@ -343,6 +343,14 @@ function forbiddenInternalAdmin(
   });
 }
 
+function forbiddenOwnerOnly(requestId: string) {
+  return apiErrorSchema.parse({
+    code: "FORBIDDEN",
+    message: "Only owner operators can manage payment connections",
+    requestId
+  });
+}
+
 async function resolveOperatorAccess(params: {
   request: FastifyRequest;
   reply: FastifyReply;
@@ -2090,6 +2098,79 @@ export async function registerRoutes(app: FastifyInstance) {
       path: "/v1/auth/account",
       responseSchema: authSuccessSchema
     });
+    }
+  );
+
+  app.post(
+    "/v1/admin/payments/stripe/onboarding-link",
+    {
+      preHandler: [app.rateLimit(staffWriteRateLimit), requireOperatorCapability("store:write")]
+    },
+    async (request, reply) => {
+      if (request.authenticatedOperator?.role !== "owner") {
+        return reply.status(403).send(forbiddenOwnerOnly(request.id));
+      }
+
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+
+      const input = stripeConnectOnboardingLinkRequestSchema.parse({
+        ...(typeof request.body === "object" && request.body !== null ? request.body : {}),
+        locationId: locationContext.locationId
+      });
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: paymentsBaseUrl,
+        serviceLabel: "Payments",
+        method: "POST",
+        path: "/v1/payments/stripe/connect/onboarding-link",
+        body: input,
+        additionalHeaders: {
+          "x-gateway-token": gatewayInternalApiToken
+        },
+        forwardUserIdHeader: false,
+        responseSchema: stripeConnectLinkResponseSchema
+      });
+    }
+  );
+
+  app.post(
+    "/v1/admin/payments/stripe/dashboard-link",
+    {
+      preHandler: [app.rateLimit(staffReadRateLimit), requireOperatorCapability("store:read")]
+    },
+    async (request, reply) => {
+      if (request.authenticatedOperator?.role !== "owner") {
+        return reply.status(403).send(forbiddenOwnerOnly(request.id));
+      }
+
+      const locationContext = resolveRequestedOperatorLocationId(request, { required: true });
+      if (locationContext.error) {
+        return reply.status(locationContext.error.code === "FORBIDDEN" ? 403 : 400).send(locationContext.error);
+      }
+
+      const input = stripeConnectDashboardLinkRequestSchema.parse({
+        locationId: locationContext.locationId
+      });
+
+      return proxyUpstream({
+        request,
+        reply,
+        baseUrl: paymentsBaseUrl,
+        serviceLabel: "Payments",
+        method: "POST",
+        path: "/v1/payments/stripe/connect/dashboard-link",
+        body: input,
+        additionalHeaders: {
+          "x-gateway-token": gatewayInternalApiToken
+        },
+        forwardUserIdHeader: false,
+        responseSchema: stripeConnectLinkResponseSchema
+      });
     }
   );
 

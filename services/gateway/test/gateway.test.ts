@@ -4071,6 +4071,84 @@ let previousFreeClientDashboardDomain: string | undefined;
     await app.close();
   });
 
+  it("lets owner operators create Stripe Connect links for their own location", async () => {
+    const app = await buildApp();
+    const onboardingResponse = await app.inject({
+      method: "POST",
+      url: "/v1/admin/payments/stripe/onboarding-link?locationId=flagship-01",
+      headers: ownerOperatorHeaders,
+      payload: {
+        returnUrl: "https://dashboard.example.com/?stripeReturn=1",
+        refreshUrl: "https://dashboard.example.com/?stripeRefresh=1"
+      }
+    });
+
+    expect(onboardingResponse.statusCode, onboardingResponse.body).toBe(200);
+    expect(onboardingResponse.json()).toMatchObject({
+      locationId: "flagship-01",
+      stripeAccountId: "acct_1TOk7VE0L5J7W3jY"
+    });
+
+    const dashboardResponse = await app.inject({
+      method: "POST",
+      url: "/v1/admin/payments/stripe/dashboard-link?locationId=flagship-01",
+      headers: ownerOperatorHeaders,
+      payload: {}
+    });
+
+    expect(dashboardResponse.statusCode, dashboardResponse.body).toBe(200);
+    expect(dashboardResponse.json()).toMatchObject({
+      locationId: "flagship-01",
+      paymentReadiness: {
+        ready: true
+      }
+    });
+
+    const onboardingCall = fetchMock.mock.calls.find(([input]) => {
+      const url = typeof input === "string" ? input : input.url;
+      return url === "http://payments.internal/v1/payments/stripe/connect/onboarding-link";
+    });
+    expect(onboardingCall).toBeDefined();
+    if (onboardingCall) {
+      expect(JSON.parse(String(onboardingCall[1]?.body ?? "{}"))).toMatchObject({
+        locationId: "flagship-01",
+        returnUrl: "https://dashboard.example.com/?stripeReturn=1",
+        refreshUrl: "https://dashboard.example.com/?stripeRefresh=1"
+      });
+    }
+
+    await app.close();
+  });
+
+  it("blocks non-owner and cross-location Stripe Connect requests", async () => {
+    const app = await buildApp();
+    const managerResponse = await app.inject({
+      method: "POST",
+      url: "/v1/admin/payments/stripe/dashboard-link?locationId=flagship-01",
+      headers: { authorization: "Bearer operator-manager-access-token" },
+      payload: {}
+    });
+
+    expect(managerResponse.statusCode).toBe(403);
+    expect(managerResponse.json()).toMatchObject({
+      code: "FORBIDDEN"
+    });
+
+    const crossLocationResponse = await app.inject({
+      method: "POST",
+      url: "/v1/admin/payments/stripe/onboarding-link?locationId=northside-01",
+      headers: ownerOperatorHeaders,
+      payload: {
+        returnUrl: "https://dashboard.example.com/?stripeReturn=1",
+        refreshUrl: "https://dashboard.example.com/?stripeRefresh=1"
+      }
+    });
+
+    expect(crossLocationResponse.statusCode).toBe(403);
+
+    await app.close();
+  });
+
   it("preserves Clover OAuth callback redirects through the gateway", async () => {
     const app = await buildApp();
     const response = await app.inject({

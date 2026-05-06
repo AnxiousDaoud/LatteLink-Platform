@@ -149,6 +149,40 @@ function renderStoreOperationsStep() {
   `;
 }
 
+function renderPaymentsStep() {
+  const item = checklistItem("payments_connected");
+  const readiness = state.onboardingSummary?.paymentReadiness;
+  const stripe = state.appConfig?.paymentCapabilities.stripe;
+  const dashboardAvailable = stripe?.dashboardEnabled === true;
+  const onboardingLabel =
+    readiness?.onboardingState && readiness.onboardingState !== "unconfigured"
+      ? "Continue Stripe onboarding"
+      : "Connect Stripe";
+
+  return `
+    <article class="onboarding-step ${item?.passed ? "onboarding-step--complete" : ""}">
+      <div class="onboarding-step__main">
+        <div class="onboarding-step__status">${renderStepStatus("payments_connected")}</div>
+        <h3>Payments</h3>
+        <p>Connect and complete the required payment account before launch.</p>
+        ${
+          readiness
+            ? `<p class="muted-copy">Stripe status: ${escapeHtml(readiness.onboardingState)}${readiness.missingRequiredFields.length > 0 ? ` · Missing ${escapeHtml(readiness.missingRequiredFields.join(", "))}` : ""}</p>`
+            : ""
+        }
+      </div>
+      <div class="onboarding-step__actions">
+        <button class="button button--primary" type="button" data-action="start-stripe-onboarding" ${state.updatingOnboarding ? "disabled" : ""}>
+          ${escapeHtml(onboardingLabel)}
+        </button>
+        <button class="button button--secondary" type="button" data-action="open-stripe-dashboard" ${state.updatingOnboarding || !dashboardAvailable ? "disabled" : ""}>
+          Open Stripe Express
+        </button>
+      </div>
+    </article>
+  `;
+}
+
 function renderOptionalConnectorsStep() {
   return `
     <article class="onboarding-step">
@@ -238,11 +272,7 @@ export function renderOnboardingSection() {
     <section class="onboarding-steps">
       ${renderBusinessProfileStep()}
       ${renderStoreOperationsStep()}
-      ${renderStep({
-        id: "payments_connected",
-        title: "Payments",
-        body: "Connect and complete the required payment account before launch."
-      })}
+      ${renderPaymentsStep()}
       ${renderOptionalConnectorsStep()}
       ${renderStep({
         id: "menu_ready",

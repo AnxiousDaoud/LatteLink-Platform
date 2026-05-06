@@ -217,6 +217,24 @@
         }
       }
     },
+    "/admin/payments/stripe/onboarding-link": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/admin/payments/stripe/dashboard-link": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/auth/me": {
       "get": {
         "responses": {

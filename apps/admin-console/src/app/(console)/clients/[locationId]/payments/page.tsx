@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { openStripeDashboardAction, startStripeOnboardingAction } from "@/app/actions";
 import { getInternalLocation, InternalApiError } from "@/lib/internal-api";
 
 type ClientPaymentsPageProps = {
@@ -24,13 +22,6 @@ export default async function ClientPaymentsPage({ params, searchParams }: Clien
     const location = await getInternalLocation(locationId);
     const paymentProfile = location.paymentProfile;
     const paymentReadiness = location.paymentReadiness;
-    const requestHeaders = await headers();
-    const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:3000";
-    const protocol =
-      requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
-    const adminConsoleBaseUrl = `${protocol}://${host}`;
-    const returnUrl = `${adminConsoleBaseUrl}/clients/${locationId}/payments?stripeReturn=1`;
-    const refreshUrl = `${adminConsoleBaseUrl}/clients/${locationId}/payments?stripeRefresh=1`;
     const isReady = paymentReadiness?.ready ?? false;
     const onboardingState = paymentReadiness?.onboardingState ?? paymentProfile?.stripeOnboardingStatus ?? "unconfigured";
     const missingRequiredFields = paymentReadiness?.missingRequiredFields ?? ["stripeAccountId", "stripeChargesEnabled", "stripePayoutsEnabled"];
@@ -94,23 +85,11 @@ export default async function ClientPaymentsPage({ params, searchParams }: Clien
               <div className="section-copy">
                 <span className="eyebrow">Actions</span>
                 <h4>Stripe Connect access</h4>
-                <p>Create or refresh onboarding links, then open the Stripe Express dashboard once the account is linked.</p>
+                <p>Owners connect or continue Stripe from the client dashboard setup flow. Use this page for readiness and support checks.</p>
               </div>
-              <div className="form-actions">
-                <form action={startStripeOnboardingAction}>
-                  <input type="hidden" name="locationId" value={locationId} />
-                  <input type="hidden" name="returnUrl" value={returnUrl} />
-                  <input type="hidden" name="refreshUrl" value={refreshUrl} />
-                  <button type="submit" className="primary-button">
-                    {paymentProfile?.stripeAccountId ? "Continue Stripe onboarding" : "Create Stripe account and onboard"}
-                  </button>
-                </form>
-                <form action={openStripeDashboardAction}>
-                  <input type="hidden" name="locationId" value={locationId} />
-                  <button type="submit" className="secondary-button" disabled={!paymentProfile?.stripeAccountId}>
-                    Open Stripe Express
-                  </button>
-                </form>
+              <div className="callout">
+                <strong>Owner action required</strong>
+                <p>Ask the owner to open Setup in the client dashboard and use the Payments step.</p>
               </div>
             </div>
 

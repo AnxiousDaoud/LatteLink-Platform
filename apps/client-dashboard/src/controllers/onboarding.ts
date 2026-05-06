@@ -1,8 +1,15 @@
-import { submitOperatorOnboardingReview, updateOperatorOnboarding, updateOperatorStoreConfig } from "../api.js";
+import {
+  createOperatorStripeDashboardLink,
+  createOperatorStripeOnboardingLink,
+  submitOperatorOnboardingReview,
+  updateOperatorOnboarding,
+  updateOperatorStoreConfig
+} from "../api.js";
 import { loadDashboard, handleOperatorActionError } from "../lifecycle.js";
-import { countVisibleMenuItems } from "../model.js";
+import { countVisibleMenuItems, isOwnerOperator } from "../model.js";
 import { render } from "../render.js";
 import { addToast, setError, state } from "../state.js";
+import { persistSection } from "../storage.js";
 
 type OnboardingBooleanField =
   | "businessProfileComplete"
@@ -25,6 +32,22 @@ function resolveOnboardingLocationId() {
   }
 
   return state.selectedLocationId;
+}
+
+function requireOwnerPaymentsAccess() {
+  if (!state.session || !isOwnerOperator(state.session.operator)) {
+    throw new Error("Only owner accounts can connect payments.");
+  }
+
+  return state.session;
+}
+
+function buildStripeReturnUrls() {
+  const origin = typeof window === "undefined" ? "http://localhost:5173" : window.location.origin;
+  return {
+    returnUrl: `${origin}/?stripeReturn=1`,
+    refreshUrl: `${origin}/?stripeRefresh=1`
+  };
 }
 
 export async function handleOnboardingStepSubmit(form: HTMLFormElement) {
@@ -147,6 +170,48 @@ export async function handleOnboardingReviewSubmit() {
     await loadDashboard({ silent: true });
   } catch (error) {
     await handleOperatorActionError(error, "Unable to submit setup for review.");
+  } finally {
+    state.updatingOnboarding = false;
+    render();
+  }
+}
+
+export async function handleStripeOnboardingStart() {
+  try {
+    const session = requireOwnerPaymentsAccess();
+    const locationId = resolveOnboardingLocationId();
+    state.updatingOnboarding = true;
+    state.section = "onboarding";
+    persistSection(state.section);
+    setError(null);
+    render();
+    const link = await createOperatorStripeOnboardingLink(session, locationId, buildStripeReturnUrls());
+    if (typeof window !== "undefined") {
+      window.location.assign(link.url);
+    }
+  } catch (error) {
+    await handleOperatorActionError(error, "Unable to start Stripe onboarding.");
+  } finally {
+    state.updatingOnboarding = false;
+    render();
+  }
+}
+
+export async function handleStripeDashboardOpen() {
+  try {
+    const session = requireOwnerPaymentsAccess();
+    const locationId = resolveOnboardingLocationId();
+    state.updatingOnboarding = true;
+    state.section = "onboarding";
+    persistSection(state.section);
+    setError(null);
+    render();
+    const link = await createOperatorStripeDashboardLink(session, locationId);
+    if (typeof window !== "undefined") {
+      window.location.assign(link.url);
+    }
+  } catch (error) {
+    await handleOperatorActionError(error, "Unable to open Stripe Express.");
   } finally {
     state.updatingOnboarding = false;
     render();

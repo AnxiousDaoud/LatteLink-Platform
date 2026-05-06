@@ -50,7 +50,9 @@ import {
   handleOnboardingBusinessProfileSubmit,
   handleOnboardingReviewSubmit,
   handleOnboardingStepSubmit,
-  handleOnboardingStoreOperationsSubmit
+  handleOnboardingStoreOperationsSubmit,
+  handleStripeDashboardOpen,
+  handleStripeOnboardingStart
 } from "./controllers/onboarding.js";
 
 function closeOpenAccountMenus(target?: Node) {
@@ -213,6 +215,12 @@ export function registerEvents() {
         return;
       case "submit-onboarding-review":
         void handleOnboardingReviewSubmit();
+        return;
+      case "start-stripe-onboarding":
+        void handleStripeOnboardingStart();
+        return;
+      case "open-stripe-dashboard":
+        void handleStripeDashboardOpen();
         return;
     }
 
