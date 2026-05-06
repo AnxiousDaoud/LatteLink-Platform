@@ -46,7 +46,12 @@ import { handleDiscountCodeCreateSubmit, handleDiscountCodeSubmit } from "./cont
 import { handleStoreSubmit } from "./controllers/store.js";
 import { handleTeamCreateSubmit, handleTeamUserSubmit } from "./controllers/team.js";
 import { handleOrderAdvance } from "./controllers/orders.js";
-import { handleOnboardingReviewSubmit, handleOnboardingStepSubmit } from "./controllers/onboarding.js";
+import {
+  handleOnboardingBusinessProfileSubmit,
+  handleOnboardingReviewSubmit,
+  handleOnboardingStepSubmit,
+  handleOnboardingStoreOperationsSubmit
+} from "./controllers/onboarding.js";
 
 function closeOpenAccountMenus(target?: Node) {
   root.querySelectorAll<HTMLDetailsElement>(".dash-account-menu[open]").forEach((menu) => {
@@ -107,6 +112,12 @@ export function registerEvents() {
         return;
       case "onboarding-step":
         void handleOnboardingStepSubmit(target);
+        return;
+      case "onboarding-business-profile":
+        void handleOnboardingBusinessProfileSubmit(target);
+        return;
+      case "onboarding-store-operations":
+        void handleOnboardingStoreOperationsSubmit(target);
         return;
       case "team-create":
         void handleTeamCreateSubmit(target);

@@ -77,6 +77,78 @@ function renderStep(config: {
   `;
 }
 
+function renderBusinessProfileStep() {
+  const item = checklistItem("business_profile_complete");
+  if (!state.storeConfig) {
+    return renderStep({
+      id: "business_profile_complete",
+      title: "Business profile",
+      body: "Confirm the client-facing business name and location identity.",
+      targetSection: "store",
+      completeLabel: "Mark complete"
+    });
+  }
+
+  return `
+    <article class="onboarding-step ${item?.passed ? "onboarding-step--complete" : ""}">
+      <div class="onboarding-step__main">
+        <div class="onboarding-step__status">${renderStepStatus("business_profile_complete")}</div>
+        <h3>Business profile</h3>
+        <p>Confirm the client-facing business name and location identity.</p>
+        <form class="onboarding-inline-form" data-form="onboarding-business-profile">
+          <label class="field">
+            <span>Store name</span>
+            <input name="storeName" value="${escapeHtml(state.storeConfig.storeName)}" required />
+          </label>
+          <label class="field">
+            <span>Location name</span>
+            <input name="locationName" value="${escapeHtml(state.storeConfig.locationName)}" required />
+          </label>
+          <button class="button button--primary" type="submit" ${state.updatingOnboarding ? "disabled" : ""}>Save profile</button>
+        </form>
+      </div>
+    </article>
+  `;
+}
+
+function renderStoreOperationsStep() {
+  const item = checklistItem("store_operations_complete");
+  if (!state.storeConfig) {
+    return renderStep({
+      id: "store_operations_complete",
+      title: "Store operations",
+      body: "Confirm pickup instructions, hours, and operational defaults.",
+      targetSection: "store",
+      completeLabel: "Mark complete"
+    });
+  }
+
+  return `
+    <article class="onboarding-step ${item?.passed ? "onboarding-step--complete" : ""}">
+      <div class="onboarding-step__main">
+        <div class="onboarding-step__status">${renderStepStatus("store_operations_complete")}</div>
+        <h3>Store operations</h3>
+        <p>Confirm pickup instructions, hours, and tax defaults.</p>
+        <form class="onboarding-inline-form onboarding-inline-form--wide" data-form="onboarding-store-operations">
+          <label class="field">
+            <span>Hours</span>
+            <input name="hours" value="${escapeHtml(state.storeConfig.hours)}" required />
+          </label>
+          <label class="field">
+            <span>Tax rate basis points</span>
+            <input name="taxRateBasisPoints" type="number" min="0" max="10000" step="1" value="${state.storeConfig.taxRateBasisPoints}" required />
+          </label>
+          <label class="field onboarding-inline-form__wide">
+            <span>Pickup instructions</span>
+            <textarea name="pickupInstructions" rows="3" required>${escapeHtml(state.storeConfig.pickupInstructions)}</textarea>
+          </label>
+          <button class="button button--primary" type="submit" ${state.updatingOnboarding ? "disabled" : ""}>Save operations</button>
+        </form>
+      </div>
+    </article>
+  `;
+}
+
 function renderOptionalConnectorsStep() {
   return `
     <article class="onboarding-step">
@@ -96,6 +168,7 @@ function renderLaunchReview() {
   const submitted = summary.status === "ready_for_review" || Boolean(summary.submittedForReviewAt);
   const launchStatus = checklistItem("admin_launch_approved");
   const mobileStatus = checklistItem("mobile_release_ready");
+  const blockers = summary.checklist.filter((item) => !item.passed && item.id !== "admin_launch_approved");
 
   return `
     <article class="onboarding-review">
@@ -105,6 +178,15 @@ function renderLaunchReview() {
         <p class="muted-copy">
           Mobile release: ${escapeHtml(mobileStatus?.status ?? "pending")} · Launch approval: ${escapeHtml(launchStatus?.status ?? "pending")}
         </p>
+        ${
+          blockers.length > 0
+            ? `
+              <ul class="onboarding-blockers">
+                ${blockers.map((item) => `<li>${escapeHtml(item.label)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</li>`).join("")}
+              </ul>
+            `
+            : ""
+        }
       </div>
       ${
         summary.readyForReview && !submitted
@@ -154,20 +236,8 @@ export function renderOnboardingSection() {
     </section>
 
     <section class="onboarding-steps">
-      ${renderStep({
-        id: "business_profile_complete",
-        title: "Business profile",
-        body: "Confirm the client-facing business name and location identity.",
-        targetSection: "store",
-        completeLabel: "Mark complete"
-      })}
-      ${renderStep({
-        id: "store_operations_complete",
-        title: "Store operations",
-        body: "Confirm pickup instructions, hours, and operational defaults.",
-        targetSection: "store",
-        completeLabel: "Mark complete"
-      })}
+      ${renderBusinessProfileStep()}
+      ${renderStoreOperationsStep()}
       ${renderStep({
         id: "payments_connected",
         title: "Payments",

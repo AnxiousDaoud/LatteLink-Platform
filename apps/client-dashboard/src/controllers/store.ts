@@ -23,7 +23,8 @@ export async function handleStoreSubmit(form: HTMLFormElement) {
       storeName: formData.get("storeName"),
       locationName: formData.get("locationName"),
       hours: formData.get("hours"),
-      pickupInstructions: formData.get("pickupInstructions")
+      pickupInstructions: formData.get("pickupInstructions"),
+      taxRateBasisPoints: formData.get("taxRateBasisPoints")
     });
     addToast("Saved store settings.", "success");
     await loadDashboard();

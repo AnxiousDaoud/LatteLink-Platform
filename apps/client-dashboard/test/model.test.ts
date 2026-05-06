@@ -439,13 +439,15 @@ describe("client dashboard model", () => {
         storeName: "  LatteLink Flagship  ",
         locationName: "  Ann Arbor, MI  ",
         hours: "  Daily · 7:00 AM - 6:00 PM  ",
-        pickupInstructions: "  Pickup at the front counter.  "
+        pickupInstructions: "  Pickup at the front counter.  ",
+        taxRateBasisPoints: "625"
       })
     ).toEqual({
       storeName: "LatteLink Flagship",
       locationName: "Ann Arbor, MI",
       hours: "Daily · 7:00 AM - 6:00 PM",
-      pickupInstructions: "Pickup at the front counter."
+      pickupInstructions: "Pickup at the front counter.",
+      taxRateBasisPoints: 625
     });
 
     expect(

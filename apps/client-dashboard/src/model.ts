@@ -89,6 +89,7 @@ export type OperatorStoreConfigFormInput = {
   locationName?: string;
   hours?: string;
   pickupInstructions?: string;
+  taxRateBasisPoints?: string | number;
 };
 
 export type OperatorUserCreateFormInput = {
@@ -150,6 +151,29 @@ function normalizeCents(value: unknown) {
   }
 
   return 0;
+}
+
+function normalizeOptionalBasisPoints(value: unknown) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(10000, Math.trunc(value)));
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.min(10000, Math.trunc(parsed)));
+    }
+  }
+
+  return undefined;
 }
 
 function normalizeBoolean(value: unknown) {
@@ -548,7 +572,10 @@ export function normalizeStoreConfigForm(
     storeName: normalizeText(value.storeName),
     locationName: normalizeText(value.locationName),
     hours: normalizeText(value.hours),
-    pickupInstructions: normalizeText(value.pickupInstructions)
+    pickupInstructions: normalizeText(value.pickupInstructions),
+    ...(normalizeOptionalBasisPoints(value.taxRateBasisPoints) === undefined
+      ? {}
+      : { taxRateBasisPoints: normalizeOptionalBasisPoints(value.taxRateBasisPoints) })
   });
 }
 

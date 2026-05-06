@@ -1,4 +1,4 @@
-import { createOperatorStaffUser, updateOperatorStaffUser } from "../api.js";
+import { createOperatorStaffUser, updateOperatorStaffUser, updateOperatorOnboarding } from "../api.js";
 import { canManageTeamMembers } from "../model.js";
 import { addToast, setError, state } from "../state.js";
 import { handleOperatorActionError, loadDashboard } from "../lifecycle.js";
@@ -20,12 +20,18 @@ export async function handleTeamCreateSubmit(form: HTMLFormElement) {
     state.creatingTeamUser = true;
     setError(null);
     render();
-    await createOperatorStaffUser(state.session, state.selectedLocationId === "all" ? null : state.selectedLocationId, {
+    const locationId = state.selectedLocationId === "all" ? null : state.selectedLocationId;
+    await createOperatorStaffUser(state.session, locationId, {
       displayName: formData.get("displayName"),
       email: formData.get("email"),
       role: formData.get("role"),
       password: formData.get("password")
     });
+    if (state.onboardingSummary && locationId) {
+      state.onboardingSummary = await updateOperatorOnboarding(state.session, locationId, {
+        teamConfiguredOrSkipped: true
+      });
+    }
     addToast("Created operator account.", "success");
     form.reset();
     await loadDashboard();

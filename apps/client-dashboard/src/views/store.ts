@@ -67,6 +67,10 @@ export function renderStoreSection() {
                     <span>Hours</span>
                     <input name="hours" value="${escapeHtml(state.storeConfig.hours)}" required />
                   </label>
+                  <label class="field">
+                    <span>Tax rate basis points</span>
+                    <input name="taxRateBasisPoints" type="number" min="0" max="10000" step="1" value="${state.storeConfig.taxRateBasisPoints}" required />
+                  </label>
                   <label class="field dash-store-form__wide">
                     <span>Pickup instructions</span>
                     <textarea name="pickupInstructions" rows="4" required>${escapeHtml(state.storeConfig.pickupInstructions)}</textarea>
@@ -91,6 +95,10 @@ export function renderStoreSection() {
                   <div class="dash-detail-metric">
                     <span>Hours</span>
                     <strong>${escapeHtml(state.storeConfig.hours)}</strong>
+                  </div>
+                  <div class="dash-detail-metric">
+                    <span>Tax rate basis points</span>
+                    <strong>${state.storeConfig.taxRateBasisPoints}</strong>
                   </div>
                   <div class="dash-detail-metric dash-detail-metric--wide">
                     <span>Pickup instructions</span>

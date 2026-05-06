@@ -2353,6 +2353,31 @@ label.field > span {
   gap: 8px;
 }
 
+.onboarding-inline-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 4px;
+}
+
+.onboarding-inline-form--wide {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.onboarding-inline-form__wide {
+  grid-column: 1 / -2;
+}
+
+.onboarding-blockers {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding-left: 18px;
+  color: var(--color-text-2);
+  font-size: 13px;
+}
+
 .onboarding-review {
   margin-top: 14px;
   border-color: var(--color-accent-border);
@@ -2858,8 +2883,18 @@ label.field > span {
 
   .onboarding-step__actions .button,
   .onboarding-step__actions form,
-  .onboarding-review .button {
+  .onboarding-review .button,
+  .onboarding-inline-form .button {
     width: 100%;
+  }
+
+  .onboarding-inline-form,
+  .onboarding-inline-form--wide {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-inline-form__wide {
+    grid-column: auto;
   }
 
   .dash-menu-image-field {
