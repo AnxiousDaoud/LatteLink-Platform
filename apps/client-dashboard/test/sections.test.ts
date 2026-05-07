@@ -44,7 +44,7 @@ describe("dashboard sections", () => {
     state.appConfig = null;
   });
 
-  it("shows setup only to owners with incomplete onboarding", () => {
+  it("shows setup status only to owners when onboarding exists", () => {
     state.session = ownerSession;
     state.onboardingSummary = onboardingSummary;
 
@@ -62,9 +62,43 @@ describe("dashboard sections", () => {
     state.session = ownerSession;
     state.onboardingSummary = {
       ...onboardingSummary,
-      status: "live"
+      status: "approved"
     };
-    expect(getAvailableDashboardSections()).not.toContain("onboarding");
+    expect(getAvailableDashboardSections()).toContain("onboarding");
+  });
+
+  it("renders approved and live launch states as read-only setup status", () => {
+    state.session = ownerSession;
+    state.onboardingSummary = {
+      ...onboardingSummary,
+      status: "approved",
+      approvedAt: "2026-05-06T15:00:00.000Z",
+      mobileRelease: {
+        locationId: "northside-01",
+        status: "ready_for_launch",
+        buildNumber: "42"
+      }
+    };
+
+    const approvedHtml = renderOnboardingSection();
+    expect(approvedHtml).toContain("Launch approved");
+    expect(approvedHtml).toContain("Ready for launch");
+
+    state.onboardingSummary = {
+      ...state.onboardingSummary,
+      status: "live",
+      liveAt: "2026-05-06T16:00:00.000Z",
+      mobileRelease: {
+        locationId: "northside-01",
+        status: "live",
+        appStoreUrl: "https://apps.apple.com/us/app/example/id123456789",
+        buildNumber: "42"
+      }
+    };
+
+    const liveHtml = renderOnboardingSection();
+    expect(liveHtml).toContain("App is live");
+    expect(liveHtml).toContain("Live");
   });
 
   it("renders mobile release progress as read-only onboarding status", () => {

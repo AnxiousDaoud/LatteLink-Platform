@@ -844,6 +844,10 @@ describe("catalog service", () => {
     expect(created.tenantId).toMatch(/^ten_[a-f0-9]{16}$/);
     expect(created.locationId).toMatch(/^loc_[a-f0-9]{16}$/);
     expect(created.onboarding.readyForReview).toBe(false);
+    expect(created.onboarding.mobileRelease).toMatchObject({
+      locationId: created.locationId,
+      status: "not_started"
+    });
 
     const listResponse = await app.inject({
       method: "GET",
@@ -877,7 +881,11 @@ describe("catalog service", () => {
           locationId: created.locationId,
           primaryLocation: true
         }
-      ]
+      ],
+      onboarding: {
+        locationId: created.locationId,
+        status: "draft"
+      }
     });
 
     const onboardingUpdateResponse = await app.inject({

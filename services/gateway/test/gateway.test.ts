@@ -3697,6 +3697,31 @@ let previousFreeClientDashboardDomain: string | undefined;
       }
     });
 
+    const catalogCallsBeforeInvalidCreate = fetchMock.mock.calls.filter(([input]) =>
+      (typeof input === "string" ? input : input.url).startsWith("http://catalog.internal/")
+    ).length;
+    const invalidCreateResponse = await app.inject({
+      method: "POST",
+      url: "/v1/internal/clients",
+      headers: ownerInternalAdminHeaders,
+      payload: {
+        clientName: "Bad Coffee",
+        locationName: "Bad Flagship",
+        marketLabel: "Detroit, MI",
+        ownerEmail: "owner@bad.example",
+        locationId: "client-supplied-location"
+      }
+    });
+    expect(invalidCreateResponse.statusCode).toBe(400);
+    expect(invalidCreateResponse.json()).toMatchObject({
+      code: "INVALID_REQUEST"
+    });
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        (typeof input === "string" ? input : input.url).startsWith("http://catalog.internal/")
+      )
+    ).toHaveLength(catalogCallsBeforeInvalidCreate);
+
     const listResponse = await app.inject({
       method: "GET",
       url: "/v1/internal/clients",

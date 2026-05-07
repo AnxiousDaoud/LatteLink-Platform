@@ -215,7 +215,7 @@ export function isOwnerOperator(
 }
 
 export function isOnboardingIncomplete(status: string | null | undefined) {
-  return Boolean(status && status !== "live");
+  return Boolean(status && status !== "approved" && status !== "live");
 }
 
 export function formatOrderStatus(status: OperatorOrderStatus) {

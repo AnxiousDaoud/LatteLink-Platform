@@ -162,6 +162,36 @@ describe("owner provisioning", () => {
     await repository.close();
   });
 
+  it("revokes prior pending owner invites when sending a replacement invite", async () => {
+    const repository = createInMemoryIdentityRepository();
+
+    const first = await createOwnerInvite(repository, {
+      displayName: "Avery Owner",
+      email: "avery@store.com",
+      locationId: "flagship-01",
+      dashboardUrl: "https://client.example.com"
+    });
+    const second = await createOwnerInvite(repository, {
+      displayName: "Avery Owner",
+      email: "avery@store.com",
+      locationId: "flagship-01",
+      dashboardUrl: "https://client.example.com"
+    });
+
+    await expect(lookupOwnerInvite(repository, first.token)).rejects.toMatchObject({
+      code: "INVITE_REVOKED"
+    });
+
+    const accepted = await acceptOwnerInvite(repository, second.token, {
+      password: "AcceptedPassword123!"
+    });
+    expect(accepted.operator.active).toBe(true);
+    expect(accepted.operator.email).toBe("avery@store.com");
+    expect(accepted.invite.status).toBe("consumed");
+
+    await repository.close();
+  });
+
   it("rejects invalid, expired, and revoked owner invites", async () => {
     const repository = createInMemoryIdentityRepository();
     await expect(lookupOwnerInvite(repository, "missing-token-value-1234567890")).rejects.toBeInstanceOf(OwnerInviteError);

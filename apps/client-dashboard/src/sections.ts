@@ -1,7 +1,6 @@
 import { isOrderTrackingEnabled, isPlatformManagedMenu, isStaffDashboardEnabled } from "@lattelink/contracts-catalog";
 import {
   canAccessCapability,
-  isOnboardingIncomplete,
   isOwnerOperator,
   isStoreOperator,
   type DashboardSection
@@ -47,11 +46,7 @@ export function getAvailableDashboardSections() {
         ? [state.appConfig]
         : [];
 
-  if (
-    isOwnerOperator(state.session?.operator ?? null) &&
-    state.onboardingSummary &&
-    isOnboardingIncomplete(state.onboardingSummary.status)
-  ) {
+  if (isOwnerOperator(state.session?.operator ?? null) && state.onboardingSummary) {
     sections.unshift("onboarding");
   }
 

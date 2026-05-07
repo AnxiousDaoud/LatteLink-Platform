@@ -313,6 +313,7 @@ describe("client dashboard model", () => {
     expect(isOwnerOperator({ role: "manager" })).toBe(false);
     expect(isOnboardingIncomplete("in_progress")).toBe(true);
     expect(isOnboardingIncomplete("ready_for_review")).toBe(true);
+    expect(isOnboardingIncomplete("approved")).toBe(false);
     expect(isOnboardingIncomplete("live")).toBe(false);
 
     expect(canAccessCapability(sampleOperator, "orders:write")).toBe(true);

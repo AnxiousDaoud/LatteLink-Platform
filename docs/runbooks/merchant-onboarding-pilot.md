@@ -1,6 +1,6 @@
 # Merchant Onboarding Runbook
 
-Last verified: `2026-04-28`
+Last verified: `2026-05-07`
 
 ## Scope
 
@@ -26,16 +26,17 @@ Collect these before creating the client:
 - Merchant legal/business name.
 - Public brand name.
 - Primary location name.
-- `locationId`, lowercase and stable, for example `rawaqcoffee01`.
 - Market label, for example `Detroit, MI`.
 - Owner name and email.
-- Store hours, pickup instructions, tax rate, prep ETA.
+- Store hours, pickup instructions, tax rate, prep ETA if Nomly is entering initial defaults.
 - Fulfillment mode. Use `staff` for every real merchant.
-- Stripe Connect account or Stripe onboarding contact.
+- Stripe onboarding contact. Only the merchant owner should connect payments from the client dashboard.
 - Menu source: manual seed, CSV/manual entry, or upstream menu sync.
 - Initial visible menu categories/items.
 - Menu image assets.
 - Mobile app bundle identifier and merchant display name if this merchant receives a branded app.
+
+Do not collect or ask the merchant for a `locationId`. The system generates tenant, brand, and location identifiers. Record the generated `locationId` after client creation because it is still used by backend APIs, mobile configuration, logs, and support tooling.
 
 ## Gate 0: Repository and Deploy State
 
@@ -49,49 +50,52 @@ Before onboarding a merchant:
 - Sentry projects are receiving errors for backend services, mobile, dashboard, and admin console.
 - Uptime monitors exist for both `/health` and `/ready`. Reference: [pilot-uptime-monitoring.md](./pilot-uptime-monitoring.md).
 
-## Step 1: Bootstrap the Location
+## Step 1: Create the Client Shell
 
 Preferred path:
 
 1. Open the admin console for the target environment.
 2. Go to `Clients`.
 3. Select `New Client`.
-4. Enter brand, location, market, and initial capability fields.
-5. Confirm the generated `locationId` matches the collected input.
+4. Enter the client name, user-facing location name, market label, owner email, and optional initial store defaults.
+5. Create the client shell.
+6. Record the generated `tenantId`, `brandId`, and `locationId` from the response and client detail page.
 
 API fallback:
 
 ```bash
-curl -X POST "$API_BASE_URL/v1/internal/locations/bootstrap" \
+curl -X POST "$API_BASE_URL/v1/internal/clients" \
   -H "Authorization: Bearer $INTERNAL_ADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "brandId": "rawaq",
-    "brandName": "Rawaq",
-    "locationId": "rawaqcoffee01",
+    "clientName": "Rawaq Coffee",
     "locationName": "Rawaq Coffee",
-    "marketLabel": "Detroit, MI"
+    "marketLabel": "Detroit, MI",
+    "ownerEmail": "owner@example.com",
+    "ownerName": "Merchant Owner"
   }'
 ```
 
 Verification:
 
-- Admin console `Clients` shows the new location.
+- Admin console `Clients` shows the new client.
+- The client detail page shows a generated `locationId` that starts with `loc_`.
 - `GET /v1/internal/locations/:locationId` returns the expected brand and location.
+- `GET /v1/internal/locations/:locationId/onboarding` returns the onboarding checklist.
 
-## Step 2: Provision Owner Access
+## Step 2: Send Owner Invite
 
 Preferred path:
 
 1. Admin console: `Clients` -> select client -> `Owner`.
 2. Enter owner display name and email.
-3. Create or update owner access.
-4. Send the temporary password through the approved private channel.
+3. Send the owner invite.
+4. Confirm the invite email was sent, or copy the invite URL from logs only for local/dev testing.
 
 API fallback:
 
 ```bash
-curl -X POST "$API_BASE_URL/v1/internal/locations/$LOCATION_ID/owner/provision" \
+curl -X POST "$API_BASE_URL/v1/internal/locations/$LOCATION_ID/owner/invite/resend" \
   -H "Authorization: Bearer $INTERNAL_ADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -102,19 +106,35 @@ curl -X POST "$API_BASE_URL/v1/internal/locations/$LOCATION_ID/owner/provision" 
 
 Verification:
 
-- Owner appears in admin console owner summary.
-- Owner can sign into the operator dashboard for the correct location.
+- Owner summary shows a pending invite before acceptance.
+- Owner opens `/invites/:token`, sets their password, and lands in the client dashboard.
+- Owner summary shows an active owner after acceptance.
 - Owner cannot access another location.
 
-## Step 3: Configure Payment Profile
+## Step 3: Client Dashboard Setup
+
+The owner should complete most launch setup from the client dashboard Setup tab:
+
+1. Business profile.
+2. Store operations.
+3. Stripe Connect.
+4. Optional connectors such as Clover. Clover is not required for launch.
+5. Menu review or menu entry.
+6. Team setup or skip.
+7. Test order confirmation.
+8. Submit for Nomly review.
+
+Only owners should connect payment providers. Managers and store users must not be used for Stripe Connect onboarding.
+
+## Step 4: Configure Payment Profile
 
 Preferred path:
 
-1. Admin console: `Clients` -> select client -> `Payments`.
-2. Enter or create Stripe Connect account information.
-3. Generate Stripe onboarding link if needed.
-4. Merchant completes onboarding.
-5. Confirm status is `completed` before launch.
+1. Client dashboard: `Setup` -> `Payments`.
+2. Owner starts Stripe Connect onboarding.
+3. Owner completes onboarding through Stripe.
+4. Owner returns to the client dashboard.
+5. Confirm Stripe status is `completed` before launch.
 
 Verification:
 
@@ -129,7 +149,7 @@ Hold launch if:
 - Payment profile is missing.
 - The account belongs to the wrong merchant.
 
-## Step 4: Seed or Import Menu
+## Step 5: Seed or Import Menu
 
 Preferred path:
 
@@ -150,7 +170,11 @@ Verification:
 - Mobile app menu loads from backend, not fallback data.
 - No placeholder items are visible.
 
-## Step 5: Validate Fulfillment Mode
+Deferred feature:
+
+- AI-assisted Nomly menu seeding is Gate 2. For Gate 1, seed menus manually, import them through existing tooling, or use an approved connector/sync path.
+
+## Step 6: Validate Fulfillment Mode
 
 Every live merchant must use staff-driven fulfillment.
 
@@ -168,7 +192,7 @@ Verification:
 
 Hold launch if fulfillment mode is `time_based`.
 
-## Step 6: Upload Menu Media
+## Step 7: Upload Menu Media
 
 Preferred path:
 
@@ -185,7 +209,7 @@ Verification:
 
 Hold launch if operators need external image hosting to manage the menu.
 
-## Step 7: Verify Store Config
+## Step 8: Verify Store Config
 
 Operator dashboard:
 
@@ -199,7 +223,7 @@ Verification:
 - Tax calculation in quote matches expected merchant tax behavior.
 - Pickup instructions are customer-safe.
 
-## Step 8: Register Merchant App Values
+## Step 9: Register Merchant App Values
 
 For a branded app, update EAS environment values before building.
 
@@ -226,7 +250,7 @@ Verification:
 - Apple Sign-In works in the target app build.
 - Apple Pay merchant id matches the target environment.
 
-## Step 9: Place a Staging Test Order
+## Step 10: Place a Staging Test Order
 
 Use `dev` first.
 
@@ -248,9 +272,22 @@ Verification:
 - Support page can find the order by order ID.
 - Sentry has no new unexpected errors.
 
-## Step 10: Complete Launch Readiness
+## Step 11: Submit and Complete Launch Readiness
 
-Open admin console `Launch Readiness`.
+Client action:
+
+1. Owner opens client dashboard `Setup`.
+2. Owner confirms all client-owned checks are complete.
+3. Owner selects `Submit for review`.
+
+Nomly action:
+
+1. Open admin console `Launch Readiness`.
+2. Review blockers.
+3. Complete mobile build/App Store work manually.
+4. Update mobile release status as work progresses, for example `submitted_for_review`, `approved`, or `ready_for_launch`.
+5. Approve launch manually only after critical checks pass.
+6. Mark live only after the app is actually live.
 
 Required checks:
 
@@ -259,12 +296,14 @@ Required checks:
 - Menu has visible items.
 - Fulfillment mode explicitly configured as `staff`.
 - Test order confirmed.
+- Mobile release is ready for launch.
+- Manual launch approval is recorded.
 
 Reference: [launch-readiness-checklist.md](./launch-readiness-checklist.md).
 
 Hold launch if any automated check fails. Manual test-order confirmation must include the test order ID.
 
-## Step 11: Production Go-Live
+## Step 12: Production Go-Live
 
 Only after dev validation passes:
 
@@ -274,22 +313,24 @@ Only after dev validation passes:
 4. Verify `https://api.nomly.us/ready`.
 5. Open production admin console and confirm launch readiness.
 6. Open production dashboard and confirm owner can sign in.
-7. Install or open production app build.
-8. Place one controlled real production order if the merchant accepts it.
-9. Confirm order appears in production dashboard.
-10. Confirm staff can complete fulfillment.
+7. Confirm client dashboard shows the current mobile release status.
+8. Install or open production app build.
+9. Place one controlled real production order if the merchant accepts it.
+10. Confirm order appears in production dashboard.
+11. Confirm staff can complete fulfillment.
+12. Mark launch live in the admin console.
 
 Record:
 
 - Release commit SHA.
 - Image SHA.
-- Merchant/location id.
+- Merchant generated `locationId`.
 - Test order id.
 - Stripe payment id.
 - Approver.
 - Launch timestamp.
 
-## Step 12: Owner Handoff Checklist
+## Step 13: Owner Handoff Checklist
 
 Before telling the merchant they are live:
 

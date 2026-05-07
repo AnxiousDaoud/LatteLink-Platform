@@ -1,102 +1,142 @@
 # Client Dashboard Owner Provisioning
 
-Last updated: `2026-04-01`
+Last updated: `2026-05-07`
 
 ## Goal
 
-Create the first owner account for a client store without manual database edits.
+Create the first owner account for a client store without manual database edits and without sharing temporary passwords.
 
-For V1, one client store maps to one `locationId`. The platform team creates the first owner account, then that owner can create staff from inside the client dashboard.
+For Gate 1, Nomly creates the client shell in the admin console. The backend generates the tenant, brand, and location identifiers. The owner receives a one-time invite, sets their own password, and completes setup from the client dashboard.
 
-## Default V1 Pattern
+## Default Gate 1 Pattern
 
-Use a temporary password as the default first-time access path:
+Use owner invites as the default first-time access path:
 
-1. create the owner account against the identity backend
-2. send the dashboard URL, email, and temporary password over a secure channel
-3. the owner signs in with email and password
-4. after first access, the owner rotates their own password from the `Team` tab
+1. Internal admin creates a client shell from the admin console.
+2. The system generates `tenantId`, `brandId`, and `locationId`.
+3. Internal admin sends an owner invite for the generated `locationId`.
+4. Owner opens `/invites/:token`.
+5. Owner sets their password.
+6. Owner signs into the client dashboard and completes the Setup wizard.
 
-Optional Google-first flow:
-
-- create the owner account with the same email they will use for Google
-- do not auto-create access from Google
-- once Google SSO is configured, that email can link on first sign-in
+Do not ask the client to provide a `locationId`. Only user-facing names, market labels, and owner contact details should be entered by humans.
 
 ## Prerequisites
 
-- a real `DATABASE_URL` for the target environment
-- a `locationId` for the client store
-- the client dashboard URL
-- `pnpm install`
+- A real `DATABASE_URL` for the target environment.
+- Admin console access with `clients:write`.
+- Client dashboard URL for the target environment.
+- Email delivery configured for shared or production environments.
 
-## Provision Command
+## Preferred Admin Console Flow
 
-From the repo root:
+1. Open admin console.
+2. Go to `Clients`.
+3. Select `New Client`.
+4. Enter:
+   - client name
+   - location name
+   - market label
+   - owner email
+   - optional owner display name
+   - optional initial store defaults
+5. Create the client.
+6. Open the client detail page.
+7. Confirm generated `locationId` starts with `loc_`.
+8. Send the owner invite from the Owner panel.
+
+## API Fallback
+
+Create the client shell:
 
 ```bash
-pnpm provision:client-owner -- \
-  --display-name "Avery Quinn" \
-  --email "avery@store.com" \
-  --location-id "northside-01" \
-  --dashboard-url "https://client.example.com"
+curl -X POST "$API_BASE_URL/v1/internal/clients" \
+  -H "Authorization: Bearer $INTERNAL_ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "clientName": "Northside Coffee",
+    "locationName": "Northside Flagship",
+    "marketLabel": "Detroit, MI",
+    "ownerEmail": "owner@northside.example",
+    "ownerName": "Avery Owner"
+  }'
 ```
 
-Optional:
+Then send or resend the owner invite:
 
-- pass `--password "ChosenTempPassword123!"` to set the temporary password yourself
-- omit `--password` to have the script generate a strong temporary password
-- pass `--allow-in-memory` only for local testing; do not use it for shared or production provisioning
+```bash
+curl -X POST "$API_BASE_URL/v1/internal/locations/$LOCATION_ID/owner/invite/resend" \
+  -H "Authorization: Bearer $INTERNAL_ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "displayName": "Avery Owner",
+    "email": "owner@northside.example"
+  }'
+```
 
-The command will print:
+The gateway exposes `/owner/invite/resend` for both the initial admin-console send and replacement invites. Sending a replacement invite revokes prior pending invites for the same owner and location.
 
-- whether the owner was `created` or `updated`
-- the resolved store `locationId`
-- the temporary password
-- the first-time access handoff steps
+## What The Backend Does
 
-## What The Script Does
+The client creation flow:
 
-The script:
+- creates a catalog client shell
+- generates tenant, brand, and location identifiers
+- bootstraps store/app/menu defaults for the generated location
+- creates onboarding and mobile release tracking rows
+- does not activate an owner automatically
 
-- provisions or updates the operator user as role `owner`
-- ensures the user is active
-- binds the owner to the provided `locationId`
-- sets or rotates the password
-- keeps the access model store-scoped for V1
+The owner invite flow:
+
+- creates or updates the operator user as role `owner`
+- keeps the owner inactive until invite acceptance
+- stores a hashed one-time invite token
+- sends the invite email when email delivery is configured
+- activates the owner and stores the chosen password only after acceptance
 
 ## First-Time Owner Handoff
 
-Send the owner:
+Send the owner only:
 
-- dashboard URL
-- email
-- temporary password
+- client dashboard URL
+- the invite email
+- support contact if they cannot find the email
 
-Ask them to:
+Do not send a temporary password. The owner sets their password through the invite acceptance page.
 
-1. sign in to the client dashboard
-2. verify the store name and settings are correct
-3. go to `Team`
-4. update their own password
-5. add staff accounts if needed
+Ask the owner to:
+
+1. open the invite
+2. set their password
+3. sign into the client dashboard
+4. complete Setup
+5. connect Stripe from Setup if they are the business owner
+6. optionally connect Clover if they want POS read/write support
+7. submit for Nomly review
 
 ## Recovery / Re-Provisioning
 
-If the owner loses access before Google SSO is enabled:
+If the owner loses the invite before accepting:
 
-- re-run the same command with the same email and `locationId`
-- provide a new temporary password with `--password`
-- the script will update the existing owner access instead of creating a duplicate user
+- resend the invite from admin console, or call `/owner/invite/resend`
+- confirm the prior invite no longer works
+- confirm the newest invite can be looked up
 
-## V1 Limits
+If the owner has accepted but forgot their password:
 
-- no public self-sign-up
-- no invite acceptance flow yet
-- no multi-location organization switcher yet
-- Google SSO still requires a matching account that already exists
+- use the password reset flow when available
+- until then, re-invite or re-provision only through approved support handling
+
+## Gate 1 Limits
+
+- AI-assisted Nomly menu seeding is deferred to Gate 2.
+- Clover is optional and never blocks launch.
+- Toast and Square are future optional connectors after infrastructure exists.
+- Launch approval remains manual because builds and App Store data are still manually configured.
+- Mobile release status must be maintained by Nomly so the client dashboard can show progress.
 
 See also:
 
-- [client-dashboard-google-sso.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/client-dashboard-google-sso.md)
-- [client-dashboard-pilot-qa.md](/Users/yazan/Documents/Gazelle/Dev/GazelleMobilePlatform/docs/runbooks/client-dashboard-pilot-qa.md)
+- [merchant-onboarding-pilot.md](./merchant-onboarding-pilot.md)
+- [client-dashboard-google-sso.md](./client-dashboard-google-sso.md)
+- [client-dashboard-pilot-qa.md](./client-dashboard-pilot-qa.md)

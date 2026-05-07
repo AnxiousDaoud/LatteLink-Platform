@@ -564,6 +564,50 @@ describe("contracts-catalog", () => {
     expect(blocked.blockedReason).toContain("App Store");
   });
 
+  it("validates approved and live onboarding summaries with release timestamps", () => {
+    const approved = onboardingSummarySchema.parse({
+      tenantId: "ten_123",
+      brandId: "brd_123",
+      brandName: "Northside Coffee",
+      locationId: "loc_123",
+      locationName: "Northside Flagship",
+      marketLabel: "Detroit, MI",
+      status: "approved",
+      readyForReview: true,
+      checklist: [
+        {
+          id: "admin_launch_approved",
+          label: "Launch approved",
+          status: "complete",
+          passed: true,
+          manual: true
+        }
+      ],
+      mobileRelease: {
+        locationId: "loc_123",
+        status: "ready_for_launch",
+        approvedAt: "2026-05-06T14:00:00.000Z"
+      },
+      approvedAt: "2026-05-06T14:05:00.000Z"
+    });
+
+    const live = onboardingSummarySchema.parse({
+      ...approved,
+      status: "live",
+      mobileRelease: {
+        locationId: "loc_123",
+        status: "live",
+        appStoreUrl: "https://apps.apple.com/us/app/example/id123456789",
+        liveAt: "2026-05-06T16:00:00.000Z"
+      },
+      liveAt: "2026-05-06T16:05:00.000Z"
+    });
+
+    expect(approved.status).toBe("approved");
+    expect(live.mobileRelease?.status).toBe("live");
+    expect(live.liveAt).toBe("2026-05-06T16:05:00.000Z");
+  });
+
   it("validates operator onboarding, launch approval, and mobile release updates", () => {
     const operatorUpdate = operatorOnboardingUpdateSchema.parse({
       businessProfileComplete: true,

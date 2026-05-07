@@ -303,6 +303,68 @@ describe("client dashboard api helpers", () => {
     );
   });
 
+  it("loads approved onboarding status with mobile release progress", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tenantId: "tenant-northside",
+          brandId: "northside-coffee",
+          brandName: "Northside Coffee",
+          locationId: "northside-01",
+          locationName: "Northside Flagship",
+          marketLabel: "Detroit, MI",
+          status: "approved",
+          readyForReview: true,
+          checklist: [
+            {
+              id: "admin_launch_approved",
+              label: "Launch approved",
+              status: "complete",
+              passed: true,
+              manual: true
+            }
+          ],
+          mobileRelease: {
+            locationId: "northside-01",
+            status: "ready_for_launch",
+            buildNumber: "42",
+            approvedAt: "2026-05-06T15:00:00.000Z"
+          },
+          approvedAt: "2026-05-06T15:05:00.000Z",
+          updatedAt: "2026-05-06T15:05:00.000Z"
+        }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const summary = await fetchOperatorOnboardingSummary(
+      {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        apiBaseUrl: "https://api.nomly.us/v1",
+        expiresAt: "2026-04-23T23:00:00.000Z",
+        operator: {
+          operatorUserId: "11111111-1111-4111-8111-111111111111",
+          displayName: "Avery Quinn",
+          email: "avery@store.com",
+          role: "owner",
+          locationId: "northside-01",
+          locationIds: ["northside-01"],
+          active: true,
+          capabilities: ["store:read", "store:write"],
+          createdAt: "2026-04-23T20:00:00.000Z",
+          updatedAt: "2026-04-23T20:00:00.000Z"
+        }
+      },
+      "northside-01"
+    );
+
+    expect(summary.status).toBe("approved");
+    expect(summary.mobileRelease?.status).toBe("ready_for_launch");
+    expect(summary.approvedAt).toBe("2026-05-06T15:05:00.000Z");
+  });
+
   it("creates owner-scoped Stripe Connect links through the gateway", async () => {
     const stripeLinkPayload = {
       locationId: "northside-01",
