@@ -246,6 +246,16 @@ const defaultStoreConfigRecord: StoreConfigRecord = {
   pickupInstructions: "Pickup at the flagship order counter."
 };
 
+type CatalogTimestamp = string | Date | null | undefined;
+
+export function serializeCatalogTimestamp(value: CatalogTimestamp) {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 function generateInternalId(prefix: "brd" | "loc" | "ten") {
   return `${prefix}_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
 }
@@ -1642,16 +1652,16 @@ function toClientRecord(row: {
   brand_id: string;
   client_name: string;
   status: OnboardingStatus;
-  created_at?: string;
-  updated_at?: string;
+  created_at?: CatalogTimestamp;
+  updated_at?: CatalogTimestamp;
 }): ClientRecord {
   return {
     tenantId: row.tenant_id,
     brandId: row.brand_id,
     clientName: row.client_name,
     status: row.status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    createdAt: serializeCatalogTimestamp(row.created_at),
+    updatedAt: serializeCatalogTimestamp(row.updated_at)
   };
 }
 
@@ -1662,8 +1672,8 @@ function toClientLocationRecord(row: {
   location_name: string;
   market_label: string;
   primary_location: boolean;
-  created_at?: string;
-  updated_at?: string;
+  created_at?: CatalogTimestamp;
+  updated_at?: CatalogTimestamp;
 }): ClientLocationRecord {
   return {
     tenantId: row.tenant_id,
@@ -1672,8 +1682,8 @@ function toClientLocationRecord(row: {
     locationName: row.location_name,
     marketLabel: row.market_label,
     primaryLocation: row.primary_location,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
+    createdAt: serializeCatalogTimestamp(row.created_at),
+    updatedAt: serializeCatalogTimestamp(row.updated_at)
   };
 }
 
@@ -1689,12 +1699,12 @@ function toOnboardingProgressRecord(row: {
   team_configured_or_skipped: boolean;
   test_order_completed: boolean;
   admin_launch_approved: boolean;
-  submitted_for_review_at: string | null;
-  approved_at: string | null;
-  live_at: string | null;
+  submitted_for_review_at: CatalogTimestamp;
+  approved_at: CatalogTimestamp;
+  live_at: CatalogTimestamp;
   blocked_reason: string | null;
   notes: string | null;
-  updated_at?: string;
+  updated_at?: CatalogTimestamp;
 }): OnboardingProgressRecord {
   return {
     tenantId: row.tenant_id,
@@ -1708,12 +1718,12 @@ function toOnboardingProgressRecord(row: {
     teamConfiguredOrSkipped: row.team_configured_or_skipped,
     testOrderCompleted: row.test_order_completed,
     adminLaunchApproved: row.admin_launch_approved,
-    submittedForReviewAt: row.submitted_for_review_at ?? undefined,
-    approvedAt: row.approved_at ?? undefined,
-    liveAt: row.live_at ?? undefined,
+    submittedForReviewAt: serializeCatalogTimestamp(row.submitted_for_review_at),
+    approvedAt: serializeCatalogTimestamp(row.approved_at),
+    liveAt: serializeCatalogTimestamp(row.live_at),
     blockedReason: row.blocked_reason ?? undefined,
     notes: row.notes ?? undefined,
-    updatedAt: row.updated_at
+    updatedAt: serializeCatalogTimestamp(row.updated_at)
   };
 }
 
@@ -1724,12 +1734,12 @@ function toMobileReleaseProfile(row: {
   app_store_url: string | null;
   test_flight_url: string | null;
   build_number: string | null;
-  submitted_at: string | null;
-  approved_at: string | null;
-  live_at: string | null;
+  submitted_at: CatalogTimestamp;
+  approved_at: CatalogTimestamp;
+  live_at: CatalogTimestamp;
   blocked_reason: string | null;
   notes: string | null;
-  updated_at?: string;
+  updated_at?: CatalogTimestamp;
 }): MobileReleaseProfile {
   return mobileReleaseProfileSchema.parse({
     locationId: row.location_id,
@@ -1738,12 +1748,12 @@ function toMobileReleaseProfile(row: {
     appStoreUrl: row.app_store_url ?? undefined,
     testFlightUrl: row.test_flight_url ?? undefined,
     buildNumber: row.build_number ?? undefined,
-    submittedAt: row.submitted_at ?? undefined,
-    approvedAt: row.approved_at ?? undefined,
-    liveAt: row.live_at ?? undefined,
+    submittedAt: serializeCatalogTimestamp(row.submitted_at),
+    approvedAt: serializeCatalogTimestamp(row.approved_at),
+    liveAt: serializeCatalogTimestamp(row.live_at),
     blockedReason: row.blocked_reason ?? undefined,
     notes: row.notes ?? undefined,
-    updatedAt: row.updated_at
+    updatedAt: serializeCatalogTimestamp(row.updated_at)
   });
 }
 
@@ -1922,8 +1932,8 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
             status: clientRow.status,
             primaryLocationId: primaryLocation?.location_id,
             locationCount: clientLocations.length,
-            createdAt: clientRow.created_at,
-            updatedAt: clientRow.updated_at
+            createdAt: serializeCatalogTimestamp(clientRow.created_at),
+            updatedAt: serializeCatalogTimestamp(clientRow.updated_at)
           });
         })
       });
@@ -1952,8 +1962,8 @@ async function createPostgresRepository(connectionString: string): Promise<Catal
         status: clientRow.status,
         primaryLocationId: primaryLocation?.location_id,
         locationCount: locationRows.length,
-        createdAt: clientRow.created_at,
-        updatedAt: clientRow.updated_at,
+        createdAt: serializeCatalogTimestamp(clientRow.created_at),
+        updatedAt: serializeCatalogTimestamp(clientRow.updated_at),
         locations: locationRows.map(toClientLocationRecord),
         onboarding: primaryLocation ? await buildPostgresOnboarding(primaryLocation.location_id) : undefined
       });

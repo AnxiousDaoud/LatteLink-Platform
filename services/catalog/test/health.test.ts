@@ -15,6 +15,7 @@ import {
   storeConfigResponseSchema
 } from "@lattelink/contracts-catalog";
 import { buildApp } from "../src/app.js";
+import { serializeCatalogTimestamp } from "../src/repository.js";
 import {
   DEFAULT_BRAND_NAME,
   DEFAULT_LOCATION_ID,
@@ -38,6 +39,15 @@ describe("catalog service", () => {
     (typeof mediaEnvNames)[number],
     string | undefined
   >;
+
+  it("serializes Postgres timestamp values before contract parsing", () => {
+    const timestamp = new Date("2026-05-08T14:15:16.000Z");
+
+    expect(serializeCatalogTimestamp(timestamp)).toBe("2026-05-08T14:15:16.000Z");
+    expect(serializeCatalogTimestamp("2026-05-08T14:15:16.000Z")).toBe("2026-05-08T14:15:16.000Z");
+    expect(serializeCatalogTimestamp(null)).toBeUndefined();
+    expect(serializeCatalogTimestamp(undefined)).toBeUndefined();
+  });
 
   afterEach(() => {
     if (previousGatewayToken === undefined) {
