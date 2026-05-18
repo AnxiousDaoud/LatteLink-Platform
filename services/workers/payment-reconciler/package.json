@@ -16,15 +16,15 @@
     "@lattelink/contracts-orders": "workspace:*",
     "@lattelink/observability": "workspace:*",
     "@lattelink/persistence": "workspace:*",
-    "stripe": "^22.0.2",
+    "stripe": "^22.1.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@lattelink/config-eslint": "workspace:*",
     "@lattelink/config-typescript": "workspace:*",
-    "@types/node": "^22.13.8",
-    "eslint": "^9.21.0",
-    "tsx": "^4.20.5",
+    "@types/node": "^22.19.19",
+    "eslint": "^9.39.4",
+    "tsx": "^4.22.2",
     "typescript": "^5.8.2",
     "vitest": "^3.0.8"
   }
